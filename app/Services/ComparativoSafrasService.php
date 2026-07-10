@@ -227,7 +227,7 @@ class ComparativoSafrasService
             ->whereIn('d.safra_id', $safraIds)
             ->where('d.status_pagamento', '!=', 'cancelado')
             ->whereRaw("COALESCE(d.status_aprovacao, '') != 'reprovada'")
-            ->groupBy('d.safra_id', 'categoria_id', 'categoria_nome')
+            ->groupBy('d.safra_id', 'cp.id', 'c.id', 'cp.nome', 'c.nome')
             ->orderBy('categoria_nome')
             ->get([
                 'd.safra_id',
