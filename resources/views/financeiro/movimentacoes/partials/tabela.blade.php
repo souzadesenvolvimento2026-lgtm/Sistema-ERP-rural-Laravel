@@ -19,11 +19,11 @@
                     <tr>
                         <td>{{ \Illuminate\Support\Carbon::parse($movimentacao->data_movimento)->format('d/m/Y') }}</td>
                         <td>{{ $movimentacao->conta_nome }}</td>
-                        <td><span class="status {{ $movimentacao->tipo === 'entrada' ? 'open' : '' }}">{{ $movimentacao->tipo }}</span></td>
+                        <td><span class="pill {{ $movimentacao->tipo === 'entrada' ? 'success' : 'warning' }}">{{ \App\Support\FarmFormat::statusLabel($movimentacao->tipo) }}</span></td>
                         <td>{{ $movimentacao->descricao }}</td>
                         <td><strong>R$ {{ number_format($movimentacao->valor, 2, ',', '.') }}</strong></td>
                         <td>{{ strtoupper($movimentacao->origem) }}</td>
-                        <td>{{ $movimentacao->status }}</td>
+                        <td><span class="pill {{ $movimentacao->status === 'pendente' ? 'warning' : 'success' }}">{{ \App\Support\FarmFormat::statusLabel($movimentacao->status) }}</span></td>
                         <td>
                             @if ($movimentacao->status === 'pendente')
                                 <form method="POST" action="{{ route('financeiro.movimentacoes.conciliar', $movimentacao->id) }}" style="display: inline;">

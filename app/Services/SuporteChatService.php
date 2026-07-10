@@ -137,15 +137,32 @@ class SuporteChatService
         if (!$conversaId) {
             return [
                 'ok' => true,
+                'conversa_id' => null,
+                'status' => null,
+                'unread' => 0,
+                'last_id' => 0,
                 'conversa' => null,
                 'messages' => [],
             ];
         }
 
         $conversa = $this->conversa($conversaId);
+        $messages = $this->mensagens($conversaId);
+        $lastId = (int)$messages->max('id');
+        $unread = DB::table('suporte_mensagens')
+            ->where('conversa_id', $conversaId)
+            ->where('autor_tipo', 'admin')
+            ->where('lida_cliente', 0)
+            ->count();
 
         return [
             'ok' => true,
+            'conversa_id' => (int)$conversa->id,
+            'status' => (string)$conversa->status,
+            'nivel_atendimento' => (string)$conversa->nivel_atendimento,
+            'atendente_usuario_id' => $conversa->atendente_usuario_id ? (int)$conversa->atendente_usuario_id : null,
+            'unread' => (int)$unread,
+            'last_id' => $lastId,
             'conversa' => [
                 'id' => (int)$conversa->id,
                 'assunto' => (string)$conversa->assunto,
@@ -153,7 +170,7 @@ class SuporteChatService
                 'nivel_atendimento' => (string)$conversa->nivel_atendimento,
                 'atendente_usuario_id' => $conversa->atendente_usuario_id ? (int)$conversa->atendente_usuario_id : null,
             ],
-            'messages' => $this->mensagens($conversaId)->all(),
+            'messages' => $messages->all(),
         ];
     }
 
@@ -199,13 +216,16 @@ class SuporteChatService
         $mensagens = DB::table('suporte_mensagens')
             ->where('conversa_id', $conversaId)
             ->orderBy('id')
-            ->get(['id', 'autor_usuario_id', 'autor_tipo', 'mensagem', 'criada_em'])
+            ->get(['id', 'autor_usuario_id', 'autor_tipo', 'mensagem', 'lida_admin', 'lida_cliente', 'criada_em'])
             ->map(fn ($row) => [
                 'id' => (int)$row->id,
                 'autor_usuario_id' => $row->autor_usuario_id ? (int)$row->autor_usuario_id : null,
                 'autor_tipo' => (string)$row->autor_tipo,
                 'mensagem' => (string)$row->mensagem,
+                'lida_admin' => (bool)$row->lida_admin,
+                'lida_cliente' => (bool)$row->lida_cliente,
                 'criada_em' => (string)$row->criada_em,
+                'hora' => $row->criada_em ? date('d/m H:i', strtotime((string)$row->criada_em)) : '',
             ]);
 
         $anexos = $this->anexosPorMensagens($mensagens->pluck('id')->all());

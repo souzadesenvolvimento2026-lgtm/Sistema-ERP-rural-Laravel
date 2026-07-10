@@ -8,6 +8,7 @@
         $displayTitle = trim(preg_replace('/^FarmFort\s*-\s*/i', '', (string)$rawTitle));
     @endphp
     <title>FarmFort - {{ $displayTitle }}</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="any">
     <link rel="shortcut icon" href="{{ asset('favicon.ico') }}">
     <script>
@@ -24,8 +25,28 @@
 </head>
 <body>
 @php
-    $active = $activeModule ?? 'dashboard';
+    use App\Support\FarmFormat;
+
+    $financeSubnavRoutes = [
+        'financeiro.*',
+        'relatorios.fluxo-caixa',
+        'relatorios.dre',
+        'relatorios.orcado-realizado',
+        'relatorios.comparativo-safras.*',
+    ];
+    $isFinanceSection = request()->routeIs(...$financeSubnavRoutes);
+    $active = $isFinanceSection ? 'financeiro' : ($activeModule ?? 'dashboard');
     $fullWidth = (bool)($fullWidth ?? false);
+    $topbarLabel = $topbarLabel ?? $displayTitle;
+    $profile = session('perfil', '');
+    $isSystemAdmin = in_array((string)$profile, ['administrador_sistema', 'gerencia_sistema'], true);
+    $adminMenu = [
+        ['key' => 'admin', 'label' => 'Painel Admin', 'icon' => 'bi-speedometer2', 'route' => route('admin.index')],
+        ['key' => 'propriedades', 'label' => 'Propriedades', 'icon' => 'bi-map', 'route' => route('propriedades.index')],
+        ['key' => 'usuarios', 'label' => 'Usuários', 'icon' => 'bi-people-fill', 'route' => route('usuarios.index')],
+        ['key' => 'auditoria', 'label' => 'Auditoria', 'icon' => 'bi-shield-check', 'route' => route('auditoria.index')],
+        ['key' => 'suporte', 'label' => 'Chat/Suporte', 'icon' => 'bi-chat-dots', 'route' => route('suporte.admin.index')],
+    ];
     $menu = [
         ['key' => 'dashboard', 'label' => 'Dashboard', 'icon' => 'bi-speedometer2', 'route' => route('dashboard')],
         ['key' => 'financeiro', 'label' => 'Financeiro', 'icon' => 'bi-cash-stack', 'route' => route('financeiro.index')],
@@ -55,7 +76,29 @@
         </span>
     </a>
 
+    @if ($isSystemAdmin)
+        <div class="ff-admin-rail-label">
+            <strong>Sistema FarmFort</strong>
+            <span>Painel admin</span>
+        </div>
+
+        @foreach ($adminMenu as $item)
+            <div class="module-rail-item {{ $active === $item['key'] ? 'active' : '' }}">
+                <a href="{{ $item['route'] }}" class="module-rail-button" title="{{ $item['label'] }}">
+                    <i class="bi {{ $item['icon'] }}" aria-hidden="true"></i>
+                    <span>{{ $item['label'] }}</span>
+                </a>
+            </div>
+        @endforeach
+
+        <div class="ff-admin-rail-label ff-admin-property-label">
+            <strong>Propriedade selecionada</strong>
+            <span>{{ $propertyName }}</span>
+        </div>
+    @endif
+
     @foreach ($menu as $item)
+        @continue($isSystemAdmin && $item['key'] === 'usuarios')
         <div class="module-rail-item {{ $active === $item['key'] ? 'active' : '' }}">
             <a href="{{ $item['route'] }}" class="module-rail-button" title="{{ $item['label'] }}">
                 @if (!empty($item['icon_svg']))
@@ -78,15 +121,9 @@
 <div class="main {{ $fullWidth ? 'main-full' : '' }}">
     <div class="topbar">
         <div class="topbar-main">
-            @if (($active ?? '') !== 'dashboard')
-                <a href="{{ url()->previous() !== url()->current() ? url()->previous() : route('dashboard') }}" class="topbar-back" title="Voltar" data-farmflow-back>
-                    <i class="bi bi-arrow-left"></i>
-                    <span>Voltar</span>
-                </a>
-            @endif
             <h6 class="topbar-title">
                 <i class="bi bi-chevron-right me-1 text-muted topbar-chevron"></i>
-                {{ $displayTitle }}
+                {{ $topbarLabel }}
             </h6>
         </div>
 
@@ -118,10 +155,17 @@
                 <i class="bi bi-moon-stars"></i>
             </button>
 
+            @if ($isSystemAdmin)
+                <button type="button" class="ff-unlock-button" data-bs-toggle="modal" data-bs-target="#systemUnlockModal">
+                    <i class="bi bi-lock-fill"></i>
+                    <span>Liberar edição</span>
+                </button>
+            @endif
+
             <span class="topbar-user">
                 <i class="bi bi-person-circle me-1"></i>{{ $userName }}
                 @if ($profile !== '')
-                    <span class="badge topbar-profile ms-1">{{ str_replace('_', ' ', $profile) }}</span>
+                    <span class="pill topbar-profile ms-1">{{ FarmFormat::statusLabel($profile) }}</span>
                 @endif
             </span>
 
@@ -147,7 +191,7 @@
             </div>
         @endif
 
-        @if (($active ?? '') === 'financeiro')
+        @if ($isFinanceSection)
             @include('partials.financeiro-tabs')
         @elseif (($active ?? '') === 'fiscal')
             @include('partials.fiscal-tabs')
@@ -157,19 +201,40 @@
     </div>
 </div>
 
+@if ($isSystemAdmin)
+    <div class="modal fade" id="systemUnlockModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <form method="post" action="{{ route('system.unlock.store') }}" class="modal-content ff-modal-content">
+                @csrf
+                <input type="hidden" name="return_to" value="{{ url()->current() }}">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-lock-fill me-2"></i>Liberar edição</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="field">
+                        <span>Senha do administrador</span>
+                        <input type="password" name="senha_confirmacao" required autocomplete="current-password">
+                    </label>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn primary">Liberar edição</button>
+                </div>
+            </form>
+        </div>
+    </div>
+@endif
+
+@unless ($fullWidth || request()->routeIs('suporte.admin.index'))
+    @include('partials.support-widget')
+@endunless
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
 <script src="{{ asset('js/farmfort.js') }}?v={{ @filemtime(public_path('js/farmfort.js')) }}"></script>
-<script>
-    document.getElementById('themeToggle')?.addEventListener('click', function () {
-        var current = document.documentElement.getAttribute('data-theme') || 'light';
-        var next = current === 'dark' ? 'light' : 'dark';
-        document.documentElement.setAttribute('data-theme', next);
-        localStorage.setItem('farmflow-theme', next);
-    });
-</script>
 @stack('scripts')
 </body>
 </html>

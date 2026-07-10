@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\CompraPedidoController;
+use App\Http\Controllers\AdminPainelController;
 use App\Http\Controllers\AuthSessionController;
 use App\Http\Controllers\AgendaFinanceiraController;
 use App\Http\Controllers\AnaliseDespesasController;
@@ -52,9 +53,10 @@ Route::post('/login', [AuthSessionController::class, 'store'])->name('login.stor
 Route::post('/logout', [AuthSessionController::class, 'destroy'])->name('logout');
 Route::get('/login.php', fn () => redirect()->route('login'));
 Route::post('/login.php', [AuthSessionController::class, 'store']);
-Route::get('/index.php', fn () => redirect()->route('dashboard'));
+Route::get('/index.php', fn (Request $request) => redirect()->route($request->boolean('admin') ? 'admin.index' : 'dashboard'));
 
 Route::middleware('farmfort.auth')->group(function () {
+Route::get('/admin', [AdminPainelController::class, 'index'])->name('admin.index');
 Route::get('/dashboard', [MigrationModuleController::class, 'dashboard'])->name('dashboard');
 Route::get('/logout.php', [AuthSessionController::class, 'destroy']);
 Route::post('/sistema/liberar-edicao', [SystemUnlockController::class, 'store'])->name('system.unlock.store');

@@ -686,15 +686,7 @@ class EntradaNfService
 
     private function statusLabel(string $status): string
     {
-        return match ($status) {
-            'rascunho' => 'Rascunho',
-            'validada' => 'Validada',
-            'concluida' => 'Concluida',
-            'conferida' => 'Conferida',
-            'aprovada', 'aprovado' => 'Aprovada',
-            'cancelada' => 'Cancelada',
-            default => ucfirst(str_replace('_', ' ', $status)),
-        };
+        return FarmFormat::statusLabel($status);
     }
 
     private function validarConclusao(object $entrada, Collection $itens, Collection $parcelas): array

@@ -1,4 +1,7 @@
-@extends('layouts.farmfort', ['title' => 'FarmFort - '.$title])
+@extends('layouts.farmfort', [
+    'title' => 'FarmFort - '.$title,
+    'topbarLabel' => 'Painel',
+])
 
 @php
     use App\Support\FarmFormat;
@@ -124,7 +127,7 @@
                         <td class="{{ $row->tipo === 'receita' ? 'text-success' : ($row->tipo === 'despesa' ? 'text-danger' : '') }}">{{ $fmtMoney($row->valor) }}</td>
                         <td>{{ FarmFormat::date($row->previsto) }}</td>
                         <td>
-                            <span class="status {{ in_array($row->status, ['pago', 'recebido', 'transferido'], true) ? 'success' : 'warning' }}">{{ $row->status }}</span>
+                            <span class="pill {{ in_array($row->status, ['pago', 'recebido', 'transferido'], true) ? 'success' : 'warning' }}">{{ FarmFormat::statusLabel($row->status) }}</span>
                             @if ($row->status_aprovacao === 'pendente')
                                 <small class="d-block text-warning">Aguardando aprovação</small>
                             @endif

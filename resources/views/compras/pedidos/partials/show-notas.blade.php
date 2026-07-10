@@ -24,7 +24,7 @@
                         <td>{{ $nota->issue_date ? \Illuminate\Support\Carbon::parse($nota->issue_date)->format('d/m/Y') : '-' }}</td>
                         <td>{{ $nota->issuer_name ?: '-' }}<br><span class="muted">{{ $nota->issuer_cnpj ?: '-' }}</span></td>
                         <td><strong>R$ {{ number_format((float)$nota->total_value, 2, ',', '.') }}</strong></td>
-                        <td><span class="pill {{ $nota->status === 'aprovada' ? 'success' : 'warning' }}">{{ str_replace('_', ' ', $nota->status) }}</span></td>
+                        <td><span class="pill {{ $nota->status === 'aprovada' ? 'success' : 'warning' }}">{{ \App\Support\FarmFormat::statusLabel($nota->status) }}</span></td>
                         <td>{{ $nota->match_status ?: '-' }}</td>
                         <td>
                             @if (in_array($order->status, ['em_aberto', 'aguardando_aprovacao'], true))

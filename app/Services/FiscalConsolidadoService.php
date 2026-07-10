@@ -167,11 +167,6 @@ class FiscalConsolidadoService
 
     private function statusLabel(string $status): string
     {
-        return [
-            'aprovado' => 'Aprovado',
-            'aprovado_baixado' => 'Aprovado/Baixado',
-            'baixado' => 'Baixado',
-            'aprovada' => 'Aprovada',
-        ][$status] ?? ucfirst(str_replace('_', ' ', $status));
+        return FarmFormat::statusLabel($status);
     }
 }

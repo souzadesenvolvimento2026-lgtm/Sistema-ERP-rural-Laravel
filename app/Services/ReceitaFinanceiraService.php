@@ -627,21 +627,12 @@ class ReceitaFinanceiraService
 
     private function labelStatus(string $status): string
     {
-        return match ($status) {
-            'recebido' => 'Recebido',
-            'pendente' => 'Pendente',
-            default => ucfirst(str_replace('_', ' ', $status)),
-        };
+        return FarmFormat::statusLabel($status);
     }
 
     private function labelAprovacao(string $status): string
     {
-        return match ($status) {
-            'aprovada' => 'Aprovada',
-            'pendente' => 'Pendente',
-            'reprovada' => 'Reprovada',
-            default => ucfirst(str_replace('_', ' ', $status)),
-        };
+        return FarmFormat::statusLabel($status);
     }
 
     private function compradorIdPorNome(int $propertyId, string $nome): ?int

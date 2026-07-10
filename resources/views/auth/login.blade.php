@@ -56,13 +56,5 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ asset('js/farmfort.js') }}?v={{ @filemtime(public_path('js/farmfort.js')) }}"></script>
-    <script>
-        document.getElementById('themeToggle')?.addEventListener('click', function () {
-            var current = document.documentElement.getAttribute('data-theme') || 'light';
-            var next = current === 'dark' ? 'light' : 'dark';
-            document.documentElement.setAttribute('data-theme', next);
-            localStorage.setItem('farmflow-theme', next);
-        });
-    </script>
 </body>
 </html>

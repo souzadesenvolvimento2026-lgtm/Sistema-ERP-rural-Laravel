@@ -567,7 +567,7 @@ class PatrimonioService
 
     private function tipoLancamentoLabel(string $tipo): string
     {
-        return $this->tiposLancamento()[$tipo] ?? ucfirst(str_replace('_', ' ', $tipo));
+        return $this->tiposLancamento()[$tipo] ?? FarmFormat::statusLabel($tipo);
     }
 
     public function tiposLancamento(): array

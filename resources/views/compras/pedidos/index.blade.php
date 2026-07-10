@@ -58,7 +58,7 @@
                                 <small class="d-block text-muted">{{ $pedido->supplier_cnpj ?: '-' }}</small>
                             </td>
                             <td><strong>{{ FarmFormat::money($pedido->total_value) }}</strong></td>
-                            <td><span class="status {{ in_array($pedido->status, ['aprovado', 'aprovado_baixado', 'baixado'], true) ? 'success' : 'open' }}">{{ str_replace('_', ' ', $pedido->status) }}</span></td>
+                            <td><span class="pill {{ in_array($pedido->status, ['aprovado', 'aprovado_baixado', 'baixado'], true) ? 'success' : 'warning' }}">{{ FarmFormat::statusLabel($pedido->status) }}</span></td>
                             <td>
                                 <div class="actions" style="justify-content:flex-start">
                                     <a class="btn btn-sm" href="{{ route('compras.pedidos.show', $pedido->id) }}">Abrir</a>

@@ -247,12 +247,7 @@ class SafraService
 
     private function statusLabel(string $status): string
     {
-        return [
-            'planejamento' => 'Planejamento',
-            'em_andamento' => 'Em andamento',
-            'colhida' => 'Colhida',
-            'encerrada' => 'Encerrada',
-        ][$status] ?? ucfirst(str_replace('_', ' ', $status));
+        return FarmFormat::statusLabel($status);
     }
 
     private function sincronizarTalhoes(int $safraId, int $propriedadeId, array $talhoes): void

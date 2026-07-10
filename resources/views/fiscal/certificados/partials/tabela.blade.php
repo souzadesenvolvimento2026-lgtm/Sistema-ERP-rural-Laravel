@@ -19,7 +19,7 @@
                         <td>
                             <strong>{{ $certificado->nome_identificacao }}</strong>
                             @if ($certificado->principal)
-                                <span class="status open">Principal</span>
+                                <span class="pill warning">Principal</span>
                             @endif
                             <br>
                             <span class="muted">
@@ -34,7 +34,7 @@
                             <br>
                             <span class="muted">{{ app(\App\Services\CertificadoDigitalService::class)->validadeTexto($certificado->validade_fim) }}</span>
                         </td>
-                        <td>{{ ucfirst($certificado->status) }}</td>
+                        <td><span class="pill {{ $certificado->status === 'inativo' ? 'danger' : 'success' }}">{{ \App\Support\FarmFormat::statusLabel($certificado->status) }}</span></td>
                         <td>
                             <div class="inline-actions">
                                 @if (!$certificado->principal && $certificado->status !== 'inativo')

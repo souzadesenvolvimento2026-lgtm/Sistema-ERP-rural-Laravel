@@ -1,10 +1,16 @@
 @extends('layouts.farmfort', ['title' => 'FarmFort - Editar Usuário'])
 
+@php
+    $modoSistema = in_array((string)session('perfil'), ['administrador_sistema', 'gerencia_sistema'], true);
+@endphp
+
 @section('content')
     <div class="page-head">
         <div>
             <h1>Editar usuário</h1>
-            <p class="subtitle">Atualize dados de acesso, perfil e senha do usuário.</p>
+            <p class="subtitle">
+                {{ $modoSistema ? 'Atualize o login interno FarmFort, perfil administrativo e senha.' : 'Atualize dados de acesso, perfil e senha do usuário.' }}
+            </p>
         </div>
         <a class="btn" href="{{ route('usuarios.index') }}">Voltar</a>
     </div>

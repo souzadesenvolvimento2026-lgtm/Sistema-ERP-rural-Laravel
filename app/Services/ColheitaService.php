@@ -342,7 +342,7 @@ class ColheitaService
 
     private function destinoLabel(string $destino): string
     {
-        return $this->destinos()[$destino] ?? ucfirst(str_replace('_', ' ', $destino));
+        return $this->destinos()[$destino] ?? FarmFormat::statusLabel($destino);
     }
 
     public function finalizarTalhao(int $propriedadeId, int $safraId, int $talhaoId, ?int $usuarioId): void

@@ -1,6 +1,6 @@
 <section class="panel">
     <div class="panel-head">
-        <h2>Usuários da propriedade</h2>
+        <h2>{{ $tableTitle ?? 'Usuários da propriedade' }}</h2>
         <span class="badge">{{ $rows->count() }} usuário(s)</span>
     </div>
     <div class="table-wrap">
@@ -36,7 +36,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="7" class="muted">Nenhum usuário encontrado para a propriedade atual.</td></tr>
+                    <tr><td colspan="7" class="muted">{{ $emptyMessage ?? 'Nenhum usuário encontrado para a propriedade atual.' }}</td></tr>
                 @endforelse
             </tbody>
         </table>

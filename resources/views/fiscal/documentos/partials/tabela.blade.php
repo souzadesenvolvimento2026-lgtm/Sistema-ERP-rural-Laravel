@@ -20,7 +20,7 @@
                 @forelse ($documentos as $documento)
                     <tr>
                         <td>{{ $documento->data_documento ? \Illuminate\Support\Carbon::parse($documento->data_documento)->format('d/m/Y') : '-' }}</td>
-                        <td>{{ str_replace('_', ' ', $documento->tipo) }}</td>
+                        <td>{{ \App\Support\FarmFormat::statusLabel($documento->tipo) }}</td>
                         <td><strong>{{ $documento->titulo }}</strong><br><span class="muted">{{ $documento->usuario_nome ?: '-' }}</span></td>
                         <td>{{ $documento->numero ?: '-' }}</td>
                         <td>{{ $documento->pessoa ?: '-' }}</td>

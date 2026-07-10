@@ -91,6 +91,25 @@ class ExampleTest extends TestCase
             ->assertDontSee('/modulos/fiscal', false);
     }
 
+    public function test_property_manager_sidebar_shows_users_menu_entry(): void
+    {
+        $this->withSession([...$this->loggedSession(), 'perfil' => 'gestor_propriedade'])
+            ->get('/dashboard')
+            ->assertStatus(200)
+            ->assertSee('Dashboard')
+            ->assertSee('Financeiro')
+            ->assertSee('Fiscal')
+            ->assertSee('Patrim')
+            ->assertSee('Safras')
+            ->assertSee('Talh')
+            ->assertSee('Colheita')
+            ->assertSee('Compras')
+            ->assertSee('Estoque de produtos')
+            ->assertSee('Estoque de produ')
+            ->assertSee('Usu')
+            ->assertSee('/usuarios', false);
+    }
+
     public function test_system_unlock_requires_system_writer_profile(): void
     {
         $this->withSession([...$this->loggedSession(), 'perfil' => 'visualizador'])
@@ -2667,9 +2686,9 @@ XML;
         $this->withSession($this->loggedSession())
             ->get('/financeiro/analise-despesas')
             ->assertStatus(200)
-            ->assertSee('Analise de Despesas')
-            ->assertSee('Subcategorias')
-            ->assertSee('Analise mensal');
+            ->assertSee('Categorias e subcategorias')
+            ->assertSee('Distribuição por grupo gerencial')
+            ->assertSee('Detalhamento');
     }
 
     public function test_financial_entries_report_page_returns_a_successful_response(): void

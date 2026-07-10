@@ -190,7 +190,7 @@
                             <td>{{ $row->descricao }}</td>
                             <td>{{ $row->fornecedor ?: '-' }}</td>
                             <td>{{ $fmtMoney($row->valor_total) }}</td>
-                            <td><span class="status warning">{{ $row->status_pagamento }}</span></td>
+                            <td><span class="pill warning">{{ FarmFormat::statusLabel($row->status_pagamento) }}</span></td>
                         </tr>
                     @endforeach
                     @foreach ($recentOrders as $row)
@@ -199,7 +199,7 @@
                             <td>Pedido fiscal {{ $row->order_number }}</td>
                             <td>{{ $row->supplier_name ?: '-' }}</td>
                             <td>{{ $fmtMoney($row->total_value) }}</td>
-                            <td><span class="status success">{{ $row->status }}</span></td>
+                            <td><span class="pill success">{{ FarmFormat::statusLabel($row->status) }}</span></td>
                         </tr>
                     @endforeach
                     @if ($recentExpenses->isEmpty() && $recentOrders->isEmpty())

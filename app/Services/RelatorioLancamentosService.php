@@ -438,7 +438,7 @@ class RelatorioLancamentosService
             'valor_raw' => (float)$row->valor_total,
             'valor' => FarmFormat::money($row->valor_total),
             'vencimento' => FarmFormat::date($row->data_evento),
-            'status' => ucfirst(str_replace('_', ' ', (string)$row->status)),
+            'status' => FarmFormat::statusLabel((string)$row->status),
         ];
     }
 

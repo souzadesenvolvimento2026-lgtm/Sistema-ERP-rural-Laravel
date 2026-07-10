@@ -19,7 +19,7 @@
                         <td>{{ $categoria->categoria_pai_nome ? 'Subcategoria de '.$categoria->categoria_pai_nome : 'Categoria principal' }}</td>
                         <td>{{ ucfirst($categoria->tipo) }}</td>
                         <td><span class="color-chip" style="background: {{ $categoria->cor }}"></span>{{ $categoria->cor }}</td>
-                        <td><span class="status {{ $categoria->ativo ? 'open' : '' }}">{{ $categoria->ativo ? 'Ativa' : 'Inativa' }}</span></td>
+                        <td><span class="pill {{ $categoria->ativo ? 'success' : 'warning' }}">{{ $categoria->ativo ? 'Ativa' : 'Inativa' }}</span></td>
                         <td>
                             <details>
                                 <summary class="btn">Editar</summary>

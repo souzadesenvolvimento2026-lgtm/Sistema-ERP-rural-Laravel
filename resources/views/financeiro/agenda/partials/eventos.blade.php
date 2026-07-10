@@ -20,14 +20,14 @@
                 @forelse ($eventos as $evento)
                     <tr>
                         <td>{{ $evento->data_evento ? \Illuminate\Support\Carbon::parse($evento->data_evento)->format('d/m/Y') : '-' }}</td>
-                        <td><span class="status {{ $evento->origem === 'receita' ? 'open' : '' }}">{{ $evento->origem === 'receita' ? 'Receber' : 'Pagar' }}</span></td>
+                        <td><span class="pill {{ $evento->origem === 'receita' ? 'success' : 'danger' }}">{{ $evento->origem === 'receita' ? 'Receber' : 'Pagar' }}</span></td>
                         <td><strong>{{ $evento->titulo }}</strong></td>
                         <td>{{ $evento->pessoa ?: '-' }}</td>
                         <td>{{ $evento->categoria ?: '-' }}</td>
                         <td>{{ $evento->forma_pagamento ?: '-' }}</td>
                         <td>{{ $evento->conta_nome ?: '-' }}</td>
                         <td><strong>R$ {{ number_format($evento->valor, 2, ',', '.') }}</strong></td>
-                        <td>{{ $evento->status }}</td>
+                        <td><span class="pill {{ in_array($evento->status, ['pago', 'recebido'], true) ? 'success' : 'warning' }}">{{ \App\Support\FarmFormat::statusLabel($evento->status) }}</span></td>
                         <td>
                             @include('financeiro.agenda.partials.evento-acao', ['evento' => $evento])
                         </td>

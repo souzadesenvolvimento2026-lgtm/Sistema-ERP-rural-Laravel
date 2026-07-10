@@ -19,13 +19,13 @@
                 @forelse ($contas as $contaBancaria)
                     <tr>
                         <td><strong>{{ $contaBancaria->nome }}</strong></td>
-                        <td>{{ str_replace('_', ' ', $contaBancaria->tipo) }}</td>
+                        <td>{{ \App\Support\FarmFormat::statusLabel($contaBancaria->tipo) }}</td>
                         <td>{{ $contaBancaria->banco ?: '-' }}</td>
                         <td>{{ $contaBancaria->agencia ?: '-' }}</td>
                         <td>{{ $contaBancaria->numero_conta ?: '-' }}</td>
                         <td><strong>R$ {{ number_format($contaBancaria->saldo_inicial, 2, ',', '.') }}</strong></td>
                         <td><strong>R$ {{ number_format($contaBancaria->saldo_atual, 2, ',', '.') }}</strong></td>
-                        <td><span class="status {{ $contaBancaria->ativo ? 'open' : '' }}">{{ $contaBancaria->ativo ? 'Ativa' : 'Inativa' }}</span></td>
+                        <td><span class="pill {{ $contaBancaria->ativo ? 'success' : 'warning' }}">{{ $contaBancaria->ativo ? 'Ativa' : 'Inativa' }}</span></td>
                         <td>
                             <div class="inline-actions">
                                 <a class="btn small" href="{{ route('financeiro.contas.edit', $contaBancaria->id) }}">Editar</a>

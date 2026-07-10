@@ -257,7 +257,7 @@ class FinanceiroPainelService
                 return (object)[
                     'id' => (int)$row->id,
                     'nome' => FarmFormat::value($row->nome),
-                    'detalhe' => FarmFormat::value($row->banco ?: ucfirst(str_replace('_', ' ', (string)$row->tipo))),
+                    'detalhe' => FarmFormat::value($row->banco ?: FarmFormat::statusLabel((string)$row->tipo)),
                     'saldo_numero' => $saldo,
                     'saldo' => FarmFormat::money($saldo),
                 ];

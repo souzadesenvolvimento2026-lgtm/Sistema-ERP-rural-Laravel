@@ -22,7 +22,7 @@
                         <td><strong>{{ $item->description }}</strong></td>
                         <td>{{ $item->categoria_nome ?: '-' }}</td>
                         <td>{{ $item->patrimonio_nome ?: '-' }}</td>
-                        <td>{{ str_replace('_', ' ', $item->patrimonio_uso) }}</td>
+                        <td>{{ \App\Support\FarmFormat::statusLabel($item->patrimonio_uso) }}</td>
                         <td>{{ $item->unit }}</td>
                         <td>{{ rtrim(rtrim(number_format($item->quantity, 4, ',', '.'), '0'), ',') }}</td>
                         <td>R$ {{ number_format($item->unit_value, 2, ',', '.') }}</td>

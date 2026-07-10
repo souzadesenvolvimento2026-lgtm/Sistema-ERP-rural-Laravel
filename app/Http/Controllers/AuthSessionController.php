@@ -13,7 +13,7 @@ class AuthSessionController extends Controller
     public function create(): View|RedirectResponse
     {
         if (session('usuario_id')) {
-            return redirect()->route('dashboard');
+            return redirect()->route(in_array((string)session('perfil'), ['administrador_sistema', 'gerencia_sistema'], true) ? 'admin.index' : 'dashboard');
         }
 
         return view('auth.login');
@@ -54,7 +54,11 @@ class AuthSessionController extends Controller
 
         $this->audit('login', 'Login Laravel realizado', (int)$user->id);
 
-        return redirect()->intended(route('dashboard'));
+        $homeRoute = in_array((string)$user->perfil, ['administrador_sistema', 'gerencia_sistema'], true)
+            ? route('admin.index')
+            : route('dashboard');
+
+        return redirect()->intended($homeRoute);
     }
 
     public function destroy(Request $request): RedirectResponse

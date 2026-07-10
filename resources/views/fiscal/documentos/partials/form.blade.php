@@ -7,7 +7,7 @@
             Tipo *
             <select name="tipo" required>
                 @foreach ($tipos as $tipo)
-                    <option value="{{ $tipo }}" @selected(old('tipo') === $tipo)>{{ ucfirst(str_replace('_', ' ', $tipo)) }}</option>
+                    <option value="{{ $tipo }}" @selected(old('tipo') === $tipo)>{{ \App\Support\FarmFormat::statusLabel($tipo) }}</option>
                 @endforeach
             </select>
         </label>

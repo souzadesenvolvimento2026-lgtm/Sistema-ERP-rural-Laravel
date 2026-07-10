@@ -589,22 +589,12 @@ class DespesaFinanceiraService
 
     private function labelStatus(string $status): string
     {
-        return match ($status) {
-            'pago' => 'Pago',
-            'vencido' => 'Vencido',
-            'pendente' => 'Pendente',
-            default => ucfirst(str_replace('_', ' ', $status)),
-        };
+        return FarmFormat::statusLabel($status);
     }
 
     private function labelAprovacao(string $status): string
     {
-        return match ($status) {
-            'aprovada' => 'Aprovada',
-            'pendente' => 'Pendente',
-            'reprovada' => 'Reprovada',
-            default => ucfirst(str_replace('_', ' ', $status)),
-        };
+        return FarmFormat::statusLabel($status);
     }
 
     private function idDaPropriedade(string $table, mixed $id, int $propertyId): ?int

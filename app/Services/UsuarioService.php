@@ -24,8 +24,21 @@ class UsuarioService
         ];
     }
 
-    public function pagina(int $propriedadeId, Request $request): array
+    public static function perfisSistema(): array
     {
+        return [
+            'administrador_sistema' => 'Administrador do Sistema',
+            'gerencia_sistema' => 'Gerência do Sistema',
+            'colaborador_sistema' => 'Colaborador FarmFort',
+        ];
+    }
+
+    public function pagina(int $propriedadeId, Request $request, bool $modoSistema = false): array
+    {
+        if ($modoSistema) {
+            return $this->paginaSistema($request);
+        }
+
         $filtros = $this->filtros($request);
         $rows = $this->rows($propriedadeId, $filtros);
 
@@ -46,6 +59,34 @@ class UsuarioService
                 ['label' => 'Ativos', 'value' => (string)$rows->where('ativo', true)->count(), 'tone' => 'success'],
                 ['label' => 'Gestores', 'value' => (string)$rows->whereIn('perfil_key', ['gestor_propriedade', 'gestor_financeiro', 'gestao'])->count(), 'tone' => 'warning'],
                 ['label' => 'Visualizadores', 'value' => (string)$rows->where('perfil_key', 'visualizador')->count(), 'tone' => ''],
+            ],
+        ];
+    }
+
+    public function paginaSistema(Request $request): array
+    {
+        $filtros = $this->filtros($request);
+        $rows = $this->rowsSistema($filtros);
+
+        return [
+            'activeModule' => 'usuarios',
+            'title' => 'Usuários',
+            'subtitle' => 'Logins internos FarmFort com acesso administrativo ao sistema.',
+            'tableTitle' => 'Logins internos FarmFort',
+            'emptyMessage' => 'Nenhum login interno encontrado.',
+            'filtros' => $filtros,
+            'rows' => $rows,
+            'statusOptions' => [
+                '' => 'Todos',
+                'ativos' => 'Ativos',
+                'inativos' => 'Inativos',
+                'gestores' => 'Gestores',
+            ],
+            'cards' => [
+                ['label' => 'Usuários internos', 'value' => (string)$rows->count(), 'tone' => 'success'],
+                ['label' => 'Ativos', 'value' => (string)$rows->where('ativo', true)->count(), 'tone' => 'success'],
+                ['label' => 'Administradores', 'value' => (string)$rows->where('perfil_key', 'administrador_sistema')->count(), 'tone' => 'warning'],
+                ['label' => 'Gerência', 'value' => (string)$rows->where('perfil_key', 'gerencia_sistema')->count(), 'tone' => ''],
             ],
         ];
     }
@@ -84,6 +125,33 @@ class UsuarioService
         return $usuarioId;
     }
 
+    public function criarSistema(array $dados, ?int $usuarioLogadoId = null): int
+    {
+        $nome = trim($dados['nome']);
+        $email = strtolower(trim($dados['email']));
+        $perfil = $dados['perfil'] ?: 'colaborador_sistema';
+
+        DB::table('usuarios')->insert([
+            'nome' => $nome,
+            'email' => $email,
+            'senha' => Hash::make($dados['senha']),
+            'perfil' => $perfil,
+            'ativo' => 1,
+        ]);
+
+        $usuarioId = (int)DB::getPdo()->lastInsertId();
+        $this->auditar(
+            $usuarioLogadoId,
+            'salvar_usuario',
+            'usuarios',
+            $usuarioId,
+            (int)session('propriedade_id'),
+            'Login interno FarmFort criado: '.$nome.' ('.$email.') - Perfil: '.$this->perfilLabel($perfil)
+        );
+
+        return $usuarioId;
+    }
+
     public function buscar(int $usuarioId, int $propriedadeId): object
     {
         $usuario = DB::table('usuarios as u')
@@ -105,6 +173,19 @@ class UsuarioService
                         ->where('gfp.propriedade_id', $propriedadeId);
                 });
             })
+            ->select('u.id', 'u.nome', 'u.email', 'u.perfil', 'u.ativo')
+            ->first();
+
+        abort_if(!$usuario, 404);
+
+        return $usuario;
+    }
+
+    public function buscarSistema(int $usuarioId): object
+    {
+        $usuario = DB::table('usuarios as u')
+            ->whereIn('u.perfil', array_keys(self::perfisSistema()))
+            ->where('u.id', $usuarioId)
             ->select('u.id', 'u.nome', 'u.email', 'u.perfil', 'u.ativo')
             ->first();
 
@@ -152,6 +233,34 @@ class UsuarioService
         }
     }
 
+    public function atualizarSistema(int $usuarioId, array $dados, ?int $usuarioLogadoId = null): void
+    {
+        $usuarioAnterior = $this->buscarSistema($usuarioId);
+        $nome = trim($dados['nome']);
+        $email = strtolower(trim($dados['email']));
+        $perfil = $dados['perfil'] ?: 'colaborador_sistema';
+        $payload = [
+            'nome' => $nome,
+            'email' => $email,
+            'perfil' => $perfil,
+        ];
+
+        if (trim((string)($dados['senha'] ?? '')) !== '') {
+            $payload['senha'] = Hash::make($dados['senha']);
+        }
+
+        DB::table('usuarios')->where('id', $usuarioId)->update($payload);
+
+        $this->auditar(
+            $usuarioLogadoId,
+            'salvar_usuario',
+            'usuarios',
+            $usuarioId,
+            (int)session('propriedade_id'),
+            'Login interno FarmFort atualizado: '.$nome.' ('.$email.') - Perfil: '.$this->perfilLabel($perfil).' - Anterior: '.$usuarioAnterior->nome.' ('.$usuarioAnterior->email.')'
+        );
+    }
+
     public function alternarStatus(int $usuarioId, int $propriedadeId, ?int $usuarioLogadoId = null): bool
     {
         $usuario = $this->buscar($usuarioId, $propriedadeId);
@@ -166,6 +275,25 @@ class UsuarioService
             $usuarioId,
             $propriedadeId,
             ($ativo === 1 ? 'Usuario ativado: ' : 'Usuario desativado: ').$usuario->nome.' ('.$usuario->email.')'
+        );
+
+        return $ativo === 1;
+    }
+
+    public function alternarStatusSistema(int $usuarioId, ?int $usuarioLogadoId = null): bool
+    {
+        $usuario = $this->buscarSistema($usuarioId);
+        $ativo = (int)$usuario->ativo === 1 ? 0 : 1;
+
+        DB::table('usuarios')->where('id', $usuarioId)->update(['ativo' => $ativo]);
+
+        $this->auditar(
+            $usuarioLogadoId,
+            $ativo === 1 ? 'ativar_usuario' : 'desativar_usuario',
+            'usuarios',
+            $usuarioId,
+            (int)session('propriedade_id'),
+            ($ativo === 1 ? 'Login interno ativado: ' : 'Login interno inativado: ').$usuario->nome.' ('.$usuario->email.')'
         );
 
         return $ativo === 1;
@@ -237,6 +365,43 @@ class UsuarioService
             ->map(fn ($row) => $this->normalizar($row));
     }
 
+    private function rowsSistema(array $filtros): Collection
+    {
+        $query = DB::table('usuarios as u')
+            ->whereIn('u.perfil', array_keys(self::perfisSistema()));
+
+        if ($filtros['status'] === 'ativos') {
+            $query->where('u.ativo', 1);
+        } elseif ($filtros['status'] === 'inativos') {
+            $query->where('u.ativo', 0);
+        } elseif ($filtros['status'] === 'gestores') {
+            $query->whereIn('u.perfil', ['administrador_sistema', 'gerencia_sistema']);
+        }
+
+        if ($filtros['search'] !== '') {
+            $term = '%'.$filtros['search'].'%';
+            $query->where(function ($q) use ($term) {
+                $q->where('u.nome', 'like', $term)
+                    ->orWhere('u.email', 'like', $term)
+                    ->orWhere('u.perfil', 'like', $term);
+            });
+        }
+
+        return $query
+            ->orderByDesc('u.ativo')
+            ->orderBy('u.nome')
+            ->get([
+                'u.id',
+                'u.nome',
+                'u.email',
+                'u.perfil',
+                'u.ativo',
+                'u.ultimo_acesso',
+                'u.criado_em',
+            ])
+            ->map(fn ($row) => $this->normalizar($row));
+    }
+
     private function normalizar($row): object
     {
         return (object)[
@@ -254,16 +419,7 @@ class UsuarioService
 
     private function perfilLabel(string $perfil): string
     {
-        return [
-            'administrador' => 'Administrador',
-            'gestor_propriedade' => 'Gestor da Propriedade',
-            'gestor_financeiro' => 'Gestor Financeiro',
-            'gestao' => 'Gestão',
-            'produtor' => 'Produtor',
-            'colaborador' => 'Colaborador',
-            'financeiro' => 'Financeiro',
-            'visualizador' => 'Visualizador',
-        ][$perfil] ?? ucfirst(str_replace('_', ' ', $perfil));
+        return FarmFormat::statusLabel($perfil);
     }
 
     private function validarLimitePropriedade(int $propriedadeId): void

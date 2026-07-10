@@ -1,10 +1,16 @@
 @extends('layouts.farmfort', ['title' => 'FarmFort - Novo Usuário'])
 
+@php
+    $modoSistema = in_array((string)session('perfil'), ['administrador_sistema', 'gerencia_sistema'], true);
+@endphp
+
 @section('content')
     <div class="page-head">
         <div>
             <h1>Novo usuário</h1>
-            <p class="subtitle">Cadastro de login migrado para Laravel com vínculo à fazenda atual.</p>
+            <p class="subtitle">
+                {{ $modoSistema ? 'Cadastro de login interno FarmFort com acesso administrativo ao sistema.' : 'Cadastro de login vinculado à fazenda atual.' }}
+            </p>
         </div>
         <a class="btn" href="{{ route('usuarios.index') }}">Voltar</a>
     </div>

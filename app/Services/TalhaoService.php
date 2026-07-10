@@ -65,8 +65,9 @@ class TalhaoService
             ->where('status_aprovacao', '=', 'aprovada')
             ->whereNotNull('talhao_id')
             ->groupBy('talhao_id')
-            ->selectRaw('talhao_id, COALESCE(SUM(valor_total), 0) as total')
-            ->pluck('total', 'talhao_id');
+            ->selectRaw('talhao_id, COUNT(*) as qtd, COALESCE(SUM(valor_total), 0) as total')
+            ->get()
+            ->keyBy('talhao_id');
 
         $talhoes = DB::table('talhoes')
             ->where('propriedade_id', $propriedadeId)
@@ -92,8 +93,14 @@ class TalhaoService
             ])
             ->map(function ($talhao) use ($gastosPorTalhao) {
                 $mapa = $this->talhaoMapa($talhao);
-                $mapa['custo'] = (float)($gastosPorTalhao[$mapa['id']] ?? 0);
+                $gasto = $gastosPorTalhao->get($mapa['id']);
+                $mapa['custo'] = (float)($gasto->total ?? 0);
                 $mapa['custo_formatado'] = FarmFormat::money($mapa['custo']);
+                $mapa['total_despesas_formatado'] = $mapa['custo_formatado'];
+                $mapa['custo_ha_formatado'] = $mapa['area'] > 0
+                    ? FarmFormat::money($mapa['custo'] / $mapa['area']).'/ha'
+                    : FarmFormat::money(0).'/ha';
+                $mapa['qtd_despesas'] = (int)($gasto->qtd ?? 0);
 
                 return $mapa;
             });
@@ -1116,24 +1123,46 @@ class TalhaoService
         $points = $this->normalizarPontos($talhao->coordenadas_json ?? '');
         $lat = $points[0]['lat'] ?? ($talhao->latitude !== null ? (float)$talhao->latitude : null);
         $lng = $points[0]['lng'] ?? ($talhao->longitude !== null ? (float)$talhao->longitude : null);
+        $tipo = $talhao->geometria_tipo ?: (count($points) >= 3 ? 'polygon' : 'point');
+        $area = (float)$talhao->area;
+        $exclusoes = $this->exclusoesTalhao($talhao);
+        $downloadUrl = route('talhoes.exportar-talhao', ['talhao' => (int)$talhao->id]);
 
         return [
             'id' => (int)$talhao->id,
             'nome' => $talhao->nome,
             'descricao' => $talhao->descricao ?? '',
-            'area' => (float)$talhao->area,
+            'area' => $area,
+            'area_formatada' => FarmFormat::decimal($area, 2).' ha',
             'area_bruta' => (float)($talhao->area_bruta ?? $talhao->area ?? 0),
             'area_excluida_ha' => (float)($talhao->area_excluida_ha ?? 0),
+            'area_excluida_formatada' => FarmFormat::decimal($talhao->area_excluida_ha ?? 0, 2).' ha',
             'lat' => $lat,
             'lng' => $lng,
-            'tipo' => $talhao->geometria_tipo ?: (count($points) >= 3 ? 'polygon' : 'point'),
+            'tipo' => $tipo,
+            'tipo_label' => match ($tipo) {
+                'polygon' => 'Polígono',
+                'line' => 'Linha',
+                'point' => 'Ponto',
+                default => 'Manual',
+            },
+            'tem_geometria' => ($lat !== null && $lng !== null) || count($points) >= 2,
             'points' => $points,
-            'exclusoes' => $this->exclusoesTalhao($talhao),
+            'exclusoes' => $exclusoes,
+            'exclusoes_count' => count($exclusoes),
             'pivo_ativo' => (int)($talhao->pivo_ativo ?? 0) === 1,
             'pivo_lat' => $talhao->pivo_lat !== null ? (float)$talhao->pivo_lat : null,
             'pivo_lng' => $talhao->pivo_lng !== null ? (float)$talhao->pivo_lng : null,
             'pivo_raio_m' => $talhao->pivo_raio_m !== null ? (float)$talhao->pivo_raio_m : null,
             'pivo_area_ha' => $talhao->pivo_area_ha !== null ? (float)$talhao->pivo_area_ha : null,
+            'pivo_area_formatada' => $talhao->pivo_area_ha !== null ? FarmFormat::decimal($talhao->pivo_area_ha, 2).' ha' : '',
+            'google_url' => ($lat !== null && $lng !== null) ? 'https://www.google.com/maps?q='.$lat.','.$lng : null,
+            'download_url' => $downloadUrl,
+            'download_urls' => [
+                'kml' => $downloadUrl.'?formato=kml',
+                'kmz' => $downloadUrl.'?formato=kmz',
+                'shp' => $downloadUrl.'?formato=shp',
+            ],
         ];
     }
 

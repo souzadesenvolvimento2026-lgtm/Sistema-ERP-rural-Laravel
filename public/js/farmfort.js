@@ -14,7 +14,7 @@ let farmFlowOriginalFaviconHref = null;
 let farmFlowAlertFaviconHref = null;
 
 function getFarmFortTheme() {
-  return localStorage.getItem(FARMFLOW_THEME_KEY) || 'dark';
+  return localStorage.getItem(FARMFLOW_THEME_KEY) || 'light';
 }
 
 function applyFarmFortTheme(theme) {
@@ -81,29 +81,6 @@ function initModuleRailScroll() {
   rail.addEventListener('scroll', savePosition, { passive: true });
   rail.querySelectorAll('a').forEach(link => {
     link.addEventListener('click', savePosition);
-  });
-}
-
-function initFarmFortBackButtons() {
-  document.querySelectorAll('[data-farmflow-back]').forEach(button => {
-    button.addEventListener('click', event => {
-      const fallback = button.getAttribute('data-fallback') || button.getAttribute('href') || '/';
-      if (button.getAttribute('data-back-mode') === 'direct') {
-        button.setAttribute('href', fallback);
-        return;
-      }
-      const referrer = document.referrer ? new URL(document.referrer, window.location.href) : null;
-      const sameOrigin = referrer && referrer.origin === window.location.origin;
-      const differentPage = sameOrigin && referrer.href !== window.location.href;
-
-      if (differentPage && window.history.length > 1) {
-        event.preventDefault();
-        window.history.back();
-        return;
-      }
-
-      button.setAttribute('href', fallback);
-    });
   });
 }
 
@@ -222,6 +199,11 @@ function supportFetch(endpoint, action, options) {
   const opts = options || {};
   const method = opts.method || 'GET';
   const url = new URL(endpoint, window.location.href);
+  const headers = Object.assign({}, opts.headers || {});
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+  if (csrfToken && method.toUpperCase() !== 'GET') {
+    headers['X-CSRF-TOKEN'] = csrfToken;
+  }
   const parts = String(action || '').split('&');
   url.searchParams.set('action', parts.shift() || '');
   if (parts.length) {
@@ -230,7 +212,7 @@ function supportFetch(endpoint, action, options) {
   return fetch(url.toString(), {
     method,
     body: opts.body || null,
-    headers: opts.headers || {},
+    headers,
     credentials: 'same-origin'
   }).then(response => {
     const contentType = response.headers.get('content-type') || '';
@@ -1936,7 +1918,6 @@ function initFarmFortChartMaximizer() {
 document.addEventListener('DOMContentLoaded', function () {
   initFarmFortTheme();
   initModuleRailScroll();
-  initFarmFortBackButtons();
   initFarmFortSupportChat();
 
   initDataTable('.datatable');

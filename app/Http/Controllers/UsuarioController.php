@@ -14,14 +14,14 @@ class UsuarioController extends Controller
 {
     public function index(Request $request, UsuarioService $service): View
     {
-        return view('usuarios.index', $service->pagina(app(FarmContext::class)->propertyId(), $request));
+        return view('usuarios.index', $service->pagina(app(FarmContext::class)->propertyId(), $request, $this->isSystemAdmin()));
     }
 
     public function create(): View
     {
         return view('usuarios.create', [
             'activeModule' => 'usuarios',
-            'perfis' => UsuarioService::perfisPermitidos(),
+            'perfis' => $this->perfisDisponiveis(),
         ]);
     }
 
@@ -29,8 +29,10 @@ class UsuarioController extends Controller
     {
         return view('usuarios.edit', [
             'activeModule' => 'usuarios',
-            'usuario' => $service->buscar($usuario, app(FarmContext::class)->propertyId()),
-            'perfis' => UsuarioService::perfisPermitidos(),
+            'usuario' => $this->isSystemAdmin()
+                ? $service->buscarSistema($usuario)
+                : $service->buscar($usuario, app(FarmContext::class)->propertyId()),
+            'perfis' => $this->perfisDisponiveis(),
         ]);
     }
 
@@ -40,11 +42,15 @@ class UsuarioController extends Controller
             'nome' => ['required', 'string', 'max:100'],
             'email' => ['required', 'email', 'max:100', 'unique:usuarios,email'],
             'senha' => ['required', 'string', 'min:6', 'confirmed'],
-            'perfil' => ['required', 'in:gestor_propriedade,gestor_financeiro,gestao,produtor,colaborador,financeiro,visualizador'],
+            'perfil' => ['required', Rule::in(array_keys($this->perfisDisponiveis()))],
         ]);
 
         try {
-            $service->criar($dados, app(FarmContext::class)->propertyId(), (int)$request->session()->get('usuario_id'));
+            if ($this->isSystemAdmin()) {
+                $service->criarSistema($dados, (int)$request->session()->get('usuario_id'));
+            } else {
+                $service->criar($dados, app(FarmContext::class)->propertyId(), (int)$request->session()->get('usuario_id'));
+            }
         } catch (RuntimeException $exception) {
             return back()
                 ->with('error', $exception->getMessage());
@@ -61,10 +67,14 @@ class UsuarioController extends Controller
             'nome' => ['required', 'string', 'max:100'],
             'email' => ['required', 'email', 'max:100', Rule::unique('usuarios', 'email')->ignore($usuario)],
             'senha' => ['nullable', 'string', 'min:6', 'confirmed'],
-            'perfil' => ['required', Rule::in(array_keys(UsuarioService::perfisPermitidos()))],
+            'perfil' => ['required', Rule::in(array_keys($this->perfisDisponiveis()))],
         ]);
 
-        $service->atualizar($usuario, $dados, app(FarmContext::class)->propertyId(), (int)$request->session()->get('usuario_id'));
+        if ($this->isSystemAdmin()) {
+            $service->atualizarSistema($usuario, $dados, (int)$request->session()->get('usuario_id'));
+        } else {
+            $service->atualizar($usuario, $dados, app(FarmContext::class)->propertyId(), (int)$request->session()->get('usuario_id'));
+        }
 
         return redirect()
             ->route('usuarios.index')
@@ -73,10 +83,22 @@ class UsuarioController extends Controller
 
     public function toggleStatus(Request $request, int $usuario, UsuarioService $service): RedirectResponse
     {
-        $ativo = $service->alternarStatus($usuario, app(FarmContext::class)->propertyId(), (int)$request->session()->get('usuario_id'));
+        $ativo = $this->isSystemAdmin()
+            ? $service->alternarStatusSistema($usuario, (int)$request->session()->get('usuario_id'))
+            : $service->alternarStatus($usuario, app(FarmContext::class)->propertyId(), (int)$request->session()->get('usuario_id'));
 
         return redirect()
             ->route('usuarios.index')
             ->with('success', $ativo ? 'Usuário ativado.' : 'Usuário inativado.');
+    }
+
+    private function isSystemAdmin(): bool
+    {
+        return in_array((string)session('perfil'), ['administrador_sistema', 'gerencia_sistema'], true);
+    }
+
+    private function perfisDisponiveis(): array
+    {
+        return $this->isSystemAdmin() ? UsuarioService::perfisSistema() : UsuarioService::perfisPermitidos();
     }
 }

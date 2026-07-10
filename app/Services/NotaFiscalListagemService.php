@@ -235,13 +235,7 @@ class NotaFiscalListagemService
 
     private function statusLabel(string $status): string
     {
-        return match ($status) {
-            'aguardando_aprovacao' => 'Aguardando aprovacao',
-            'aprovada', 'aprovado' => 'Aprovada',
-            'rejeitada' => 'Rejeitada',
-            'cancelada' => 'Cancelada',
-            default => ucfirst(str_replace('_', ' ', $status)),
-        };
+        return FarmFormat::statusLabel($status);
     }
 
     private function auditar(?int $usuarioId, string $acao, string $tabela, int $registroId, int $propriedadeId, string $detalhes): void
