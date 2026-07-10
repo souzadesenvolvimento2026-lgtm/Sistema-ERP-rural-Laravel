@@ -13,8 +13,22 @@ const farmFlowSupportAlertCounts = {};
 let farmFlowOriginalFaviconHref = null;
 let farmFlowAlertFaviconHref = null;
 
+function farmFortStorageGet(storage, key, fallback = null) {
+  try {
+    return storage?.getItem(key) ?? fallback;
+  } catch (error) {
+    return fallback;
+  }
+}
+
+function farmFortStorageSet(storage, key, value) {
+  try {
+    storage?.setItem(key, value);
+  } catch (error) {}
+}
+
 function getFarmFortTheme() {
-  return localStorage.getItem(FARMFLOW_THEME_KEY) || 'light';
+  return farmFortStorageGet(window.localStorage, FARMFLOW_THEME_KEY, 'light');
 }
 
 function applyFarmFortTheme(theme) {
@@ -42,7 +56,7 @@ function applyFarmFortTheme(theme) {
 function toggleFarmFortTheme() {
   const currentTheme = document.documentElement.getAttribute('data-theme') || getFarmFortTheme();
   const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
-  localStorage.setItem(FARMFLOW_THEME_KEY, nextTheme);
+  farmFortStorageSet(window.localStorage, FARMFLOW_THEME_KEY, nextTheme);
   applyFarmFortTheme(nextTheme);
 }
 
@@ -69,13 +83,13 @@ function initModuleRailScroll() {
   if (!rail || !window.sessionStorage) return;
 
   const storageKey = 'farmflow-module-rail-scroll';
-  const savedPosition = parseInt(sessionStorage.getItem(storageKey) || '0', 10);
+  const savedPosition = parseInt(farmFortStorageGet(window.sessionStorage, storageKey, '0'), 10);
   if (!Number.isNaN(savedPosition)) {
     rail.scrollTop = savedPosition;
   }
 
   const savePosition = () => {
-    sessionStorage.setItem(storageKey, String(rail.scrollTop));
+    farmFortStorageSet(window.sessionStorage, storageKey, String(rail.scrollTop));
   };
 
   rail.addEventListener('scroll', savePosition, { passive: true });
@@ -412,7 +426,7 @@ function supportIsInternalSupportContext() {
 }
 
 function supportSoundEnabled() {
-  return localStorage.getItem(FARMFLOW_SUPPORT_SOUND_KEY) !== '0';
+  return farmFortStorageGet(window.localStorage, FARMFLOW_SUPPORT_SOUND_KEY, '1') !== '0';
 }
 
 function supportNotificationPermission() {
@@ -530,7 +544,7 @@ function supportBindSoundButtons(scope) {
     button.dataset.supportSoundBound = '1';
     button.addEventListener('click', () => {
       const nextEnabled = !supportSoundEnabled();
-      localStorage.setItem(FARMFLOW_SUPPORT_SOUND_KEY, nextEnabled ? '1' : '0');
+      farmFortStorageSet(window.localStorage, FARMFLOW_SUPPORT_SOUND_KEY, nextEnabled ? '1' : '0');
       supportUpdateSoundButtons(document);
       if (nextEnabled) {
         supportPrimeAudio();
@@ -1574,8 +1588,8 @@ function initSupportAdmin(root) {
 }
 
 function initFarmFortSupportChat() {
-  if (localStorage.getItem(FARMFLOW_SUPPORT_SOUND_KEY) === null) {
-    localStorage.setItem(FARMFLOW_SUPPORT_SOUND_KEY, '1');
+  if (farmFortStorageGet(window.localStorage, FARMFLOW_SUPPORT_SOUND_KEY) === null) {
+    farmFortStorageSet(window.localStorage, FARMFLOW_SUPPORT_SOUND_KEY, '1');
   }
   document.addEventListener('pointerdown', supportPrimeAudio, { once: true, passive: true });
   document.addEventListener('keydown', supportPrimeAudio, { once: true });
@@ -1916,9 +1930,14 @@ function initFarmFortChartMaximizer() {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-  initFarmFortTheme();
-  initModuleRailScroll();
-  initFarmFortSupportChat();
+  try { initFarmFortTheme(); } catch (error) { console.error('Falha ao iniciar tema:', error); }
+  try { initModuleRailScroll(); } catch (error) { console.error('Falha ao iniciar menu:', error); }
+  try { initFarmFortSupportChat(); } catch (error) {
+    console.error('Falha ao iniciar chat:', error);
+    document.querySelectorAll('[data-internal-users]').forEach(container => {
+      container.innerHTML = '<div class="ff-support-empty">Não foi possível iniciar o chat. Atualize a página.</div>';
+    });
+  }
 
   initDataTable('.datatable');
   initFarmFortChartMaximizer();
@@ -1940,5 +1959,4 @@ document.addEventListener('DOMContentLoaded', function () {
     }, 4000);
   }
 });
-
 
