@@ -68,7 +68,7 @@ sudo chown "$(id -un):$WEB_GROUP" "$APP_DIR"
 sudo chmod 750 "$APP_DIR"
 sudo chown -R "$(id -un):$WEB_GROUP" "$APP_DIR/vendor" "$APP_DIR/node_modules" "$APP_DIR/public/build" 2>/dev/null || true
 
-composer install --working-dir="$APP_DIR" --no-dev --prefer-dist --no-interaction --optimize-autoloader
+composer install --working-dir="$APP_DIR" --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-scripts
 npm ci --prefix "$APP_DIR" --ignore-scripts
 npm run build --prefix "$APP_DIR"
 
@@ -76,6 +76,7 @@ sudo chown -R "$WEB_USER:$WEB_GROUP" "$APP_DIR/storage" "$APP_DIR/bootstrap/cach
 sudo find "$APP_DIR/storage" "$APP_DIR/bootstrap/cache" -type d -exec chmod 775 {} +
 sudo find "$APP_DIR/storage" "$APP_DIR/bootstrap/cache" -type f -exec chmod 664 {} +
 
+sudo -u "$WEB_USER" php "$APP_DIR/artisan" package:discover
 sudo -u "$WEB_USER" php "$APP_DIR/artisan" migrate --force
 sudo -u "$WEB_USER" php "$APP_DIR/artisan" optimize:clear
 sudo -u "$WEB_USER" php "$APP_DIR/artisan" view:cache
