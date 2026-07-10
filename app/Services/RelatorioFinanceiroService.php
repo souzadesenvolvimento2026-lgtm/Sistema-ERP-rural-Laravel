@@ -141,6 +141,7 @@ class RelatorioFinanceiroService
         $filtros = $this->normalizarFiltrosOrcadoRealizado($propertyId, $filtros);
         $orcado = $this->projecoesPorCategoria($propertyId, $filtros);
         $realizado = $this->realizadoPorCategoria($propertyId, $filtros);
+        $chartMensal = $this->orcadoRealizadoMensal($propertyId, $filtros);
         $categorias = collect();
 
         foreach ($orcado as $row) {
@@ -190,6 +191,7 @@ class RelatorioFinanceiroService
             'activeModule' => 'financeiro',
             'title' => 'Orçado x Realizado',
             'subtitle' => 'Comparativo entre projeções financeiras, receitas e despesas já lançadas.',
+            'propertyName' => (string)(DB::table('propriedades')->where('id', $propertyId)->value('nome') ?: 'Propriedade'),
             'cards' => [
                 ['label' => 'Orçado', 'value' => FarmFormat::money($totalOrcado), 'tone' => 'success'],
                 ['label' => 'Realizado', 'value' => FarmFormat::money($totalRealizado), 'tone' => 'warning'],
@@ -211,9 +213,9 @@ class RelatorioFinanceiroService
                 'execucao' => $totalOrcado > 0 ? ($totalRealizado / $totalOrcado) * 100 : 0,
             ],
             'chart' => [
-                'labels' => $rows->pluck('categoria')->take(12)->values()->all(),
-                'orcado' => $rows->pluck('orcado_valor')->take(12)->values()->all(),
-                'realizado' => $rows->pluck('realizado_valor')->take(12)->values()->all(),
+                'labels' => $chartMensal->pluck('label')->all(),
+                'orcado' => $chartMensal->pluck('orcado')->all(),
+                'realizado' => $chartMensal->pluck('realizado')->all(),
             ],
         ];
     }
@@ -887,6 +889,92 @@ class RelatorioFinanceiroService
             ->get();
     }
 
+    private function orcadoRealizadoMensal(int $propertyId, array $filtros): Collection
+    {
+        $inicio = (string)$filtros['data_inicio'];
+        $fim = (string)$filtros['data_fim'];
+        $meses = collect();
+        $cursor = strtotime(date('Y-m-01', strtotime($inicio)));
+        $limite = strtotime(date('Y-m-01', strtotime($fim)));
+
+        while ($cursor !== false && $limite !== false && $cursor <= $limite) {
+            $key = date('Y-m', $cursor);
+            $meses[$key] = (object)[
+                'key' => $key,
+                'label' => strtolower($this->mesAnoCurto(new \DateTimeImmutable(date('Y-m-01', $cursor)))),
+                'orcado' => 0.0,
+                'realizado' => 0.0,
+            ];
+            $cursor = strtotime('+1 month', $cursor);
+        }
+
+        $orcado = DB::table('financeiro_projecoes')
+            ->where('financeiro_projecoes.propriedade_id', $propertyId)
+            ->when($filtros['safra_id'], fn ($query, $safraId) => $query->where('financeiro_projecoes.safra_id', $safraId))
+            ->when($filtros['categoria_id'], fn ($query, $categoriaId) => $query->where('financeiro_projecoes.categoria_id', $categoriaId))
+            ->when($filtros['tipo'] !== 'todos', fn ($query) => $query->where('financeiro_projecoes.tipo_lancamento', $filtros['tipo'] === 'receita' ? 'receita' : 'despesa'))
+            ->whereBetween('financeiro_projecoes.mes_referencia', [$inicio, $fim])
+            ->selectRaw("DATE_FORMAT(financeiro_projecoes.mes_referencia, '%Y-%m') as mes, SUM(financeiro_projecoes.valor_projetado) as total")
+            ->groupByRaw("DATE_FORMAT(financeiro_projecoes.mes_referencia, '%Y-%m')")
+            ->pluck('total', 'mes');
+
+        foreach ($orcado as $mes => $total) {
+            if (isset($meses[$mes])) {
+                $meses[$mes]->orcado = (float)$total;
+            }
+        }
+
+        foreach ($this->realizadoMensal($propertyId, $filtros) as $mes => $total) {
+            if (isset($meses[$mes])) {
+                $meses[$mes]->realizado = (float)$total;
+            }
+        }
+
+        return $meses->values();
+    }
+
+    private function realizadoMensal(int $propertyId, array $filtros): Collection
+    {
+        $inicio = (string)$filtros['data_inicio'];
+        $fim = (string)$filtros['data_fim'];
+
+        $receitas = DB::table('receitas')
+            ->where('receitas.propriedade_id', $propertyId)
+            ->where('receitas.status', '!=', 'cancelado')
+            ->when($filtros['safra_id'], fn ($query, $safraId) => $query->where('receitas.safra_id', $safraId))
+            ->when($filtros['categoria_id'], fn ($query, $categoriaId) => $query->where('receitas.categoria_id', $categoriaId))
+            ->whereRaw('COALESCE(receitas.data_recebimento, receitas.data_venda) BETWEEN ? AND ?', [$inicio, $fim])
+            ->selectRaw("DATE_FORMAT(COALESCE(receitas.data_recebimento, receitas.data_venda), '%Y-%m') as mes, SUM(receitas.valor_total) as valor_total")
+            ->groupByRaw("DATE_FORMAT(COALESCE(receitas.data_recebimento, receitas.data_venda), '%Y-%m')");
+
+        if ($filtros['tipo'] === 'receita') {
+            return $receitas->pluck('valor_total', 'mes');
+        }
+
+        $despesas = DB::table('despesas')
+            ->where('despesas.propriedade_id', $propertyId)
+            ->where('despesas.status_pagamento', '!=', 'cancelado')
+            ->whereRaw("COALESCE(despesas.status_aprovacao, '') != 'reprovada'")
+            ->when($filtros['safra_id'], fn ($query, $safraId) => $query->where('despesas.safra_id', $safraId))
+            ->when($filtros['categoria_id'], fn ($query, $categoriaId) => $query->where('despesas.categoria_id', $categoriaId))
+            ->whereRaw('COALESCE(despesas.data_pagamento, despesas.data_vencimento, despesas.data_lancamento) BETWEEN ? AND ?', [$inicio, $fim])
+            ->selectRaw("DATE_FORMAT(COALESCE(despesas.data_pagamento, despesas.data_vencimento, despesas.data_lancamento), '%Y-%m') as mes, SUM(despesas.valor_total) as valor_total")
+            ->groupByRaw("DATE_FORMAT(COALESCE(despesas.data_pagamento, despesas.data_vencimento, despesas.data_lancamento), '%Y-%m')");
+
+        if ($filtros['tipo'] === 'custos_despesas') {
+            return $despesas->pluck('valor_total', 'mes');
+        }
+
+        return DB::query()
+            ->fromSub(
+                $despesas->unionAll($receitas),
+                'realizado_mensal'
+            )
+            ->selectRaw('mes, SUM(valor_total) as valor_total')
+            ->groupBy('mes')
+            ->pluck('valor_total', 'mes');
+    }
+
     private function normalizarFiltrosOrcadoRealizado(int $propertyId, array $filtros): array
     {
         $tipo = (string)($filtros['tipo'] ?? 'todos');
@@ -909,6 +997,14 @@ class RelatorioFinanceiroService
 
         $dataInicio = $this->dataFiltro($filtros['data_inicio'] ?? null);
         $dataFim = $this->dataFiltro($filtros['data_fim'] ?? null);
+        if (!$dataInicio && !$dataFim) {
+            $dataInicio = date('Y-01-01');
+            $dataFim = date('Y-m-d');
+        } elseif (!$dataInicio && $dataFim) {
+            $dataInicio = date('Y-01-01', strtotime($dataFim));
+        } elseif ($dataInicio && !$dataFim) {
+            $dataFim = date('Y-m-d');
+        }
         if ($dataInicio && $dataFim && $dataFim < $dataInicio) {
             [$dataInicio, $dataFim] = [$dataFim, $dataInicio];
         }

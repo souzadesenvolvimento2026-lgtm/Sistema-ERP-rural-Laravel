@@ -46,6 +46,12 @@
 
     <form class="ff-or-filters" method="get">
         <label>
+            <span>Fazenda</span>
+            <select class="form-select" disabled>
+                <option>{{ $propertyName ?? 'Propriedade' }}</option>
+            </select>
+        </label>
+        <label>
             <span>Safra</span>
             <select name="safra_id" class="form-select">
                 <option value="">Todos</option>
@@ -146,22 +152,68 @@
     <script>
         const orCanvas = document.getElementById('chartOrcadoRealizado');
         if (orCanvas && window.Chart) {
+            const moneyFormatter = value => window.ffMoneyBR
+                ? window.ffMoneyBR(value)
+                : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0));
+
             new Chart(orCanvas, {
-                type: 'bar',
+                type: 'line',
                 data: {
                     labels: @json($chart['labels']),
                     datasets: [
-                        { label: 'Orçado', data: @json($chart['orcado']), backgroundColor: 'rgba(216,148,34,.72)', borderRadius: 6 },
-                        { label: 'Realizado', data: @json($chart['realizado']), backgroundColor: 'rgba(13,110,253,.72)', borderRadius: 6 }
+                        {
+                            label: 'Orçado',
+                            data: @json($chart['orcado']),
+                            borderColor: '#f39c34',
+                            backgroundColor: '#f39c34',
+                            pointBackgroundColor: '#ffffff',
+                            pointBorderColor: '#f39c34',
+                            pointBorderWidth: 3,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            borderWidth: 4,
+                            tension: 0.42
+                        },
+                        {
+                            label: 'Realizado',
+                            data: @json($chart['realizado']),
+                            borderColor: '#214bc7',
+                            backgroundColor: '#214bc7',
+                            pointBackgroundColor: '#ffffff',
+                            pointBorderColor: '#214bc7',
+                            pointBorderWidth: 3,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            borderWidth: 4,
+                            tension: 0.42
+                        }
                     ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { position: 'top' } },
+                    interaction: { intersect: false, mode: 'index' },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: { usePointStyle: true, boxWidth: 8, boxHeight: 8 }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: context => `${context.dataset.label}: ${moneyFormatter(context.parsed.y)}`
+                            }
+                        }
+                    },
                     scales: {
-                        x: { ticks: { autoSkip: false, maxRotation: 55, minRotation: 0 } },
-                        y: { ticks: { callback: v => window.ffMoneyBR ? window.ffMoneyBR(v) : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v || 0)) } }
+                        x: {
+                            grid: { color: 'rgba(148,163,184,.08)' },
+                            ticks: { autoSkip: false, maxRotation: 0, minRotation: 0 }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: 'rgba(148,163,184,.18)' },
+                            ticks: { callback: value => moneyFormatter(value) }
+                        }
                     }
                 }
             });
