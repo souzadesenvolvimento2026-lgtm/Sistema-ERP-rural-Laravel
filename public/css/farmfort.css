@@ -1190,7 +1190,8 @@ html[data-theme="dark"] .alert-warning {
   cursor: not-allowed;
 }
 
-.map-list-edit {
+.map-list-edit,
+.map-list-exclusion {
   width: 42px;
   border: 0;
   border-left: 1px solid var(--ff-border);
@@ -1198,7 +1199,13 @@ html[data-theme="dark"] .alert-warning {
   color: var(--ff-accent-strong);
 }
 
-.map-list-edit:hover {
+.map-list-exclusion {
+  background: rgba(245, 158, 11, .10);
+  color: #f59e0b;
+}
+
+.map-list-edit:hover,
+.map-list-exclusion:hover {
   background: var(--ff-accent);
   color: #fff;
 }
