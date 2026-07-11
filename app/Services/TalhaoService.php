@@ -172,6 +172,7 @@ class TalhaoService
 
         $outer = $this->pontosTalhao($talhao);
         abort_if(count($outer) < 3, 422, 'O talhao precisa de poligono para receber area excluida.');
+        abort_unless($this->ringInsidePolygon($exclusion, $outer), 422, 'A area excluida precisa ficar dentro do poligono do talhao.');
 
         $rings = $this->exclusoesTalhao($talhao);
         $rings[] = $exclusion;
@@ -1530,6 +1531,40 @@ class TalhaoService
             'excluida' => $areaExcluida,
             'liquida' => max(0, round($areaBruta - $areaExcluida, 2)),
         ];
+    }
+
+    private function ringInsidePolygon(array $ring, array $polygon): bool
+    {
+        foreach ($ring as $point) {
+            if (!$this->pointInsidePolygon($point, $polygon)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function pointInsidePolygon(array $point, array $polygon): bool
+    {
+        $inside = false;
+        $count = count($polygon);
+        $x = (float)$point['lng'];
+        $y = (float)$point['lat'];
+
+        for ($i = 0, $j = $count - 1; $i < $count; $j = $i++) {
+            $xi = (float)$polygon[$i]['lng'];
+            $yi = (float)$polygon[$i]['lat'];
+            $xj = (float)$polygon[$j]['lng'];
+            $yj = (float)$polygon[$j]['lat'];
+            $intersects = (($yi > $y) !== ($yj > $y))
+                && ($x < (($xj - $xi) * ($y - $yi) / (($yj - $yi) ?: 0.0000000001)) + $xi);
+
+            if ($intersects) {
+                $inside = !$inside;
+            }
+        }
+
+        return $inside;
     }
 
     private function decimal($value): float

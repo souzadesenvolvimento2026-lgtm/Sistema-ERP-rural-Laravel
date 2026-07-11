@@ -1,4 +1,5 @@
 window.initTalhaoMapa = function initTalhaoMapa(config) {
+    translateLeafletDraw();
     const MAP_MAX_ZOOM = 17;
     const MAP_MAX_NATIVE_ZOOM = 16;
     const map = L.map('talhaoMap', {
@@ -37,8 +38,8 @@ window.initTalhaoMapa = function initTalhaoMapa(config) {
     renderTalhoes(map, config.talhoes || [], talhaoLayers, labelsLayer, bounds);
 
     L.control.layers(
-        { Satelite: satellite, Ruas: roads },
-        { Rotulos: labelsLayer },
+        { Satélite: satellite, Ruas: roads },
+        { Rótulos: labelsLayer },
         { collapsed: false, position: 'topright' }
     ).addTo(map);
 
@@ -52,13 +53,43 @@ window.initTalhaoMapa = function initTalhaoMapa(config) {
         map.fitBounds(bounds.pad(0.18), { maxZoom: MAP_MAX_ZOOM });
     }
 
-    configureDraw(map, drawnItems);
+    configureDraw(map, drawnItems, config.talhoes || []);
     bindPolygonTargetSelector(config.talhoes || []);
     bindMapActionForms();
     bindMapList(map, talhaoLayers);
 
     setTimeout(() => map.invalidateSize(), 120);
 };
+
+function translateLeafletDraw() {
+    if (!window.L || !L.drawLocal) return;
+
+    L.drawLocal.draw.toolbar.actions.title = 'Cancelar desenho';
+    L.drawLocal.draw.toolbar.actions.text = 'Cancelar';
+    L.drawLocal.draw.toolbar.finish.title = 'Finalizar desenho';
+    L.drawLocal.draw.toolbar.finish.text = 'Finalizar';
+    L.drawLocal.draw.toolbar.undo.title = 'Remover último ponto';
+    L.drawLocal.draw.toolbar.undo.text = 'Remover último ponto';
+    L.drawLocal.draw.toolbar.buttons.polygon = 'Desenhar polígono';
+    L.drawLocal.draw.handlers.polygon.tooltip.start = 'Clique para iniciar o polígono.';
+    L.drawLocal.draw.handlers.polygon.tooltip.cont = 'Clique para continuar o polígono.';
+    L.drawLocal.draw.handlers.polygon.tooltip.end = 'Clique no primeiro ponto para finalizar.';
+    L.drawLocal.draw.handlers.polyline.error = '<strong>Erro:</strong> as linhas não podem se cruzar.';
+
+    L.drawLocal.edit.toolbar.actions.save.title = 'Salvar alterações';
+    L.drawLocal.edit.toolbar.actions.save.text = 'Salvar';
+    L.drawLocal.edit.toolbar.actions.cancel.title = 'Cancelar edição';
+    L.drawLocal.edit.toolbar.actions.cancel.text = 'Cancelar';
+    L.drawLocal.edit.toolbar.actions.clearAll.title = 'Remover todos';
+    L.drawLocal.edit.toolbar.actions.clearAll.text = 'Remover todos';
+    L.drawLocal.edit.toolbar.buttons.edit = 'Editar desenho';
+    L.drawLocal.edit.toolbar.buttons.editDisabled = 'Nenhuma área para editar';
+    L.drawLocal.edit.toolbar.buttons.remove = 'Excluir desenho';
+    L.drawLocal.edit.toolbar.buttons.removeDisabled = 'Nenhuma área para excluir';
+    L.drawLocal.edit.handlers.edit.tooltip.text = 'Arraste os pontos para editar.';
+    L.drawLocal.edit.handlers.edit.tooltip.subtext = 'Clique em cancelar para desfazer.';
+    L.drawLocal.edit.handlers.remove.tooltip.text = 'Clique em uma área para excluir.';
+}
 
 function renderTalhoes(map, talhoes, talhaoLayers, labelsLayer, bounds) {
     const colorByType = { polygon: '#74c69d', line: '#ffd166', point: '#2d9d5c', manual: '#2d9d5c' };
@@ -132,8 +163,11 @@ function renderTalhoes(map, talhoes, talhaoLayers, labelsLayer, bounds) {
     });
 }
 
-function configureDraw(map, drawnItems) {
+function configureDraw(map, drawnItems, talhoes) {
+    let drawMode = 'talhao';
+    let exclusionTalhaoId = null;
     let polygonDrawHandler = null;
+    let exclusionDrawHandler = null;
     const drawControl = new L.Control.Draw({
         edit: { featureGroup: drawnItems },
         draw: {
@@ -157,15 +191,50 @@ function configureDraw(map, drawnItems) {
             showArea: true,
             shapeOptions: { color: '#05a784', fillColor: '#23885f', fillOpacity: 0.28 },
         });
+        exclusionDrawHandler = new L.Draw.Polygon(map, {
+            allowIntersection: false,
+            showArea: true,
+            shapeOptions: { color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.18, dashArray: '6 5' },
+        });
     }
 
-    document.getElementById('btnDrawTalhaoTop')?.addEventListener('click', () => {
-        if (polygonDrawHandler) {
-            polygonDrawHandler.enable();
+    const startDraw = (mode, talhaoId = null) => {
+        drawMode = mode;
+        exclusionTalhaoId = talhaoId;
+        if (mode === 'exclusao' && !exclusionTalhaoId) {
+            exclusionTalhaoId = selectedExclusionTalhaoId();
+        }
+
+        if (mode === 'exclusao' && !exclusionTalhaoId) {
+            alert('Selecione o talhão que receberá a área excluída.');
+            document.querySelector('[data-exclusion-form]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            return;
+        }
+
+        const handler = mode === 'exclusao' ? exclusionDrawHandler : polygonDrawHandler;
+        if (handler) {
+            handler.enable();
             return;
         }
 
         document.querySelector('.leaflet-draw-draw-polygon')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    };
+
+    document.querySelector('.leaflet-draw-draw-polygon')?.addEventListener('click', () => {
+        drawMode = 'talhao';
+        exclusionTalhaoId = null;
+    });
+
+    document.getElementById('btnDrawTalhaoTop')?.addEventListener('click', () => {
+        startDraw('talhao');
+    });
+
+    document.getElementById('btnDrawExclusionTop')?.addEventListener('click', () => {
+        startDraw('exclusao');
+    });
+
+    document.querySelectorAll('[data-map-draw-exclusion]').forEach((button) => {
+        button.addEventListener('click', () => startDraw('exclusao', button.dataset.mapDrawExclusion));
     });
 
     document.getElementById('btnDrawPivoTop')?.addEventListener('click', () => {
@@ -173,7 +242,15 @@ function configureDraw(map, drawnItems) {
         panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
 
-    map.on(L.Draw.Event.CREATED, (event) => handlePolygonCreated(event, drawnItems));
+    map.on(L.Draw.Event.CREATED, (event) => {
+        handlePolygonCreated(event, drawnItems, {
+            mode: drawMode,
+            talhaoId: exclusionTalhaoId,
+            talhoes,
+        });
+        drawMode = 'talhao';
+        exclusionTalhaoId = null;
+    });
 }
 
 function bindPolygonTargetSelector(talhoes) {
@@ -249,7 +326,7 @@ function bindMapList(map, talhaoLayers) {
     });
 }
 
-function handlePolygonCreated(event, drawnItems) {
+function handlePolygonCreated(event, drawnItems, context = {}) {
     drawnItems.clearLayers();
     drawnItems.addLayer(event.layer);
 
@@ -258,18 +335,59 @@ function handlePolygonCreated(event, drawnItems) {
         lng: Number(point.lng.toFixed(7)),
     }));
 
+    if (context.mode === 'exclusao') {
+        event.layer.setStyle?.({ color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.18, dashArray: '6 5' });
+        handleExclusionCreated(points, context);
+        return;
+    }
+
     document.getElementById('polygonCoordinates').value = JSON.stringify(points);
     document.getElementById('polygonFormPanel').style.display = 'block';
     document.getElementById('polygonName').focus();
     document.getElementById('polygonFormPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function popupHtml(talhao) {
-    return `<strong>${escapeHtml(talhao.nome || 'Talhão')}</strong><br>${formatNumber(talhao.area || 0)} ha<br>${escapeHtml(talhao.custo_formatado || 'R$ 0,00')}`;
+function selectedExclusionTalhaoId() {
+    return document.querySelector('[data-exclusion-form] [data-map-talhao-select]')?.value
+        || document.getElementById('polygonTalhaoId')?.value
+        || '';
 }
 
-function labelHtml(value) {
-    return `<span>${escapeHtml(value || 'Talhão')}</span>`;
+function handleExclusionCreated(points, context) {
+    const form = document.querySelector('[data-exclusion-form]');
+    const select = form?.querySelector('[data-map-talhao-select]');
+    const textarea = form?.querySelector('[data-exclusion-json]');
+    const talhaoId = context.talhaoId || selectedExclusionTalhaoId();
+
+    if (!form || !select || !textarea || !talhaoId) {
+        alert('Não foi possível identificar o talhão da área excluída.');
+        return;
+    }
+
+    select.value = String(talhaoId);
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    textarea.value = JSON.stringify(points);
+
+    const talhao = (context.talhoes || []).find((item) => String(item.id) === String(talhaoId));
+    const nome = talhao?.nome || 'talhão selecionado';
+    const salvarAgora = confirm(`Salvar esta área excluída no ${nome}? Ela será descontada da área útil do talhão.`);
+
+    if (salvarAgora) {
+        if (typeof form.requestSubmit === 'function') {
+            form.requestSubmit();
+        } else {
+            const submitButton = form.querySelector('[type="submit"]');
+            if (submitButton) {
+                submitButton.click();
+            } else {
+                form.submit();
+            }
+        }
+        return;
+    }
+
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    textarea.focus();
 }
 
 function escapeHtml(value) {
