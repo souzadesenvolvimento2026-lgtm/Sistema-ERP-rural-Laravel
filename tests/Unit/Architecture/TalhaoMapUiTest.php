@@ -49,9 +49,11 @@ class TalhaoMapUiTest extends TestCase
 
     public function test_list_edit_action_opens_the_floating_modal_without_scrolling_to_bottom_forms(): void
     {
+        $mapView = $this->contents('resources/views/talhoes/mapa.blade.php');
         $view = $this->contents('resources/views/talhoes/partials/mapa-form.blade.php');
-        $javascript = $this->contents('public/js/talhao-mapa.js');
+        $javascript = $this->contents('public/js/talhao-mapa-modal.js');
 
+        $this->assertStringContainsString('talhao-mapa-modal.js', $mapView);
         $this->assertStringContainsString('id="mapTalhaoEditModal"', $view);
         $this->assertStringContainsString('data-map-details-form', $view);
         $this->assertStringContainsString('function bindTalhaoEditModal(', $javascript);

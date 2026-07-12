@@ -105,10 +105,54 @@
     </div>
 @endsection
 
+@push('styles')
+    <style>
+        .ff-talhao-edit-dialog { width: min(94vw, 520px); }
+        .ff-talhao-edit-content {
+            overflow: hidden;
+            border: 1px solid #d7dee8;
+            border-radius: 8px;
+            background: #fff;
+            color: #122033;
+            box-shadow: 0 22px 70px rgba(3, 10, 18, .34);
+        }
+        .ff-talhao-edit-modal .modal-header {
+            min-height: 64px;
+            border-bottom: 0;
+            background: #00754f !important;
+            color: #fff !important;
+        }
+        .ff-talhao-edit-modal .modal-body,
+        .ff-talhao-edit-modal .modal-footer {
+            background: #fff !important;
+            color: #122033 !important;
+        }
+        .ff-talhao-edit-modal .modal-body { padding: 18px; }
+        .ff-talhao-edit-modal .modal-footer { border-top: 1px solid #e4e9f1; }
+        .ff-talhao-edit-modal label { display: grid; gap: 7px; color: #122033 !important; }
+        .ff-talhao-edit-modal input,
+        .ff-talhao-edit-modal textarea {
+            border-color: #d6dee8 !important;
+            background: #fff !important;
+            color: #122033 !important;
+        }
+        .ff-talhao-edit-modal input[readonly] {
+            color: #66758a !important;
+            background: #f8fafc !important;
+        }
+        .ff-talhao-edit-tools { display: grid; gap: 8px; margin-top: 16px; }
+        .ff-talhao-edit-tools strong { color: #122033; font-size: 13px; font-weight: 900; }
+        .ff-talhao-edit-tools > div { display: flex; flex-wrap: wrap; gap: 7px; }
+        .ff-talhao-edit-tools .btn { min-height: 34px; padding: 7px 10px; font-size: 13px; }
+        .ff-talhao-edit-tools .btn:disabled { opacity: .5; cursor: not-allowed; }
+        .ff-talhao-edit-tools small { color: #66758a; font-size: 12px; }
+    </style>
+@endpush
+
 @push('scripts')
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
-    <script src="{{ asset('js/talhao-mapa.js') }}?v={{ @filemtime(public_path('js/talhao-mapa.js')) }}"></script>
+    <script src="{{ asset('js/talhao-mapa-modal.js') }}?v={{ @filemtime(public_path('js/talhao-mapa-modal.js')) }}"></script>
     <script>
         window.initTalhaoMapa({
             talhoes: {{ Js::from($talhoes) }},
