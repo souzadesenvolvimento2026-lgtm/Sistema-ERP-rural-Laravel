@@ -91,3 +91,44 @@ Deploy de produção continua exigindo main aprovada, CI/homologação e confirm
 ```powershell
 .\scripts\dev\release.ps1 -Validation full -DeployProduction -ConfirmProduction
 ```
+
+## Deploy rapido para o servidor Laravel de desenvolvimento
+
+Enquanto o Laravel ainda estiver em desenvolvimento e o legado continuar sendo o sistema principal, use o fluxo rapido para o servidor `192.168.17.65`.
+
+Comando padrao:
+
+```powershell
+.\scripts\dev\deploy-server.ps1 -CommitMessage "Descreva a alteracao"
+```
+
+O que ele faz:
+
+- roda validacao local rapida;
+- commita as alteracoes da branch atual;
+- envia a branch para o GitHub;
+- acessa `higor@192.168.17.65`;
+- atualiza `/home/higor/Sistema-ERP-rural-Laravel`;
+- publica no Laravel em `/var/www/erp-rural/Sistema-ERP-rural-Laravel`;
+- cria backup antes da troca;
+- se falhar depois de entrar em manutencao, restaura o backup e executa `php artisan up`.
+
+Para ir ainda mais rapido, sem validacao local:
+
+```powershell
+.\scripts\dev\deploy-server.ps1 -SkipLocalValidation -CommitMessage "Descreva a alteracao"
+```
+
+Para rodar testes tambem no servidor:
+
+```powershell
+.\scripts\dev\deploy-server.ps1 -CommitMessage "Descreva a alteracao" -RunRemoteTests
+```
+
+Para rodar migrations no servidor junto com o deploy:
+
+```powershell
+.\scripts\dev\deploy-server.ps1 -CommitMessage "Descreva a alteracao" -RunMigrations
+```
+
+Esse deploy rapido bloqueia uso direto da branch `main`; trabalhe em branch de desenvolvimento.
