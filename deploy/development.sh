@@ -13,6 +13,7 @@ STAMP="$(date +%Y%m%d-%H%M%S)"
 ARCHIVE="$(mktemp --suffix=.tar)"
 RELEASE="$(mktemp -d)"
 BACKUP_DIR="$BACKUP_ROOT/$STAMP"
+TARGET_COMMIT=""
 MAINTENANCE=0
 
 cleanup() {
@@ -76,7 +77,9 @@ require_path "$APP_DIR/public/uploads" "public/uploads"
 
 cd "$REPOSITORY_DIR"
 git fetch --prune origin
-git rev-parse --verify "$DEPLOY_REF^{commit}" >/dev/null
+TARGET_COMMIT="$(git rev-parse --verify "$DEPLOY_REF^{commit}")"
+echo "Preparando deploy dev de $DEPLOY_REF"
+echo "Commit alvo: $TARGET_COMMIT"
 git archive --format=tar --output="$ARCHIVE" "$DEPLOY_REF"
 tar -xf "$ARCHIVE" -C "$RELEASE"
 
@@ -128,5 +131,17 @@ sudo -u "$WEB_USER" php "$APP_DIR/artisan" route:list >/dev/null
 sudo -u "$WEB_USER" php "$APP_DIR/artisan" up
 MAINTENANCE=0
 
+printf '%s\n' "$TARGET_COMMIT" | sudo tee "$APP_DIR/.deploy-commit" >/dev/null
+sudo chown "$WEB_USER:$WEB_GROUP" "$APP_DIR/.deploy-commit"
+
+PUBLISHED_COMMIT="$(sudo cat "$APP_DIR/.deploy-commit")"
+if [[ "$PUBLISHED_COMMIT" != "$TARGET_COMMIT" ]]; then
+    echo "Deploy copiou arquivos, mas o marcador publicado nao confere." >&2
+    echo "Esperado:  $TARGET_COMMIT" >&2
+    echo "Publicado: $PUBLISHED_COMMIT" >&2
+    exit 1
+fi
+
 echo "Deploy dev concluido: $DEPLOY_REF"
+echo "Commit publicado: $PUBLISHED_COMMIT"
 echo "Backup: $BACKUP_DIR"
