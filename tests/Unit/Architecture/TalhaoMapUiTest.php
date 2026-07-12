@@ -59,6 +59,7 @@ class TalhaoMapUiTest extends TestCase
         $this->assertStringContainsString('function bindTalhaoEditModal(', $javascript);
         $this->assertStringContainsString('openEditModal?.(talhaoId)', $javascript);
         $this->assertStringNotContainsString("document.querySelector('.ff-map-hidden-forms')?.scrollIntoView", $javascript);
+        $this->assertStringNotContainsString('scrollIntoView', $javascript);
     }
 
     public function test_new_polygon_uses_a_floating_modal_instead_of_the_bottom_panel(): void
@@ -94,6 +95,30 @@ class TalhaoMapUiTest extends TestCase
         $this->assertStringContainsString('form="talhaoImportModalForm"', $modal);
         $this->assertStringContainsString('form="talhaoManualModalForm"', $modal);
         $this->assertStringContainsString('.ff-talhao-create-modal .modal-content', $css);
+    }
+
+    public function test_map_adjustments_are_only_available_in_floating_modals(): void
+    {
+        $view = $this->contents('resources/views/talhoes/partials/mapa-form.blade.php');
+        $css = $this->contents('public/css/farmfort.css');
+
+        $this->assertStringContainsString('id="mapPivoModal"', $view);
+        $this->assertStringContainsString('data-map-modal-clear-exclusions', $view);
+        $this->assertStringContainsString('data-exclusion-clear-form', $view);
+        $this->assertStringNotContainsString('data-pivo-panel', $view);
+        $this->assertStringNotContainsString('Ajustes do mapa', $view);
+        $this->assertStringContainsString('.ff-map-hidden-forms { display: contents; }', $css);
+        $this->assertStringNotContainsString('[data-pivo-panel]', $css);
+
+        foreach (['public/js/talhao-mapa.js', 'public/js/talhao-mapa-modal.js'] as $script) {
+            $javascript = $this->contents($script);
+
+            $this->assertStringContainsString('function bindMapPivoModal(', $javascript);
+            $this->assertStringContainsString('openPivoModal?.(id)', $javascript);
+            $this->assertStringContainsString("document.querySelector('[data-exclusion-clear-form]')", $javascript);
+            $this->assertStringNotContainsString('data-pivo-panel', $javascript);
+            $this->assertStringNotContainsString('scrollIntoView', $javascript);
+        }
     }
 
     public function test_map_forms_use_relative_actions_to_keep_the_current_protocol(): void

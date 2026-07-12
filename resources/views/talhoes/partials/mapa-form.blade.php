@@ -88,6 +88,9 @@
                         <button class="btn btn-outline-secondary" type="button" data-map-modal-remove-pivo>
                             <i class="bi bi-x-circle"></i>Remover pivô
                         </button>
+                        <button class="btn btn-outline-secondary" type="button" data-map-modal-clear-exclusions>
+                            <i class="bi bi-eraser"></i>Limpar exclusões
+                        </button>
                     </div>
                     <small>As áreas excluídas são descontadas da área plantável do talhão.</small>
                 </div>
@@ -100,90 +103,109 @@
     </div>
 </div>
 
-<section class="panel" data-pivo-panel>
-    <div class="panel-head">
-        <h2>Ajustes do mapa</h2>
-    </div>
+<div class="modal fade ff-talhao-edit-modal ff-map-pivo-modal" id="mapPivoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered ff-talhao-pivo-dialog">
+        <div class="modal-content ff-talhao-edit-content">
+            <div class="modal-header modal-header-green">
+                <h5 class="modal-title"><i class="bi bi-record-circle me-2"></i>Pivô do mapa</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
 
-    <div class="grid two">
-        <div class="stack">
-            <form method="POST" data-map-action-template="/talhoes/__ID__/mapa/pivo">
-                @csrf
-                <label>
-                    Talhão com pivô
-                    <select data-map-talhao-select required>
-                        <option value="">Selecione...</option>
-                        @foreach ($talhoes as $talhao)
-                            <option value="{{ $talhao['id'] }}">{{ $talhao['nome'] }}</option>
-                        @endforeach
-                    </select>
-                </label>
-                <label>Latitude <input name="pivo_lat" inputmode="decimal" required></label>
-                <label>Longitude <input name="pivo_lng" inputmode="decimal" required></label>
-                <label>Raio em metros <input name="pivo_raio_m" inputmode="decimal" required></label>
-                <button class="btn primary" type="submit">Salvar pivô</button>
-            </form>
+            <div class="modal-body">
+                <div class="ff-map-modal-section">
+                    <div class="ff-map-modal-section-title">
+                        <strong>Criar ou editar pivô em talhão existente</strong>
+                        <span>Selecione o talhão e informe o centro e o raio do pivô.</span>
+                    </div>
 
-            <form method="POST" data-map-action-template="/talhoes/__ID__/mapa/pivo" data-pivo-delete-form>
-                @csrf
-                @method('DELETE')
-                <label>
-                    Remover pivô
-                    <select data-map-talhao-select required>
-                        <option value="">Selecione...</option>
-                        @foreach ($talhoes as $talhao)
-                            <option value="{{ $talhao['id'] }}">{{ $talhao['nome'] }}</option>
-                        @endforeach
-                    </select>
-                </label>
-                <button class="btn danger" type="submit">Remover pivô</button>
-            </form>
+                    <form method="POST" class="ff-map-modal-grid" data-map-action-template="/talhoes/__ID__/mapa/pivo" data-map-pivo-form>
+                        @csrf
+                        <label class="col-12">
+                            Talhão com pivô
+                            <select data-map-talhao-select required>
+                                <option value="">Selecione...</option>
+                                @foreach ($talhoes as $talhao)
+                                    <option value="{{ $talhao['id'] }}">{{ $talhao['nome'] }}</option>
+                                @endforeach
+                            </select>
+                        </label>
+                        <label>Latitude <input name="pivo_lat" inputmode="decimal" required></label>
+                        <label>Longitude <input name="pivo_lng" inputmode="decimal" required></label>
+                        <label>Raio em metros <input name="pivo_raio_m" inputmode="decimal" required></label>
+                        <div class="ff-map-modal-actions">
+                            <button class="btn primary" type="submit">Salvar pivô</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="ff-map-modal-section">
+                    <div class="ff-map-modal-section-title">
+                        <strong>Remover pivô</strong>
+                        <span>Remove somente o vínculo do pivô com o talhão selecionado.</span>
+                    </div>
+
+                    <form method="POST" class="ff-map-modal-inline" data-map-action-template="/talhoes/__ID__/mapa/pivo" data-pivo-delete-form>
+                        @csrf
+                        @method('DELETE')
+                        <label>
+                            Talhão
+                            <select data-map-talhao-select required>
+                                <option value="">Selecione...</option>
+                                @foreach ($talhoes as $talhao)
+                                    <option value="{{ $talhao['id'] }}">{{ $talhao['nome'] }}</option>
+                                @endforeach
+                            </select>
+                        </label>
+                        <button class="btn danger" type="submit">Remover pivô</button>
+                    </form>
+                </div>
+
+                <div class="ff-map-modal-section">
+                    <div class="ff-map-modal-section-title">
+                        <strong>Criar pivô como novo talhão</strong>
+                        <span>Use quando o pivô ainda não pertence a nenhum talhão cadastrado.</span>
+                    </div>
+
+                    <form method="POST" action="{{ route('talhoes.mapa.pivo.create', [], false) }}" class="ff-map-modal-grid">
+                        @csrf
+                        <label class="col-12">Nome do novo pivô <input name="nome" maxlength="80" required></label>
+                        <label>Latitude <input name="pivo_lat" inputmode="decimal" required></label>
+                        <label>Longitude <input name="pivo_lng" inputmode="decimal" required></label>
+                        <label>Raio em metros <input name="pivo_raio_m" inputmode="decimal" required></label>
+                        <div class="ff-map-modal-actions">
+                            <button class="btn primary" type="submit">Criar pivô/talhão</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn" data-bs-dismiss="modal">Cancelar</button>
+            </div>
         </div>
-
-        <div class="stack">
-            <form method="POST" action="{{ route('talhoes.mapa.pivo.create', [], false) }}">
-                @csrf
-                <label>Nome do novo pivô <input name="nome" maxlength="80" required></label>
-                <label>Latitude <input name="pivo_lat" inputmode="decimal" required></label>
-                <label>Longitude <input name="pivo_lng" inputmode="decimal" required></label>
-                <label>Raio em metros <input name="pivo_raio_m" inputmode="decimal" required></label>
-                <button class="btn primary" type="submit">Criar pivô/talhão</button>
-            </form>
-        </div>
     </div>
+</div>
 
-    <div class="grid two">
-        <form method="POST" data-exclusion-form data-map-action-template="/talhoes/__ID__/mapa/exclusoes">
-            @csrf
-            <label>
-                Talhão para exclusão
-                <select data-map-talhao-select required>
-                    <option value="">Selecione...</option>
-                    @foreach ($talhoes as $talhao)
-                        <option value="{{ $talhao['id'] }}">{{ $talhao['nome'] }}</option>
-                    @endforeach
-                </select>
-            </label>
-            <label class="span-2">
-                Coordenadas da área excluída em JSON
-                <textarea name="exclusao_json" data-exclusion-json rows="5" required placeholder='[{"lat":-15.1,"lng":-47.1},{"lat":-15.1,"lng":-47.2},{"lat":-15.2,"lng":-47.2}]'></textarea>
-            </label>
-            <button class="btn primary" type="submit">Salvar área excluída</button>
-        </form>
+<div class="ff-map-transport-forms" hidden aria-hidden="true">
+    <form method="POST" data-exclusion-form data-map-action-template="/talhoes/__ID__/mapa/exclusoes">
+        @csrf
+        <select data-map-talhao-select required>
+            <option value="">Selecione...</option>
+            @foreach ($talhoes as $talhao)
+                <option value="{{ $talhao['id'] }}">{{ $talhao['nome'] }}</option>
+            @endforeach
+        </select>
+        <textarea name="exclusao_json" data-exclusion-json required></textarea>
+    </form>
 
-        <form method="POST" data-map-action-template="/talhoes/__ID__/mapa/exclusoes">
-            @csrf
-            @method('DELETE')
-            <label>
-                Limpar exclusões
-                <select data-map-talhao-select required>
-                    <option value="">Selecione...</option>
-                    @foreach ($talhoes as $talhao)
-                        <option value="{{ $talhao['id'] }}">{{ $talhao['nome'] }}</option>
-                    @endforeach
-                </select>
-            </label>
-            <button class="btn danger" type="submit">Limpar exclusões</button>
-        </form>
-    </div>
-</section>
+    <form method="POST" data-exclusion-clear-form data-map-action-template="/talhoes/__ID__/mapa/exclusoes">
+        @csrf
+        @method('DELETE')
+        <select data-map-talhao-select required>
+            <option value="">Selecione...</option>
+            @foreach ($talhoes as $talhao)
+                <option value="{{ $talhao['id'] }}">{{ $talhao['nome'] }}</option>
+            @endforeach
+        </select>
+    </form>
+</div>
