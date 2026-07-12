@@ -51,7 +51,10 @@ window.initTalhaoMapa = function initTalhaoMapa(config) {
         map.fitBounds(bounds.pad(0.18), { maxZoom: MAP_MAX_ZOOM });
     }
 
-    const mapTools = configureDraw(map, draftItems, talhoes, talhaoLayers);
+    const polygonModal = bindPolygonFormModal();
+    const mapTools = configureDraw(map, draftItems, talhoes, talhaoLayers, {
+        openPolygonModal: polygonModal.open,
+    });
     bindPolygonTargetSelector(talhoes);
     bindMapActionForms();
     const editModal = bindTalhaoEditModal(talhoes, mapTools);
@@ -151,7 +154,7 @@ function renderTalhoes(map, talhoes, talhaoLayers, labelsLayer, bounds) {
     });
 }
 
-function configureDraw(map, draftItems, talhoes, talhaoLayers) {
+function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
     const talhoesById = new Map(talhoes.map((talhao) => [String(talhao.id), talhao]));
     let selectedTalhao = null;
     let selectedLayer = null;
@@ -418,6 +421,7 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers) {
             talhaoId: exclusionTalhaoId,
             talhoes,
             cancelDraft: () => revertCurrent(false),
+            openPolygonModal: options.openPolygonModal,
         });
         drawMode = 'talhao';
         exclusionTalhaoId = null;
@@ -426,7 +430,7 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers) {
 
     document.getElementById('btnDrawTalhaoTop')?.addEventListener('click', () => startDraw('talhao'));
     document.getElementById('btnDrawPivoTop')?.addEventListener('click', () => {
-        const panel = document.querySelector('[data-pivo-panel]') || document.querySelector('#polygonFormPanel')?.nextElementSibling;
+        const panel = document.querySelector('[data-pivo-panel]');
         panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
 
@@ -550,7 +554,7 @@ function synchronizeMapForms(talhaoId) {
 function clearDraftForms() {
     const coordinates = document.getElementById('polygonCoordinates');
     const polygonTarget = document.getElementById('polygonTalhaoId');
-    const polygonPanel = document.getElementById('polygonFormPanel');
+    const polygonModal = document.getElementById('mapPolygonFormModal');
     const polygonName = document.getElementById('polygonName');
     const polygonDescription = document.getElementById('polygonDescription');
     const exclusionJson = document.querySelector('[data-exclusion-json]');
@@ -558,7 +562,10 @@ function clearDraftForms() {
     if (polygonTarget) polygonTarget.value = '';
     if (polygonName) polygonName.value = '';
     if (polygonDescription) polygonDescription.value = '';
-    if (polygonPanel) polygonPanel.style.display = 'none';
+    if (polygonModal) {
+        polygonModal.dataset.pendingPolygon = '0';
+        polygonModal.dataset.submittingPolygon = '0';
+    }
     if (exclusionJson) exclusionJson.value = '';
 }
 
@@ -616,6 +623,94 @@ function bindMapActionForms() {
             }
         });
     });
+}
+
+function bindPolygonFormModal() {
+    const modalEl = document.getElementById('mapPolygonFormModal');
+    const form = modalEl?.querySelector('[data-polygon-form]');
+    const modal = modalEl && window.bootstrap ? bootstrap.Modal.getOrCreateInstance(modalEl) : null;
+    let pendingCancel = null;
+
+    if (!modalEl || !form) {
+        return { open: () => {} };
+    }
+
+    const fields = {
+        target: document.getElementById('polygonTalhaoId'),
+        coordinates: document.getElementById('polygonCoordinates'),
+        name: document.getElementById('polygonName'),
+        description: document.getElementById('polygonDescription'),
+        area: document.getElementById('polygonAreaEstimate'),
+        geometry: modalEl.querySelector('[data-polygon-geometry-label]'),
+    };
+
+    const closeFallback = () => {
+        modalEl.classList.remove('show');
+        modalEl.style.display = 'none';
+        modalEl.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('modal-open');
+    };
+
+    const cancelDraft = () => {
+        if (typeof pendingCancel === 'function') {
+            pendingCancel();
+        }
+
+        pendingCancel = null;
+        modalEl.dataset.pendingPolygon = '0';
+        modalEl.dataset.submittingPolygon = '0';
+        form.reset();
+        if (fields.target) fields.target.value = '';
+        if (fields.coordinates) fields.coordinates.value = '';
+        if (fields.name) fields.name.value = '';
+        if (fields.description) fields.description.value = '';
+        if (fields.area) fields.area.value = 'Calculada ao salvar';
+        if (fields.geometry) fields.geometry.value = 'Polígono - desenho no mapa';
+    };
+
+    modalEl.querySelectorAll('[data-polygon-modal-cancel]').forEach((button) => {
+        button.addEventListener('click', () => {
+            cancelDraft();
+            if (!modal) closeFallback();
+        });
+    });
+
+    modalEl.addEventListener('hidden.bs.modal', () => {
+        if (modalEl.dataset.pendingPolygon === '1' && modalEl.dataset.submittingPolygon !== '1') {
+            cancelDraft();
+        }
+    });
+
+    form.addEventListener('submit', () => {
+        modalEl.dataset.submittingPolygon = '1';
+        pendingCancel = null;
+    });
+
+    const open = (points, cancelCallback) => {
+        form.reset();
+        pendingCancel = cancelCallback;
+        modalEl.dataset.pendingPolygon = '1';
+        modalEl.dataset.submittingPolygon = '0';
+        if (fields.target) fields.target.value = '';
+        if (fields.coordinates) fields.coordinates.value = JSON.stringify(points || []);
+        if (fields.name) fields.name.value = '';
+        if (fields.description) fields.description.value = '';
+        if (fields.area) fields.area.value = 'Calculada ao salvar';
+        if (fields.geometry) fields.geometry.value = 'Polígono - desenho no mapa';
+
+        if (modal) {
+            modal.show();
+        } else {
+            modalEl.style.display = 'block';
+            modalEl.classList.add('show');
+            modalEl.removeAttribute('aria-hidden');
+            document.body.classList.add('modal-open');
+        }
+
+        setTimeout(() => fields.name?.focus(), 180);
+    };
+
+    return { open };
 }
 
 function setMapSelectValues(talhaoId, root = document) {
@@ -800,13 +895,15 @@ function handlePolygonCreated(event, context = {}) {
         return;
     }
 
+    if (typeof context.openPolygonModal === 'function') {
+        context.openPolygonModal(points, context.cancelDraft);
+        return;
+    }
+
     const coordinates = document.getElementById('polygonCoordinates');
-    const panel = document.getElementById('polygonFormPanel');
     const name = document.getElementById('polygonName');
     if (coordinates) coordinates.value = JSON.stringify(points);
-    if (panel) panel.style.display = 'block';
     name?.focus();
-    panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function handleExclusionCreated(points, context) {

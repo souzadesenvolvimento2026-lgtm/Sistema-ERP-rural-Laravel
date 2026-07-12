@@ -34,7 +34,9 @@
                     <a class="btn btn-outline-primary" href="{{ route('talhoes.mapa') }}"><i class="bi bi-globe-americas"></i> Visualizar mapa</a>
                     <a class="btn btn-success-outline" href="{{ route('talhoes.exportar-kml') }}"><i class="bi bi-download"></i> Gerar KML <span class="visually-hidden">Exportar KML</span></a>
                     <a class="btn btn-warning" href="#talhoesUnificacao"><i class="bi bi-intersect"></i> Unificar talhões</a>
-                    <a class="btn primary" href="{{ route('talhoes.create') }}"><i class="bi bi-plus-lg"></i> Novo Talhão</a>
+                    <button class="btn primary" type="button" data-bs-toggle="modal" data-bs-target="#talhaoCreateModal">
+                        <i class="bi bi-plus-lg"></i> Novo Talhão
+                    </button>
                 </div>
             </div>
 
@@ -63,5 +65,7 @@
             <summary><i class="bi bi-upload"></i> Importar arquivo geoespacial</summary>
             @include('talhoes.partials.importar-geo')
         </details>
+
+        @include('talhoes.partials.novo-talhao-modal')
     </div>
 @endsection

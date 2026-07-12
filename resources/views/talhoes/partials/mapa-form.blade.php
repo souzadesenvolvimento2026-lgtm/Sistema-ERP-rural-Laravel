@@ -1,36 +1,47 @@
-<section id="polygonFormPanel" class="panel" style="display: none;">
-    <div class="panel-head">
-        <h2>Novo talhão pelo mapa</h2>
+<div class="modal fade ff-talhao-edit-modal ff-talhao-polygon-modal" id="mapPolygonFormModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered ff-talhao-edit-dialog">
+        <form method="POST" action="{{ route('talhoes.mapa.store', [], false) }}" class="modal-content ff-talhao-edit-content" data-polygon-form>
+            @csrf
+            <input type="hidden" name="coordenadas_json" id="polygonCoordinates">
+            <input type="hidden" name="talhao_id" id="polygonTalhaoId">
+
+            <div class="modal-header modal-header-green">
+                <h5 class="modal-title"><i class="bi bi-bounding-box me-2"></i>Novo talhão pelo mapa</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-polygon-modal-cancel aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="row g-3">
+                    <label class="col-12">
+                        Nome *
+                        <input id="polygonName" name="nome" required maxlength="80" autocomplete="off" value="{{ old('nome') }}" placeholder="Ex: Talhão 01">
+                    </label>
+
+                    <label class="col-md-5">
+                        Área (ha)
+                        <input id="polygonAreaEstimate" type="text" readonly data-polygon-area-label value="Calculada ao salvar">
+                    </label>
+
+                    <label class="col-md-7">
+                        Geometria
+                        <input type="text" readonly value="Polígono - desenho no mapa" data-polygon-geometry-label>
+                    </label>
+
+                    <label class="col-12">
+                        Descrição / Localização
+                        <textarea id="polygonDescription" name="descricao" rows="3" placeholder="Informações adicionais...">{{ old('descricao') }}</textarea>
+                    </label>
+                </div>
+                <small class="d-block mt-3 text-muted">A área será calculada automaticamente pela geometria desenhada.</small>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn" data-bs-dismiss="modal" data-polygon-modal-cancel>Cancelar</button>
+                <button class="btn primary" type="submit"><i class="bi bi-shield-check"></i>Salvar talhão</button>
+            </div>
+        </form>
     </div>
-    <form method="POST" action="{{ route('talhoes.mapa.store', [], false) }}" class="form-grid" data-polygon-form>
-        @csrf
-        <input type="hidden" name="coordenadas_json" id="polygonCoordinates">
-
-        <label class="span-2">
-            Destino do desenho
-            <select id="polygonTalhaoId" name="talhao_id">
-                <option value="">Criar novo talhão</option>
-                @foreach ($talhoes as $talhao)
-                    <option value="{{ $talhao['id'] }}">{{ $talhao['nome'] }}</option>
-                @endforeach
-            </select>
-        </label>
-
-        <label>
-            Nome do talhão *
-            <input id="polygonName" name="nome" required maxlength="80" value="{{ old('nome') }}">
-        </label>
-
-        <label class="span-2">
-            Descrição
-            <textarea id="polygonDescription" name="descricao" rows="3">{{ old('descricao') }}</textarea>
-        </label>
-
-        <div class="form-actions span-2">
-            <button class="btn primary" type="submit">Salvar talhão</button>
-        </div>
-    </form>
-</section>
+</div>
 
 <div class="modal fade ff-talhao-edit-modal" id="mapTalhaoEditModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered ff-talhao-edit-dialog">

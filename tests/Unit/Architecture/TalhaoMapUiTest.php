@@ -61,6 +61,41 @@ class TalhaoMapUiTest extends TestCase
         $this->assertStringNotContainsString("document.querySelector('.ff-map-hidden-forms')?.scrollIntoView", $javascript);
     }
 
+    public function test_new_polygon_uses_a_floating_modal_instead_of_the_bottom_panel(): void
+    {
+        $view = $this->contents('resources/views/talhoes/partials/mapa-form.blade.php');
+
+        $this->assertStringContainsString('id="mapPolygonFormModal"', $view);
+        $this->assertStringContainsString('data-polygon-form', $view);
+        $this->assertStringContainsString('data-polygon-modal-cancel', $view);
+        $this->assertStringNotContainsString('id="polygonFormPanel"', $view);
+
+        foreach (['public/js/talhao-mapa.js', 'public/js/talhao-mapa-modal.js'] as $script) {
+            $javascript = $this->contents($script);
+
+            $this->assertStringContainsString('function bindPolygonFormModal()', $javascript);
+            $this->assertStringContainsString('openPolygonModal: polygonModal.open', $javascript);
+            $this->assertStringContainsString('context.openPolygonModal(points, context.cancelDraft)', $javascript);
+            $this->assertStringNotContainsString('polygonFormPanel', $javascript);
+        }
+    }
+
+    public function test_new_talhao_button_opens_the_floating_create_modal(): void
+    {
+        $index = $this->contents('resources/views/talhoes/index.blade.php');
+        $modal = $this->contents('resources/views/talhoes/partials/novo-talhao-modal.blade.php');
+        $css = $this->contents('public/css/farmfort.css');
+
+        $this->assertStringContainsString('data-bs-target="#talhaoCreateModal"', $index);
+        $this->assertStringContainsString("@include('talhoes.partials.novo-talhao-modal')", $index);
+        $this->assertStringContainsString('id="talhaoCreateModal"', $modal);
+        $this->assertStringContainsString("route('talhoes.importar-geo')", $modal);
+        $this->assertStringContainsString("route('talhoes.store')", $modal);
+        $this->assertStringContainsString('form="talhaoImportModalForm"', $modal);
+        $this->assertStringContainsString('form="talhaoManualModalForm"', $modal);
+        $this->assertStringContainsString('.ff-talhao-create-modal .modal-content', $css);
+    }
+
     public function test_map_forms_use_relative_actions_to_keep_the_current_protocol(): void
     {
         $view = $this->contents('resources/views/talhoes/partials/mapa-form.blade.php');

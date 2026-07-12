@@ -8335,6 +8335,89 @@ html[data-theme="dark"] .ff-map-list-panel .map-list-edit { background: color-mi
   color: var(--ff-muted) !important;
 }
 
+.ff-talhao-create-modal .modal-content {
+  border-color: #d7dee8;
+  background: #fff;
+  color: #122033;
+}
+
+.ff-talhao-create-modal .modal-body,
+.ff-talhao-create-modal .modal-footer {
+  background: #fff;
+  color: #122033;
+}
+
+.ff-talhao-create-modal .modal-footer {
+  border-top-color: #e4e9f1;
+}
+
+.ff-talhao-create-modal label,
+.ff-talhao-create-modal .ff-talhao-create-section-title strong {
+  color: #122033;
+}
+
+.ff-talhao-create-modal input,
+.ff-talhao-create-modal select,
+.ff-talhao-create-modal textarea {
+  border-color: #d6dee8;
+  background: #fff;
+  color: #122033;
+}
+
+.ff-talhao-create-modal select:disabled,
+.ff-talhao-create-modal input:disabled {
+  color: #344256;
+  background: #f8fafc;
+  opacity: 1;
+}
+
+.ff-talhao-create-section {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+}
+
+.ff-talhao-create-field {
+  display: grid;
+  gap: 7px;
+}
+
+.ff-talhao-create-field > span,
+.ff-talhao-create-section-title strong {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.ff-talhao-create-field small,
+.ff-talhao-create-section-title span {
+  color: #66758a !important;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ff-talhao-create-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(180px, .95fr);
+  gap: 14px;
+}
+
+.ff-talhao-create-wide,
+.ff-talhao-create-full {
+  grid-column: 1 / -1;
+}
+
+.ff-talhao-create-divider {
+  margin: 20px 0;
+  border: 0;
+  border-top: 1px solid #d8dee8;
+  opacity: 1;
+}
+
+.ff-talhao-create-section-title {
+  display: grid;
+  gap: 3px;
+}
+
 html[data-theme="dark"] .modal-content,
 html[data-theme="dark"] .ff-compact-entry-modal,
 html[data-theme="dark"] .ff-expense-entry-modal {
@@ -8357,10 +8440,35 @@ html[data-theme="dark"] .modal .form-select {
   color: #f8fafc;
 }
 
+html[data-theme="dark"] .ff-talhao-create-modal .modal-content,
+html[data-theme="dark"] .ff-talhao-create-modal .modal-body,
+html[data-theme="dark"] .ff-talhao-create-modal .modal-footer {
+  background: #fff;
+  color: #122033;
+}
+
+html[data-theme="dark"] .ff-talhao-create-modal input,
+html[data-theme="dark"] .ff-talhao-create-modal select,
+html[data-theme="dark"] .ff-talhao-create-modal textarea {
+  border-color: #d6dee8;
+  background: #fff;
+  color: #122033;
+}
+
+html[data-theme="dark"] .ff-talhao-create-modal select:disabled,
+html[data-theme="dark"] .ff-talhao-create-modal input:disabled {
+  color: #344256;
+  background: #f8fafc;
+}
+
 @media (max-width: 576px) {
   .modal-dialog {
     width: calc(100vw - 20px);
     margin: 10px auto;
+  }
+
+  .ff-talhao-create-grid {
+    grid-template-columns: 1fr;
   }
 
   .modal-header,
