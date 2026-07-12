@@ -147,15 +147,13 @@ class TalhaoController extends Controller
         if (! empty($dados['talhao_id'])) {
             $service->atualizarPoligono((int) $dados['talhao_id'], $dados, $this->propriedadeId(), session('usuario_id'));
 
-            return redirect()
-                ->route('talhoes.mapa')
+            return $this->mapaRedirect()
                 ->with('success', 'Desenho do talhão atualizado pelo mapa.');
         }
 
         $service->criarPorPoligono($dados, $this->propriedadeId(), session('usuario_id'));
 
-        return redirect()
-            ->route('talhoes.mapa')
+        return $this->mapaRedirect()
             ->with('success', 'Talhão criado pelo mapa.');
     }
 
@@ -174,10 +172,10 @@ class TalhaoController extends Controller
         } catch (Throwable $exception) {
             report($exception);
 
-            return redirect()->route('talhoes.mapa')->withErrors($exception->getMessage());
+            return $this->mapaRedirect()->withErrors($exception->getMessage());
         }
 
-        return redirect()->route('talhoes.mapa')->with('success', 'Dados do talhao atualizados pelo mapa.');
+        return $this->mapaRedirect()->with('success', 'Dados do talhao atualizados pelo mapa.');
     }
 
     public function salvarExclusao(int $talhao, Request $request, TalhaoService $service): RedirectResponse
@@ -193,10 +191,10 @@ class TalhaoController extends Controller
         } catch (Throwable $exception) {
             report($exception);
 
-            return redirect()->route('talhoes.mapa')->withErrors($exception->getMessage());
+            return $this->mapaRedirect()->withErrors($exception->getMessage());
         }
 
-        return redirect()->route('talhoes.mapa')->with('success', 'Area excluida salva e talhao recalculado.');
+        return $this->mapaRedirect()->with('success', 'Area excluida salva e talhao recalculado.');
     }
 
     public function limparExclusoes(int $talhao, TalhaoService $service): RedirectResponse
@@ -208,10 +206,10 @@ class TalhaoController extends Controller
         } catch (Throwable $exception) {
             report($exception);
 
-            return redirect()->route('talhoes.mapa')->withErrors($exception->getMessage());
+            return $this->mapaRedirect()->withErrors($exception->getMessage());
         }
 
-        return redirect()->route('talhoes.mapa')->with('success', 'Areas excluidas removidas do talhao.');
+        return $this->mapaRedirect()->with('success', 'Areas excluidas removidas do talhao.');
     }
 
     public function salvarPivo(int $talhao, Request $request, TalhaoService $service): RedirectResponse
@@ -229,10 +227,10 @@ class TalhaoController extends Controller
         } catch (Throwable $exception) {
             report($exception);
 
-            return redirect()->route('talhoes.mapa')->withErrors($exception->getMessage());
+            return $this->mapaRedirect()->withErrors($exception->getMessage());
         }
 
-        return redirect()->route('talhoes.mapa')->with('success', 'Pivo salvo no talhao.');
+        return $this->mapaRedirect()->with('success', 'Pivo salvo no talhao.');
     }
 
     public function criarPivo(Request $request, TalhaoService $service): RedirectResponse
@@ -249,10 +247,10 @@ class TalhaoController extends Controller
         } catch (Throwable $e) {
             report($e);
 
-            return redirect()->route('talhoes.mapa')->withErrors($e->getMessage());
+            return $this->mapaRedirect()->withErrors($e->getMessage());
         }
 
-        return redirect()->route('talhoes.mapa')->with('success', 'Pivo salvo como novo talhao.');
+        return $this->mapaRedirect()->with('success', 'Pivo salvo como novo talhao.');
     }
 
     public function removerPivo(int $talhao, TalhaoService $service): RedirectResponse
@@ -264,10 +262,10 @@ class TalhaoController extends Controller
         } catch (Throwable $exception) {
             report($exception);
 
-            return redirect()->route('talhoes.mapa')->withErrors($exception->getMessage());
+            return $this->mapaRedirect()->withErrors($exception->getMessage());
         }
 
-        return redirect()->route('talhoes.mapa')->with('success', 'Pivo removido do talhao.');
+        return $this->mapaRedirect()->with('success', 'Pivo removido do talhao.');
     }
 
     private function validated(Request $request): array
@@ -292,5 +290,12 @@ class TalhaoController extends Controller
     private function propriedadeId(): int
     {
         return app(FarmContext::class)->propertyId();
+    }
+
+    private function mapaRedirect(): RedirectResponse
+    {
+        return redirect()
+            ->route('talhoes.mapa')
+            ->setTargetUrl('/talhoes/mapa');
     }
 }

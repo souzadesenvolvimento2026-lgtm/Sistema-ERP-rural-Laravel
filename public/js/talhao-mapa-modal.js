@@ -417,6 +417,7 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers) {
             mode: drawMode,
             talhaoId: exclusionTalhaoId,
             talhoes,
+            cancelDraft: () => revertCurrent(false),
         });
         drawMode = 'talhao';
         exclusionTalhaoId = null;
@@ -432,6 +433,7 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers) {
     return {
         selectTalhao,
         startExclusion: () => startDraw('exclusao'),
+        cancelEdits: () => revertCurrent(false),
     };
 }
 
@@ -655,8 +657,15 @@ function bindTalhaoEditModal(talhoes, mapTools) {
         document.body.classList.remove('modal-open');
     };
 
+    const cancelModalEditing = () => {
+        mapTools.cancelEdits?.();
+        form.reset();
+        activeTalhaoId = null;
+    };
+
     modalEl.querySelectorAll('[data-bs-dismiss="modal"]').forEach((button) => {
         button.addEventListener('click', () => {
+            cancelModalEditing();
             if (!modal) closeFallback();
         });
     });
@@ -828,7 +837,7 @@ function handleExclusionCreated(points, context) {
         return;
     }
 
-    textarea.focus();
+    context.cancelDraft?.();
 }
 
 function escapeHtml(value) {

@@ -61,6 +61,39 @@ class TalhaoMapUiTest extends TestCase
         $this->assertStringNotContainsString("document.querySelector('.ff-map-hidden-forms')?.scrollIntoView", $javascript);
     }
 
+    public function test_map_forms_use_relative_actions_to_keep_the_current_protocol(): void
+    {
+        $view = $this->contents('resources/views/talhoes/partials/mapa-form.blade.php');
+        $controller = $this->contents('app/Http/Controllers/TalhaoController.php');
+
+        $this->assertStringContainsString("route('talhoes.mapa.store', [], false)", $view);
+        $this->assertStringContainsString("route('talhoes.mapa.pivo.create', [], false)", $view);
+        $this->assertStringContainsString('data-map-action-template="/talhoes/__ID__/mapa/dados"', $view);
+        $this->assertStringContainsString('data-map-action-template="/talhoes/__ID__/mapa/pivo"', $view);
+        $this->assertStringContainsString('data-map-action-template="/talhoes/__ID__/mapa/exclusoes"', $view);
+        $this->assertStringNotContainsString("url('/talhoes/", $view);
+        $this->assertStringContainsString("setTargetUrl('/talhoes/mapa')", $controller);
+        $this->assertStringNotContainsString("redirect()->route('talhoes.mapa')", $controller);
+    }
+
+    public function test_canceling_map_editing_reverts_pending_modal_and_exclusion_drafts(): void
+    {
+        $view = $this->contents('resources/views/talhoes/partials/mapa-form.blade.php');
+
+        $this->assertStringContainsString('data-map-modal-cancel', $view);
+
+        foreach (['public/js/talhao-mapa.js', 'public/js/talhao-mapa-modal.js'] as $script) {
+            $javascript = $this->contents($script);
+
+            $this->assertStringContainsString('cancelDraft: () => revertCurrent(false)', $javascript);
+            $this->assertStringContainsString('cancelEdits: () => revertCurrent(false)', $javascript);
+            $this->assertStringContainsString('const cancelModalEditing = () => {', $javascript);
+            $this->assertStringContainsString('mapTools.cancelEdits?.();', $javascript);
+            $this->assertStringContainsString('context.cancelDraft?.();', $javascript);
+            $this->assertStringNotContainsString('textarea.focus();', $javascript);
+        }
+    }
+
     private function contents(string $relativePath): string
     {
         $path = dirname(__DIR__, 3).DIRECTORY_SEPARATOR.str_replace('/', DIRECTORY_SEPARATOR, $relativePath);

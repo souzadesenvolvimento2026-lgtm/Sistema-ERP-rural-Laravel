@@ -2,7 +2,7 @@
     <div class="panel-head">
         <h2>Novo talhão pelo mapa</h2>
     </div>
-    <form method="POST" action="{{ route('talhoes.mapa.store') }}" class="form-grid" data-polygon-form>
+    <form method="POST" action="{{ route('talhoes.mapa.store', [], false) }}" class="form-grid" data-polygon-form>
         @csrf
         <input type="hidden" name="coordenadas_json" id="polygonCoordinates">
 
@@ -34,7 +34,7 @@
 
 <div class="modal fade ff-talhao-edit-modal" id="mapTalhaoEditModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered ff-talhao-edit-dialog">
-        <form method="POST" class="modal-content ff-talhao-edit-content" data-map-details-form data-map-action-template="{{ url('/talhoes/__ID__/mapa/dados') }}">
+        <form method="POST" class="modal-content ff-talhao-edit-content" data-map-details-form data-map-action-template="/talhoes/__ID__/mapa/dados">
             @csrf
             <div class="modal-header modal-header-green">
                 <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>Editar talhão</h5>
@@ -82,7 +82,7 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn" data-bs-dismiss="modal" data-map-modal-cancel>Cancelar</button>
                 <button type="submit" class="btn primary"><i class="bi bi-shield-check"></i>Salvar</button>
             </div>
         </form>
@@ -96,7 +96,7 @@
 
     <div class="grid two">
         <div class="stack">
-            <form method="POST" data-map-action-template="{{ url('/talhoes/__ID__/mapa/pivo') }}">
+            <form method="POST" data-map-action-template="/talhoes/__ID__/mapa/pivo">
                 @csrf
                 <label>
                     Talhão com pivô
@@ -113,7 +113,7 @@
                 <button class="btn primary" type="submit">Salvar pivô</button>
             </form>
 
-            <form method="POST" data-map-action-template="{{ url('/talhoes/__ID__/mapa/pivo') }}" data-pivo-delete-form>
+            <form method="POST" data-map-action-template="/talhoes/__ID__/mapa/pivo" data-pivo-delete-form>
                 @csrf
                 @method('DELETE')
                 <label>
@@ -130,7 +130,7 @@
         </div>
 
         <div class="stack">
-            <form method="POST" action="{{ route('talhoes.mapa.pivo.create') }}">
+            <form method="POST" action="{{ route('talhoes.mapa.pivo.create', [], false) }}">
                 @csrf
                 <label>Nome do novo pivô <input name="nome" maxlength="80" required></label>
                 <label>Latitude <input name="pivo_lat" inputmode="decimal" required></label>
@@ -142,7 +142,7 @@
     </div>
 
     <div class="grid two">
-        <form method="POST" data-exclusion-form data-map-action-template="{{ url('/talhoes/__ID__/mapa/exclusoes') }}">
+        <form method="POST" data-exclusion-form data-map-action-template="/talhoes/__ID__/mapa/exclusoes">
             @csrf
             <label>
                 Talhão para exclusão
@@ -160,7 +160,7 @@
             <button class="btn primary" type="submit">Salvar área excluída</button>
         </form>
 
-        <form method="POST" data-map-action-template="{{ url('/talhoes/__ID__/mapa/exclusoes') }}">
+        <form method="POST" data-map-action-template="/talhoes/__ID__/mapa/exclusoes">
             @csrf
             @method('DELETE')
             <label>
