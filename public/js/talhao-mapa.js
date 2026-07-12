@@ -5,7 +5,7 @@ window.initTalhaoMapa = function initTalhaoMapa(config) {
     const map = L.map('talhaoMap', {
         zoomControl: true,
         attributionControl: true,
-        preferCanvas: true,
+        preferCanvas: false,
         maxZoom: MAP_MAX_ZOOM,
         zoomSnap: 0.25,
         zoomDelta: 0.5,
@@ -99,6 +99,7 @@ function renderTalhoes(map, talhoes, talhaoLayers, labelsLayer, bounds) {
                 opacity: 0.95,
                 fillColor: '#2d9d5c',
                 fillOpacity: 0.28,
+                fillRule: 'evenodd',
             };
             layer = L.polygon([outer, ...holes], baseStyle).addTo(map);
             layer.ffBaseStyle = baseStyle;
@@ -107,11 +108,11 @@ function renderTalhoes(map, talhoes, talhaoLayers, labelsLayer, bounds) {
 
             holes.forEach((ring) => {
                 L.polygon(ring, {
-                    color: '#f59e0b',
-                    fillColor: '#f59e0b',
-                    fillOpacity: 0.14,
+                    color: polygonColor,
+                    fill: false,
+                    fillOpacity: 0,
                     weight: 2,
-                    dashArray: '6 5',
+                    className: 'ff-map-exclusion-outline',
                     interactive: false,
                 }).addTo(map);
             });
@@ -989,7 +990,7 @@ function handlePolygonCreated(event, context = {}) {
     const points = layerPoints(event.layer);
 
     if (context.mode === 'exclusao') {
-        event.layer.setStyle?.({ color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.18, dashArray: '6 5' });
+        event.layer.setStyle?.({ color: '#f59e0b', fill: false, fillOpacity: 0, dashArray: '6 5', className: 'ff-map-exclusion-outline' });
         handleExclusionCreated(points, context);
         return;
     }

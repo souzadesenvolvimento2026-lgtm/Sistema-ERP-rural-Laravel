@@ -121,6 +121,21 @@ class TalhaoMapUiTest extends TestCase
         }
     }
 
+    public function test_saved_excluded_areas_are_rendered_as_visual_holes_in_the_field(): void
+    {
+        foreach (['public/js/talhao-mapa.js', 'public/js/talhao-mapa-modal.js'] as $script) {
+            $javascript = $this->contents($script);
+
+            $this->assertStringContainsString('preferCanvas: false', $javascript);
+            $this->assertStringContainsString("fillRule: 'evenodd'", $javascript);
+            $this->assertStringContainsString('layer = L.polygon([outer, ...holes], baseStyle).addTo(map);', $javascript);
+            $this->assertStringContainsString('color: polygonColor', $javascript);
+            $this->assertStringContainsString("fill: false", $javascript);
+            $this->assertStringContainsString("className: 'ff-map-exclusion-outline'", $javascript);
+            $this->assertStringNotContainsString("fillOpacity: 0.14", $javascript);
+        }
+    }
+
     public function test_map_forms_use_relative_actions_to_keep_the_current_protocol(): void
     {
         $view = $this->contents('resources/views/talhoes/partials/mapa-form.blade.php');
