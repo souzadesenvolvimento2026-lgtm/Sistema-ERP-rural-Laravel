@@ -53,10 +53,24 @@ final class TalhaoMapCapabilities
             fn (array $safra): string => trim((string) ($safra['nome'] ?? '')),
             $safras,
         ))));
-        $safraLabel = $names === []
-            ? 'a uma safra ativa'
-            : (count($names) === 1 ? 'à safra '.$names[0] : 'às safras '.implode(', ', $names));
+        $statusLabels = array_values(array_unique(array_filter(array_map(
+            fn (array $safra): ?string => match ((string) ($safra['status'] ?? '')) {
+                'planejamento' => 'em planejamento',
+                'em_andamento' => 'em andamento',
+                default => null,
+            },
+            $safras,
+        ))));
+        $statusLabel = $statusLabels === []
+            ? 'em andamento'
+            : (count($statusLabels) === 1 ? $statusLabels[0] : 'em planejamento ou em andamento');
 
-        return 'Este talhão está vinculado '.$safraLabel.' e não pode ter o mapa alterado enquanto houver safra em planejamento ou em andamento.';
+        if ($names === []) {
+            return 'Este talhão não pode ser editado por estar vinculado a uma safra '.$statusLabel.'.';
+        }
+
+        $safraLabel = count($names) === 1 ? 'à safra '.$names[0] : 'às safras '.implode(', ', $names);
+
+        return 'Este talhão não pode ser editado por estar vinculado '.$safraLabel.' '.$statusLabel.'.';
     }
 }

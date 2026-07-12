@@ -20,6 +20,7 @@ class TalhaoMapCapabilitiesTest extends TestCase
             $this->assertFalse($capabilities['can_add_exclusion']);
             $this->assertFalse($capabilities['can_clear_exclusions']);
             $this->assertStringContainsString('Soja 2026', (string) $capabilities['block_reason']);
+            $this->assertStringContainsString('não pode ser editado', (string) $capabilities['block_reason']);
         }
     }
 

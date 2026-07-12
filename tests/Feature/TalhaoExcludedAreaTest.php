@@ -165,7 +165,7 @@ class TalhaoExcludedAreaTest extends TestCase
         $propertyId = $this->propertyId();
         $talhaoId = $this->createTalhaoWithoutPolygon($propertyId);
         $cropName = $this->attachCrop($propertyId, $talhaoId, 'em_andamento');
-        $blockedMessage = 'Este talhão está vinculado à safra '.$cropName.' e não pode ter o mapa alterado enquanto houver safra em planejamento ou em andamento.';
+        $blockedMessage = $this->blockedMapMutationMessage($cropName, 'em_andamento');
         $before = DB::table('talhoes')->where('id', $talhaoId)->first();
 
         $this->withSession($this->sessionData($propertyId))
@@ -422,7 +422,7 @@ class TalhaoExcludedAreaTest extends TestCase
         $this->seedExistingExclusion($talhaoId);
         $this->seedExistingPivot($talhaoId);
         $cropName = $this->attachCrop($propertyId, $talhaoId, $status);
-        $blockedMessage = 'Este talhão está vinculado à safra '.$cropName.' e não pode ter o mapa alterado enquanto houver safra em planejamento ou em andamento.';
+        $blockedMessage = $this->blockedMapMutationMessage($cropName, $status);
         $session = $this->sessionData($propertyId);
         $before = DB::table('talhoes')->where('id', $talhaoId)->first();
 
@@ -518,6 +518,13 @@ class TalhaoExcludedAreaTest extends TestCase
         ]);
 
         return $cropName;
+    }
+
+    private function blockedMapMutationMessage(string $cropName, string $status): string
+    {
+        $statusLabel = $status === 'planejamento' ? 'em planejamento' : 'em andamento';
+
+        return 'Este talhão não pode ser editado por estar vinculado à safra '.$cropName.' '.$statusLabel.'.';
     }
 
     private function seedExistingExclusion(int $talhaoId): void
