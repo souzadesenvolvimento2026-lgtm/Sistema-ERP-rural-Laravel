@@ -2,6 +2,18 @@
 
 Migração do FarmFort ERP Rural para Laravel.
 
+## Atenção para colaboradores
+
+O código mais atualizado de desenvolvimento fica na branch:
+
+```text
+refactor/separacao-regras-negocio
+```
+
+A branch `main` fica reservada para versão estável/aprovada. Para clonar, atualizar, trabalhar e publicar no servidor de desenvolvimento, siga o guia:
+
+- [Guia para colaboradores](docs/colaboradores.md)
+
 ## Projeto
 
 Este repositório contém a versão Laravel do sistema ERP rural, com módulos de painel, financeiro, fiscal, compras, patrimônio, safras, talhões, colheita, estoque, usuários, relatórios e suporte.
