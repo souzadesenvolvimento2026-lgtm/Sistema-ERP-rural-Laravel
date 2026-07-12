@@ -2,15 +2,6 @@
 
 @php
     use App\Support\FarmFormat;
-
-    $selectedSafras = collect($filtros['safra_ids'] ?? [])->map(fn ($id) => (int) $id)->all();
-    $allSelected = count($selectedSafras) > 0 && count($selectedSafras) === $safras->count();
-    $safraButton = $allSelected || count($selectedSafras) === 0
-        ? 'Todas as safras'
-        : $safras->whereIn('id', $selectedSafras)->pluck('descricao')->implode(' + ');
-    $percent = fn ($value) => ($totais['receitas'] ?? 0) > 0 ? number_format(((float) $value / (float) $totais['receitas']) * 100, 2, ',', '.') . '%' : '0,00%';
-    $resultClass = ($totais['resultado'] ?? 0) >= 0 ? 'text-success' : 'text-danger';
-    $resultLabel = ($totais['resultado'] ?? 0) >= 0 ? 'Lucro no período' : 'Prejuízo no período';
 @endphp
 
 @section('content')
@@ -67,12 +58,12 @@
                         <div class="dropdown-menu p-3">
                             <div class="text-muted small mb-2">Marcar safra limpa o período e analisa apenas a(s) safra(s) escolhida(s).</div>
                             <label class="ff-dre-safra-check ff-dre-select-all">
-                                <input type="checkbox" id="dreSelecionarTodasSafras" @checked($allSelected || count($selectedSafras) === 0)>
+                                <input type="checkbox" id="dreSelecionarTodasSafras" @checked($allSafrasSelected || $selectedSafraIds === [])>
                                 <span>Todas as safras<small>Seleciona todos os anos e safras cadastradas nesta fazenda.</small></span>
                             </label>
                             @foreach ($safras as $safra)
                                 <label class="ff-dre-safra-check">
-                                    <input type="checkbox" name="safras[]" value="{{ $safra->id }}" @checked(count($selectedSafras) === 0 || in_array((int) $safra->id, $selectedSafras, true))>
+                                    <input type="checkbox" name="safras[]" value="{{ $safra->id }}" @checked($selectedSafraIds === [] || in_array((int) $safra->id, $selectedSafraIds, true))>
                                     <span>{{ $safra->descricao }}</span>
                                 </label>
                             @endforeach
@@ -98,8 +89,8 @@
 
     <div class="ff-dre-kpis">
         <div class="ff-dre-kpi is-revenue"><span>Receita Total</span><strong class="text-success">{{ FarmFormat::money($totais['receitas']) }}</strong><small>100,00% da receita</small></div>
-        <div class="ff-dre-kpi is-cost"><span>Custos Totais</span><strong class="text-warning">{{ FarmFormat::money($totais['custos']) }}</strong><small>{{ $percent($totais['custos']) }} da receita</small></div>
-        <div class="ff-dre-kpi is-expense"><span>Despesas Totais</span><strong class="text-danger">{{ FarmFormat::money($totais['despesas']) }}</strong><small>{{ $percent($totais['despesas']) }} da receita</small></div>
+        <div class="ff-dre-kpi is-cost"><span>Custos Totais</span><strong class="text-warning">{{ FarmFormat::money($totais['custos']) }}</strong><small>{{ FarmFormat::percentage($totais['custos_percentual_receita']) }} da receita</small></div>
+        <div class="ff-dre-kpi is-expense"><span>Despesas Totais</span><strong class="text-danger">{{ FarmFormat::money($totais['despesas']) }}</strong><small>{{ FarmFormat::percentage($totais['despesas_percentual_receita']) }} da receita</small></div>
         <div class="ff-dre-kpi is-result"><span>Resultado</span><strong class="{{ $resultClass }}">{{ FarmFormat::money($totais['resultado']) }}</strong><small>{{ $resultLabel }}</small></div>
         <div class="ff-dre-kpi is-margin"><span>Margem %</span><strong class="{{ $resultClass }}">{{ number_format($totais['margem'], 2, ',', '.') }}%</strong><small>Resultado sobre receita</small></div>
     </div>
@@ -110,9 +101,9 @@
                 <i class="bi bi-bar-chart-line me-2"></i>Receitas, custos, despesas e resultado
                 <div class="text-muted small mt-1">Gráfico da análise por safras selecionadas.</div>
             </div>
-            <span class="ff-dre-result-pill {{ ($totais['resultado'] ?? 0) >= 0 ? 'profit' : 'loss' }}">
-                <i class="bi {{ ($totais['resultado'] ?? 0) >= 0 ? 'bi-graph-up-arrow' : 'bi-graph-down-arrow' }}"></i>
-                {{ ($totais['resultado'] ?? 0) >= 0 ? 'Lucro' : 'Prejuízo' }}: {{ FarmFormat::money($totais['resultado']) }}
+            <span class="ff-dre-result-pill {{ $resultTone }}">
+                <i class="bi {{ $resultIcon }}"></i>
+                {{ $resultName }}: {{ FarmFormat::money($totais['resultado']) }}
             </span>
         </div>
         <div class="card-body">
@@ -143,28 +134,28 @@
                     <tr class="ff-dre-detail-row" data-dre-detail="receitas">
                         <td class="ff-dre-detail-label">{{ $row->categoria }}</td>
                         <td class="text-end text-success">{{ FarmFormat::money($row->valor_total) }}</td>
-                        <td class="text-end">{{ $percent($row->valor_total) }}</td>
+                        <td class="text-end">{{ FarmFormat::percentage($row->percentual_receita) }}</td>
                         <td></td>
                     </tr>
                 @endforeach
                 <tr>
                     <td><strong>Custos diretos</strong></td>
                     <td class="text-end text-warning fw-bold">{{ FarmFormat::money($totais['custos']) }}</td>
-                    <td class="text-end">{{ $percent($totais['custos']) }}</td>
+                    <td class="text-end">{{ FarmFormat::percentage($totais['custos_percentual_receita']) }}</td>
                     <td class="text-end"><button type="button" class="ff-dre-toggle" data-dre-toggle="custos"><i class="bi bi-chevron-right"></i> Expandir</button></td>
                 </tr>
                 @foreach ($custos as $row)
                     <tr class="ff-dre-detail-row" data-dre-detail="custos">
                         <td class="ff-dre-detail-label">{{ $row->categoria }}</td>
                         <td class="text-end text-warning">{{ FarmFormat::money($row->valor_total) }}</td>
-                        <td class="text-end">{{ $percent($row->valor_total) }}</td>
+                        <td class="text-end">{{ FarmFormat::percentage($row->percentual_receita) }}</td>
                         <td></td>
                     </tr>
                 @endforeach
                 <tr>
                     <td><strong>Despesas</strong></td>
                     <td class="text-end text-danger fw-bold">{{ FarmFormat::money($totais['despesas']) }}</td>
-                    <td class="text-end">{{ $percent($totais['despesas']) }}</td>
+                    <td class="text-end">{{ FarmFormat::percentage($totais['despesas_percentual_receita']) }}</td>
                     <td class="text-end"><button type="button" class="ff-dre-toggle" data-dre-toggle="despesas"><i class="bi bi-chevron-right"></i> Expandir</button></td>
                 </tr>
                 @foreach ($despesas as $row)
@@ -176,7 +167,7 @@
                             @endif
                         </td>
                         <td class="text-end text-danger">{{ FarmFormat::money($row->valor_total) }}</td>
-                        <td class="text-end">{{ $percent($row->valor_total) }}</td>
+                        <td class="text-end">{{ FarmFormat::percentage($row->percentual_receita) }}</td>
                         <td></td>
                     </tr>
                 @endforeach

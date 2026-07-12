@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Domain\Finance\FinancialMetrics;
 use App\Support\FarmContext;
 use App\Support\FarmFormat;
 use Illuminate\Support\Collection;
@@ -9,6 +10,8 @@ use Illuminate\Support\Facades\DB;
 
 class RelatorioFinanceiroService
 {
+    public function __construct(private readonly FinancialMetrics $metrics) {}
+
     public function dre(array $filtros = []): array
     {
         $propertyId = $this->propertyId();
@@ -18,16 +21,20 @@ class RelatorioFinanceiroService
         $despesasClassificadas = $this->despesasClassificadasDre($propertyId, $filtros);
         $custos = $despesasClassificadas['custos'];
         $despesas = $despesasClassificadas['despesas'];
-        $totalReceitas = (float)$receitas->sum('valor_total');
-        $totalCustos = (float)$custos->sum('valor_total');
-        $totalDespesas = (float)$despesas->sum('valor_total');
+        $totalReceitas = (float) $receitas->sum('valor_total');
+        $totalCustos = (float) $custos->sum('valor_total');
+        $totalDespesas = (float) $despesas->sum('valor_total');
         $resultado = $totalReceitas - $totalCustos - $totalDespesas;
-        $margem = $totalReceitas > 0 ? ($resultado / $totalReceitas) * 100 : 0;
-        $propertyName = (string)(DB::table('propriedades')->where('id', $propertyId)->value('nome') ?: 'Propriedade');
+        $margem = $this->metrics->percentage($resultado, $totalReceitas);
+        $propertyName = (string) (DB::table('propriedades')->where('id', $propertyId)->value('nome') ?: 'Propriedade');
         $safrasSelecionadas = $safras->whereIn('id', $filtros['safra_ids'] ?? [])->values();
         $contextoSafras = $safrasSelecionadas->isNotEmpty()
             ? $safrasSelecionadas->pluck('descricao')->implode(' + ')
             : 'Periodo personalizado';
+        $seletorSafras = $this->safraSelector($safras, $filtros['safra_ids'] ?? []);
+        $receitas = $this->withRevenuePercentages($receitas, $totalReceitas);
+        $custos = $this->withRevenuePercentages($custos, $totalReceitas);
+        $despesas = $this->withRevenuePercentages($despesas, $totalReceitas);
 
         return [
             'activeModule' => 'financeiro',
@@ -38,7 +45,7 @@ class RelatorioFinanceiroService
                 ['label' => 'Custos', 'value' => FarmFormat::money($totalCustos), 'tone' => 'warning'],
                 ['label' => 'Despesas', 'value' => FarmFormat::money($totalDespesas), 'tone' => 'danger'],
                 ['label' => 'Resultado', 'value' => FarmFormat::money($resultado), 'tone' => $resultado >= 0 ? 'success' : 'danger'],
-                ['label' => 'Margem', 'value' => $totalReceitas > 0 ? number_format(($resultado / $totalReceitas) * 100, 2, ',', '.') . '%' : '0,00%', 'tone' => $resultado >= 0 ? 'success' : 'danger'],
+                ['label' => 'Margem', 'value' => $totalReceitas > 0 ? number_format(($resultado / $totalReceitas) * 100, 2, ',', '.').'%' : '0,00%', 'tone' => $resultado >= 0 ? 'success' : 'danger'],
             ],
             'receitas' => $receitas,
             'custos' => $custos,
@@ -47,12 +54,20 @@ class RelatorioFinanceiroService
             'safras' => $safras,
             'propertyName' => $propertyName,
             'contextoSafras' => $contextoSafras,
+            ...$seletorSafras,
+            'resultClass' => $resultado >= 0 ? 'text-success' : 'text-danger',
+            'resultLabel' => $resultado >= 0 ? 'Lucro no período' : 'Prejuízo no período',
+            'resultTone' => $resultado >= 0 ? 'profit' : 'loss',
+            'resultIcon' => $resultado >= 0 ? 'bi-graph-up-arrow' : 'bi-graph-down-arrow',
+            'resultName' => $resultado >= 0 ? 'Lucro' : 'Prejuízo',
             'totais' => [
                 'receitas' => $totalReceitas,
                 'custos' => $totalCustos,
                 'despesas' => $totalDespesas,
                 'resultado' => $resultado,
                 'margem' => $margem,
+                'custos_percentual_receita' => $this->metrics->percentage($totalCustos, $totalReceitas),
+                'despesas_percentual_receita' => $this->metrics->percentage($totalDespesas, $totalReceitas),
             ],
             'chart' => [
                 'labels' => ['Receitas', 'Custos', 'Despesas', 'Resultado'],
@@ -67,17 +82,25 @@ class RelatorioFinanceiroService
         $safras = $this->safrasDaPropriedade($propertyId);
         $filtros = $this->normalizarFiltrosFluxo($propertyId, $filtros);
         $rows = $this->fluxoMensal($propertyId, $filtros);
-        $totalEntradas = (float)$rows->sum('receitas_valor');
-        $totalSaidas = (float)$rows->sum('despesas_valor');
-        $totalRecebido = (float)$rows->sum('recebido_valor');
-        $totalPago = (float)$rows->sum('pago_valor');
+        $totalEntradas = (float) $rows->sum('receitas_valor');
+        $totalSaidas = (float) $rows->sum('despesas_valor');
+        $totalRecebido = (float) $rows->sum('recebido_valor');
+        $totalPago = (float) $rows->sum('pago_valor');
         $saldoPrevisto = $totalEntradas - $totalSaidas;
         $saldoRealizado = $totalRecebido - $totalPago;
-        $propertyName = (string)(DB::table('propriedades')->where('id', $propertyId)->value('nome') ?: 'Propriedade');
+        $propertyName = (string) (DB::table('propriedades')->where('id', $propertyId)->value('nome') ?: 'Propriedade');
         $safrasSelecionadas = $safras->whereIn('id', $filtros['safra_ids'] ?? [])->values();
         $contextoSafras = $safrasSelecionadas->isNotEmpty()
             ? $safrasSelecionadas->pluck('descricao')->implode(' + ')
             : 'Periodo personalizado';
+        $seletorSafras = $this->safraSelector($safras, $filtros['safra_ids'] ?? []);
+        $rows = $rows->map(function ($row) {
+            $row->saldo_previsto_classe = (float) $row->saldo_previsto_valor >= 0 ? 'text-success' : 'text-danger';
+            $row->saldo_realizado_classe = (float) $row->saldo_realizado_valor >= 0 ? 'text-success' : 'text-danger';
+            $row->acumulado_classe = (float) $row->acumulado_valor >= 0 ? 'text-success' : 'text-danger';
+
+            return $row;
+        });
 
         return [
             'activeModule' => 'financeiro',
@@ -87,7 +110,7 @@ class RelatorioFinanceiroService
                 ['label' => 'Entradas', 'value' => FarmFormat::money($totalEntradas), 'tone' => 'success'],
                 ['label' => 'Saídas', 'value' => FarmFormat::money($totalSaidas), 'tone' => 'danger'],
                 ['label' => 'Saldo', 'value' => FarmFormat::money($totalEntradas - $totalSaidas), 'tone' => $totalEntradas >= $totalSaidas ? 'success' : 'danger'],
-                ['label' => 'Meses', 'value' => (string)$rows->count(), 'tone' => 'success'],
+                ['label' => 'Meses', 'value' => (string) $rows->count(), 'tone' => 'success'],
             ],
             'columns' => [
                 'mes' => 'Mês',
@@ -102,7 +125,7 @@ class RelatorioFinanceiroService
                 ['label' => 'Despesas previstas', 'value' => FarmFormat::money($totalSaidas), 'tone' => 'danger'],
                 ['label' => 'Saldo previsto', 'value' => FarmFormat::money($totalEntradas - $totalSaidas), 'tone' => $totalEntradas >= $totalSaidas ? 'success' : 'danger'],
                 ['label' => 'Saldo realizado', 'value' => FarmFormat::money($totalRecebido - $totalPago), 'tone' => $totalRecebido >= $totalPago ? 'success' : 'danger'],
-                ['label' => 'Meses', 'value' => (string)$rows->count(), 'tone' => 'success'],
+                ['label' => 'Meses', 'value' => (string) $rows->count(), 'tone' => 'success'],
             ],
             'columns' => [
                 'mes' => 'Mes',
@@ -118,6 +141,7 @@ class RelatorioFinanceiroService
             'safras' => $safras,
             'propertyName' => $propertyName,
             'contextoSafras' => $contextoSafras,
+            ...$seletorSafras,
             'totais' => [
                 'receitas' => $totalEntradas,
                 'despesas' => $totalSaidas,
@@ -125,6 +149,8 @@ class RelatorioFinanceiroService
                 'pago' => $totalPago,
                 'saldo_previsto' => $saldoPrevisto,
                 'saldo_realizado' => $saldoRealizado,
+                'saldo_previsto_classe' => $saldoPrevisto >= 0 ? 'text-success' : 'text-danger',
+                'saldo_realizado_classe' => $saldoRealizado >= 0 ? 'text-success' : 'text-danger',
             ],
             'chart' => [
                 'labels' => $rows->pluck('mes_label')->all(),
@@ -147,14 +173,14 @@ class RelatorioFinanceiroService
         foreach ($orcado as $row) {
             $categorias[$row->categoria] = [
                 'categoria' => $row->categoria,
-                'orcado' => (float)$row->valor_total,
+                'orcado' => (float) $row->valor_total,
                 'realizado' => 0.0,
             ];
         }
 
         foreach ($realizado as $row) {
             $item = $categorias[$row->categoria] ?? ['categoria' => $row->categoria, 'orcado' => 0.0, 'realizado' => 0.0];
-            $item['realizado'] += (float)$row->valor_total;
+            $item['realizado'] += (float) $row->valor_total;
             $categorias[$row->categoria] = $item;
         }
 
@@ -163,16 +189,16 @@ class RelatorioFinanceiroService
                 $diferenca = $row['realizado'] - $row['orcado'];
                 $execucao = $row['orcado'] > 0 ? ($row['realizado'] / $row['orcado']) * 100 : 0;
 
-                return (object)[
+                return (object) [
                     'categoria' => $row['categoria'],
-                    'orcado_valor' => (float)$row['orcado'],
-                    'realizado_valor' => (float)$row['realizado'],
-                    'diferenca_valor' => (float)$diferenca,
-                    'execucao_valor' => (float)$execucao,
+                    'orcado_valor' => (float) $row['orcado'],
+                    'realizado_valor' => (float) $row['realizado'],
+                    'diferenca_valor' => (float) $diferenca,
+                    'execucao_valor' => (float) $execucao,
                     'orcado' => FarmFormat::money($row['orcado']),
                     'realizado' => FarmFormat::money($row['realizado']),
                     'diferenca' => FarmFormat::money($diferenca),
-                    'execucao' => number_format($execucao, 2, ',', '.') . '%',
+                    'execucao' => number_format($execucao, 2, ',', '.').'%',
                     'peso' => abs($row['orcado']) + abs($row['realizado']),
                 ];
             })
@@ -180,23 +206,34 @@ class RelatorioFinanceiroService
             ->values()
             ->map(function ($row) {
                 unset($row->peso);
+
                 return $row;
             });
 
-        $totalOrcado = (float)$orcado->sum('valor_total');
-        $totalRealizado = (float)$realizado->sum('valor_total');
+        $totalOrcado = (float) $orcado->sum('valor_total');
+        $totalRealizado = (float) $realizado->sum('valor_total');
         $diferenca = $totalRealizado - $totalOrcado;
 
         return [
             'activeModule' => 'financeiro',
             'title' => 'Orçado x Realizado',
             'subtitle' => 'Comparativo entre projeções financeiras, receitas e despesas já lançadas.',
-            'propertyName' => (string)(DB::table('propriedades')->where('id', $propertyId)->value('nome') ?: 'Propriedade'),
+            'propertyName' => (string) (DB::table('propriedades')->where('id', $propertyId)->value('nome') ?: 'Propriedade'),
+            'filtros' => $filtros,
+            'safras' => DB::table('safras')
+                ->where('propriedade_id', $propertyId)
+                ->orderByDesc('data_inicio')
+                ->get(['id', 'descricao']),
+            'categoriasFiltro' => DB::table('categorias')
+                ->where('ativo', 1)
+                ->whereNull('categoria_pai_id')
+                ->orderBy('nome')
+                ->get(['id', 'nome']),
             'cards' => [
                 ['label' => 'Orçado', 'value' => FarmFormat::money($totalOrcado), 'tone' => 'success'],
                 ['label' => 'Realizado', 'value' => FarmFormat::money($totalRealizado), 'tone' => 'warning'],
                 ['label' => 'Diferença', 'value' => FarmFormat::money($diferenca), 'tone' => $diferenca >= 0 ? 'success' : 'danger'],
-                ['label' => 'Execução', 'value' => $totalOrcado > 0 ? number_format(($totalRealizado / $totalOrcado) * 100, 2, ',', '.') . '%' : '0,00%', 'tone' => 'success'],
+                ['label' => 'Execução', 'value' => $totalOrcado > 0 ? number_format(($totalRealizado / $totalOrcado) * 100, 2, ',', '.').'%' : '0,00%', 'tone' => 'success'],
             ],
             'columns' => [
                 'categoria' => 'Categoria',
@@ -238,11 +275,14 @@ class RelatorioFinanceiroService
 
         $rows = $this->linhasCategorias($propertyId, $filtros);
 
-        $total = (float)$rows->sum('total');
+        $total = (float) $rows->sum('total');
         $rows = $rows->map(function ($row) use ($total) {
-            $row->percentual = $total > 0 ? ((float)$row->total / $total) * 100 : 0;
+            $row->percentual = $this->metrics->percentage($row->total, $total);
+            $row->progresso_percentual = min(100.0, max(0.0, $row->percentual));
+
             return $row;
         });
+        $tipoTotais = $rows->groupBy('tipo')->map(fn ($itens) => (float) $itens->sum('total'))->sortDesc();
 
         return [
             'activeModule' => 'relatorios',
@@ -258,11 +298,18 @@ class RelatorioFinanceiroService
                 ->orderBy('nome')
                 ->get(['id', 'nome']),
             'rows' => $rows,
+            'chart' => [
+                'categoria_labels' => $rows->pluck('nome')->values()->all(),
+                'categoria_values' => $rows->pluck('total')->map(fn ($value) => (float) $value)->values()->all(),
+                'categoria_colors' => $rows->pluck('cor')->map(fn ($color) => $color ?: '#35c49a')->values()->all(),
+                'tipo_labels' => $tipoTotais->keys()->values()->all(),
+                'tipo_values' => $tipoTotais->values()->all(),
+            ],
             'cards' => [
                 ['label' => 'Total', 'value' => FarmFormat::money($total), 'tone' => 'danger'],
-                ['label' => $filtros['tipo'] === 'receitas' ? 'Recebido' : 'Pago', 'value' => FarmFormat::money((float)$rows->sum('pago')), 'tone' => 'success'],
-                ['label' => 'Pendente', 'value' => FarmFormat::money((float)$rows->sum('pendente')), 'tone' => 'warning'],
-                ['label' => 'Categorias', 'value' => (string)$rows->count(), 'tone' => 'success'],
+                ['label' => $filtros['tipo'] === 'receitas' ? 'Recebido' : 'Pago', 'value' => FarmFormat::money((float) $rows->sum('pago')), 'tone' => 'success'],
+                ['label' => 'Pendente', 'value' => FarmFormat::money((float) $rows->sum('pendente')), 'tone' => 'warning'],
+                ['label' => 'Categorias', 'value' => (string) $rows->count(), 'tone' => 'success'],
             ],
         ];
     }
@@ -270,18 +317,18 @@ class RelatorioFinanceiroService
     private function filtrosCategorias(array $entrada, Collection $safras, Collection $categorias): array
     {
         $tipo = in_array($entrada['tipo'] ?? '', ['custos_despesas', 'despesas', 'receitas'], true)
-            ? (string)$entrada['tipo']
+            ? (string) $entrada['tipo']
             : 'custos_despesas';
-        $safraId = (int)($entrada['safra_id'] ?? 0);
-        if ($safraId > 0 && !$safras->contains('id', $safraId)) {
+        $safraId = (int) ($entrada['safra_id'] ?? 0);
+        if ($safraId > 0 && ! $safras->contains('id', $safraId)) {
             $safraId = 0;
         }
-        $categoriaId = (int)($entrada['categoria_id'] ?? 0);
-        if ($categoriaId > 0 && !$categorias->contains('id', $categoriaId)) {
+        $categoriaId = (int) ($entrada['categoria_id'] ?? 0);
+        if ($categoriaId > 0 && ! $categorias->contains('id', $categoriaId)) {
             $categoriaId = 0;
         }
-        $inicio = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($entrada['data_inicio'] ?? '')) ? (string)$entrada['data_inicio'] : '';
-        $fim = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($entrada['data_fim'] ?? '')) ? (string)$entrada['data_fim'] : '';
+        $inicio = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($entrada['data_inicio'] ?? '')) ? (string) $entrada['data_inicio'] : '';
+        $fim = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($entrada['data_fim'] ?? '')) ? (string) $entrada['data_fim'] : '';
         if ($inicio !== '' && $fim !== '' && $fim < $inicio) {
             [$inicio, $fim] = [$fim, $inicio];
         }
@@ -290,7 +337,7 @@ class RelatorioFinanceiroService
             'tipo' => $tipo,
             'safra_id' => $safraId,
             'categoria_id' => $categoriaId,
-            'talhao_id' => $tipo === 'receitas' ? 0 : (int)($entrada['talhao_id'] ?? 0),
+            'talhao_id' => $tipo === 'receitas' ? 0 : (int) ($entrada['talhao_id'] ?? 0),
             'data_inicio' => $inicio,
             'data_fim' => $fim,
         ];
@@ -350,22 +397,22 @@ class RelatorioFinanceiroService
         $safraId = $this->safraSelecionada($safras, $safraId);
         $safra = $safras->firstWhere('id', $safraId);
 
-        $despesas = (float)DB::table('despesas')
+        $despesas = (float) DB::table('despesas')
             ->where('propriedade_id', $propertyId)
             ->where('safra_id', $safraId)
             ->where('status_pagamento', '!=', 'cancelado')
             ->where('status_aprovacao', 'aprovada')
             ->sum('valor_total');
 
-        $receitas = (float)DB::table('receitas')
+        $receitas = (float) DB::table('receitas')
             ->where('propriedade_id', $propertyId)
             ->where('safra_id', $safraId)
             ->where('status', '!=', 'cancelado')
             ->sum('valor_total');
 
         $resultado = $receitas - $despesas;
-        $area = (float)($safra->area_plantada ?? 0);
-        $estimada = $area * (float)($safra->producao_estimada ?? 0);
+        $area = (float) ($safra->area_plantada ?? 0);
+        $estimada = $area * (float) ($safra->producao_estimada ?? 0);
 
         return [
             'activeModule' => 'relatorios',
@@ -380,13 +427,13 @@ class RelatorioFinanceiroService
                 ['label' => 'Despesas', 'value' => FarmFormat::money($despesas), 'tone' => 'danger'],
                 ['label' => 'Receitas', 'value' => FarmFormat::money($receitas), 'tone' => 'success'],
                 ['label' => 'Resultado', 'value' => FarmFormat::money($resultado), 'tone' => $resultado >= 0 ? 'success' : 'danger'],
-                ['label' => 'ROI', 'value' => $despesas > 0 ? number_format(($resultado / $despesas) * 100, 1, ',', '.') . '%' : '0,0%', 'tone' => $resultado >= 0 ? 'success' : 'danger'],
-                ['label' => 'Área', 'value' => number_format($area, 2, ',', '.') . ' ha', 'tone' => 'success'],
-                ['label' => 'Produção estimada', 'value' => number_format($estimada, 2, ',', '.') . ' sc', 'tone' => 'success'],
+                ['label' => 'ROI', 'value' => $despesas > 0 ? number_format(($resultado / $despesas) * 100, 1, ',', '.').'%' : '0,0%', 'tone' => $resultado >= 0 ? 'success' : 'danger'],
+                ['label' => 'Área', 'value' => number_format($area, 2, ',', '.').' ha', 'tone' => 'success'],
+                ['label' => 'Produção estimada', 'value' => number_format($estimada, 2, ',', '.').' sc', 'tone' => 'success'],
                 ['label' => 'Custo/ha', 'value' => $area > 0 ? FarmFormat::money($despesas / $area) : 'R$ 0,00', 'tone' => 'warning'],
                 ['label' => 'Receita/ha', 'value' => $area > 0 ? FarmFormat::money($receitas / $area) : 'R$ 0,00', 'tone' => 'success'],
                 ['label' => 'Lucro/ha', 'value' => $area > 0 ? FarmFormat::money($resultado / $area) : 'R$ 0,00', 'tone' => $resultado >= 0 ? 'success' : 'danger'],
-                ['label' => 'Margem liquida', 'value' => $receitas > 0 ? number_format(($resultado / $receitas) * 100, 1, ',', '.') . '%' : '0,0%', 'tone' => $resultado >= 0 ? 'success' : 'danger'],
+                ['label' => 'Margem liquida', 'value' => $receitas > 0 ? number_format(($resultado / $receitas) * 100, 1, ',', '.').'%' : '0,0%', 'tone' => $resultado >= 0 ? 'success' : 'danger'],
             ],
         ];
     }
@@ -416,11 +463,12 @@ class RelatorioFinanceiroService
                 DB::raw('COALESCE(SUM(d.valor_total), 0) as total'),
             ])
             ->map(function ($row) {
-                $row->custo_ha = (float)$row->area > 0 ? (float)$row->total / (float)$row->area : 0;
+                $row->custo_ha = $this->metrics->perUnit($row->total, $row->area);
+
                 return $row;
             });
 
-        $total = (float)$rows->sum('total');
+        $total = (float) $rows->sum('total');
 
         return [
             'activeModule' => 'relatorios',
@@ -429,11 +477,15 @@ class RelatorioFinanceiroService
             'safras' => $safras,
             'safraId' => $safraId,
             'rows' => $rows,
+            'chart' => [
+                'labels' => $rows->pluck('nome')->values()->all(),
+                'values' => $rows->pluck('custo_ha')->map(fn ($value) => (float) $value)->values()->all(),
+            ],
             'cards' => [
                 ['label' => 'Total', 'value' => FarmFormat::money($total), 'tone' => 'danger'],
-                ['label' => 'Talhões', 'value' => (string)$rows->count(), 'tone' => 'success'],
-                ['label' => 'Área total', 'value' => number_format((float)$rows->sum('area'), 2, ',', '.') . ' ha', 'tone' => 'success'],
-                ['label' => 'Média R$/ha', 'value' => $rows->sum('area') > 0 ? FarmFormat::money($total / (float)$rows->sum('area')) : 'R$ 0,00', 'tone' => 'warning'],
+                ['label' => 'Talhões', 'value' => (string) $rows->count(), 'tone' => 'success'],
+                ['label' => 'Área total', 'value' => number_format((float) $rows->sum('area'), 2, ',', '.').' ha', 'tone' => 'success'],
+                ['label' => 'Média R$/ha', 'value' => $rows->sum('area') > 0 ? FarmFormat::money($total / (float) $rows->sum('area')) : 'R$ 0,00', 'tone' => 'warning'],
             ],
         ];
     }
@@ -445,28 +497,30 @@ class RelatorioFinanceiroService
         $safraId = $this->safraSelecionada($safras, $safraId);
         $safra = $safras->firstWhere('id', $safraId);
 
-        $totalDespesas = $safraId ? (float)DB::table('despesas')
+        $totalDespesas = $safraId ? (float) DB::table('despesas')
             ->where('propriedade_id', $propertyId)
             ->where('safra_id', $safraId)
             ->where('status_pagamento', '!=', 'cancelado')
             ->where('status_aprovacao', 'aprovada')
             ->sum('valor_total') : 0.0;
 
-        $totalReceitas = $safraId ? (float)DB::table('receitas')
+        $totalReceitas = $safraId ? (float) DB::table('receitas')
             ->where('propriedade_id', $propertyId)
             ->where('safra_id', $safraId)
             ->where('status', '!=', 'cancelado')
             ->sum('valor_total') : 0.0;
 
-        $area = (float)($safra->area_plantada ?? 0);
-        $producaoEstimada = (float)($safra->producao_estimada ?? 0);
-        $producaoRealizada = (float)($safra->producao_realizada ?? 0);
-        $precoEstimado = (float)($safra->preco_estimado ?? 0);
+        $area = (float) ($safra->area_plantada ?? 0);
+        $producaoEstimada = (float) ($safra->producao_estimada ?? 0);
+        $producaoRealizada = (float) ($safra->producao_realizada ?? 0);
+        $precoEstimado = (float) ($safra->preco_estimado ?? 0);
         $producaoEstimadaTotal = $area * $producaoEstimada;
         $lucro = $totalReceitas - $totalDespesas;
         $roi = $totalDespesas > 0 ? ($lucro / $totalDespesas) * 100 : 0;
         $margem = $totalReceitas > 0 ? ($lucro / $totalReceitas) * 100 : 0;
         $produtividade = $area > 0 && $producaoRealizada > 0 ? $producaoRealizada / $area : $producaoEstimada;
+
+        $comparativo = $this->comparativoSafras($propertyId);
 
         return [
             'activeModule' => 'relatorios',
@@ -475,17 +529,22 @@ class RelatorioFinanceiroService
             'safras' => $safras,
             'safraId' => $safraId,
             'safra' => $safra,
-            'comparativo' => $this->comparativoSafras($propertyId),
+            'comparativo' => $comparativo,
+            'comparativoChart' => [
+                'labels' => $comparativo->pluck('descricao')->values()->all(),
+                'despesas' => $comparativo->pluck('total_despesas')->map(fn ($value) => (float) $value)->values()->all(),
+                'receitas' => $comparativo->pluck('total_receitas')->map(fn ($value) => (float) $value)->values()->all(),
+            ],
             'cards' => [
-                ['label' => 'ROI', 'value' => number_format($roi, 1, ',', '.') . '%', 'tone' => $roi >= 0 ? 'success' : 'danger'],
-                ['label' => 'Margem liquida', 'value' => number_format($margem, 1, ',', '.') . '%', 'tone' => $margem >= 0 ? 'success' : 'danger'],
+                ['label' => 'ROI', 'value' => number_format($roi, 1, ',', '.').'%', 'tone' => $roi >= 0 ? 'success' : 'danger'],
+                ['label' => 'Margem liquida', 'value' => number_format($margem, 1, ',', '.').'%', 'tone' => $margem >= 0 ? 'success' : 'danger'],
                 ['label' => 'Lucro', 'value' => FarmFormat::money($lucro), 'tone' => $lucro >= 0 ? 'success' : 'danger'],
-                ['label' => 'Ponto de equilibrio', 'value' => $precoEstimado > 0 ? number_format($totalDespesas / $precoEstimado, 0, ',', '.') . ' sc' : '0 sc', 'tone' => 'warning'],
-                ['label' => 'Custo por ha', 'value' => $area > 0 ? FarmFormat::money($totalDespesas / $area) . '/ha' : 'R$ 0,00/ha', 'tone' => 'warning'],
-                ['label' => 'Receita por ha', 'value' => $area > 0 ? FarmFormat::money($totalReceitas / $area) . '/ha' : 'R$ 0,00/ha', 'tone' => 'success'],
-                ['label' => 'Lucro por ha', 'value' => $area > 0 ? FarmFormat::money($lucro / $area) . '/ha' : 'R$ 0,00/ha', 'tone' => $lucro >= 0 ? 'success' : 'danger'],
+                ['label' => 'Ponto de equilibrio', 'value' => $precoEstimado > 0 ? number_format($totalDespesas / $precoEstimado, 0, ',', '.').' sc' : '0 sc', 'tone' => 'warning'],
+                ['label' => 'Custo por ha', 'value' => $area > 0 ? FarmFormat::money($totalDespesas / $area).'/ha' : 'R$ 0,00/ha', 'tone' => 'warning'],
+                ['label' => 'Receita por ha', 'value' => $area > 0 ? FarmFormat::money($totalReceitas / $area).'/ha' : 'R$ 0,00/ha', 'tone' => 'success'],
+                ['label' => 'Lucro por ha', 'value' => $area > 0 ? FarmFormat::money($lucro / $area).'/ha' : 'R$ 0,00/ha', 'tone' => $lucro >= 0 ? 'success' : 'danger'],
                 ['label' => 'Custo por saca', 'value' => $this->custoPorSaca($totalDespesas, $producaoRealizada, $producaoEstimadaTotal), 'tone' => 'warning'],
-                ['label' => 'Produtividade', 'value' => number_format($produtividade, 1, ',', '.') . ' sc/ha', 'tone' => 'success'],
+                ['label' => 'Produtividade', 'value' => number_format($produtividade, 1, ',', '.').' sc/ha', 'tone' => 'success'],
                 ['label' => 'Receita estimada', 'value' => FarmFormat::money($producaoEstimadaTotal * $precoEstimado), 'tone' => 'success'],
             ],
         ];
@@ -494,33 +553,33 @@ class RelatorioFinanceiroService
     private function normalizarFiltrosDre(int $propertyId, array $filtros): array
     {
         $safraIds = collect($filtros['safras'] ?? [])
-            ->map(fn ($id) => (int)$id)
+            ->map(fn ($id) => (int) $id)
             ->filter(fn ($id) => $id > 0)
             ->values()
             ->all();
 
-        if (!$safraIds && (int)($filtros['safra_id'] ?? 0) > 0) {
-            $safraIds = [(int)$filtros['safra_id']];
+        if (! $safraIds && (int) ($filtros['safra_id'] ?? 0) > 0) {
+            $safraIds = [(int) $filtros['safra_id']];
         }
 
         $dataInicio = $this->dataFiltro($filtros['data_inicio'] ?? null);
         $dataFim = $this->dataFiltro($filtros['data_fim'] ?? null);
-        $periodoInformado = (bool)($dataInicio || $dataFim);
+        $periodoInformado = (bool) ($dataInicio || $dataFim);
 
-        if ($periodoInformado && !($filtros['safras'] ?? []) && !(int)($filtros['safra_id'] ?? 0)) {
+        if ($periodoInformado && ! ($filtros['safras'] ?? []) && ! (int) ($filtros['safra_id'] ?? 0)) {
             $safraIds = [];
         } elseif ($safraIds) {
             $safraIds = DB::table('safras')
                 ->where('propriedade_id', $propertyId)
                 ->whereIn('id', $safraIds)
                 ->pluck('id')
-                ->map(fn ($id) => (int)$id)
+                ->map(fn ($id) => (int) $id)
                 ->all();
         } else {
             $safraIds = DB::table('safras')
                 ->where('propriedade_id', $propertyId)
                 ->pluck('id')
-                ->map(fn ($id) => (int)$id)
+                ->map(fn ($id) => (int) $id)
                 ->all();
         }
 
@@ -593,8 +652,8 @@ class RelatorioFinanceiroService
         $despesas = collect();
 
         foreach ($rows as $row) {
-            $row->grupo_dre = $this->grupoDespesaDre((int)$row->categoria_id, (string)$row->categoria);
-            if ($this->categoriaCustoDireto((int)$row->categoria_id, (string)$row->categoria)) {
+            $row->grupo_dre = $this->grupoDespesaDre((int) $row->categoria_id, (string) $row->categoria);
+            if ($this->categoriaCustoDireto((int) $row->categoria_id, (string) $row->categoria)) {
                 $custos->push($row);
             } else {
                 $despesas->push($row);
@@ -650,24 +709,24 @@ class RelatorioFinanceiroService
         $ascii = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $texto);
         $base = $ascii !== false ? $ascii : $texto;
 
-        return trim(strtolower((string)preg_replace('/[^a-zA-Z0-9]+/', ' ', $base)));
+        return trim(strtolower((string) preg_replace('/[^a-zA-Z0-9]+/', ' ', $base)));
     }
 
     private function normalizarFiltrosFluxo(int $propertyId, array $filtros): array
     {
         $safraIds = collect($filtros['safras'] ?? [])
-            ->map(fn ($id) => (int)$id)
+            ->map(fn ($id) => (int) $id)
             ->filter(fn ($id) => $id > 0)
             ->values()
             ->all();
 
-        if (!$safraIds && (int)($filtros['safra_id'] ?? 0) > 0) {
-            $safraIds = [(int)$filtros['safra_id']];
+        if (! $safraIds && (int) ($filtros['safra_id'] ?? 0) > 0) {
+            $safraIds = [(int) $filtros['safra_id']];
         }
 
         $dataInicio = $this->dataFiltro($filtros['data_inicio'] ?? null);
         $dataFim = $this->dataFiltro($filtros['data_fim'] ?? null);
-        $periodoInformado = (bool)($dataInicio || $dataFim);
+        $periodoInformado = (bool) ($dataInicio || $dataFim);
 
         $safrasValidas = DB::table('safras')
             ->where('propriedade_id', $propertyId)
@@ -675,30 +734,30 @@ class RelatorioFinanceiroService
             ->orderBy('data_inicio')
             ->get(['id', 'data_inicio', 'data_fim']);
 
-        if ($periodoInformado && !($filtros['safras'] ?? []) && !(int)($filtros['safra_id'] ?? 0)) {
+        if ($periodoInformado && ! ($filtros['safras'] ?? []) && ! (int) ($filtros['safra_id'] ?? 0)) {
             $safraIds = [];
             $safrasValidas = collect();
         } elseif ($safraIds) {
-            $safraIds = $safrasValidas->pluck('id')->map(fn ($id) => (int)$id)->all();
+            $safraIds = $safrasValidas->pluck('id')->map(fn ($id) => (int) $id)->all();
         } else {
             $safrasValidas = DB::table('safras')
                 ->where('propriedade_id', $propertyId)
                 ->orderBy('data_inicio')
                 ->get(['id', 'data_inicio', 'data_fim']);
-            $safraIds = $safrasValidas->pluck('id')->map(fn ($id) => (int)$id)->all();
+            $safraIds = $safrasValidas->pluck('id')->map(fn ($id) => (int) $id)->all();
         }
 
-        if (!$dataInicio && !$dataFim && $safrasValidas->isNotEmpty()) {
-            $dataInicio = (string)($safrasValidas->min('data_inicio') ?: date('Y-01-01'));
-            $dataFim = (string)($safrasValidas
-                ->map(fn ($safra) => $safra->data_fim ?: date('Y-m-t', strtotime((string)($safra->data_inicio ?: date('Y-01-01')).' +11 months')))
+        if (! $dataInicio && ! $dataFim && $safrasValidas->isNotEmpty()) {
+            $dataInicio = (string) ($safrasValidas->min('data_inicio') ?: date('Y-01-01'));
+            $dataFim = (string) ($safrasValidas
+                ->map(fn ($safra) => $safra->data_fim ?: date('Y-m-t', strtotime((string) ($safra->data_inicio ?: date('Y-01-01')).' +11 months')))
                 ->filter()
                 ->max() ?: date('Y-m-t', strtotime($dataInicio.' +11 months')));
-        } elseif (!$dataInicio && $dataFim) {
+        } elseif (! $dataInicio && $dataFim) {
             $dataInicio = date('Y-m-d', strtotime($dataFim.' -11 months'));
-        } elseif ($dataInicio && !$dataFim) {
+        } elseif ($dataInicio && ! $dataFim) {
             $dataFim = date('Y-m-t', strtotime($dataInicio.' +11 months'));
-        } elseif (!$dataInicio && !$dataFim) {
+        } elseif (! $dataInicio && ! $dataFim) {
             $dataInicio = date('Y-01-01');
             $dataFim = date('Y-12-31');
         }
@@ -765,14 +824,14 @@ class RelatorioFinanceiroService
 
         while ($cursor <= $fim) {
             $mes = $cursor->format('Y-m');
-            $receitas = (float)($receitasPrevistas[$mes] ?? 0);
-            $despesas = (float)($despesasPrevistas[$mes] ?? 0);
-            $recebido = (float)($receitasRecebidas[$mes] ?? 0);
-            $pago = (float)($despesasPagas[$mes] ?? 0);
+            $receitas = (float) ($receitasPrevistas[$mes] ?? 0);
+            $despesas = (float) ($despesasPrevistas[$mes] ?? 0);
+            $recebido = (float) ($receitasRecebidas[$mes] ?? 0);
+            $pago = (float) ($despesasPagas[$mes] ?? 0);
             $saldoRealizado = $recebido - $pago;
             $acumulado += $saldoRealizado;
 
-            $rows->push((object)[
+            $rows->push((object) [
                 'mes' => $cursor->format('Y-m'),
                 'mes_label' => $this->mesAnoCurto($cursor),
                 'receitas_valor' => $receitas,
@@ -814,7 +873,7 @@ class RelatorioFinanceiroService
             12 => 'Dez',
         ];
 
-        return ($meses[(int)$data->format('n')] ?? $data->format('M')).'/'.$data->format('y');
+        return ($meses[(int) $data->format('n')] ?? $data->format('M')).'/'.$data->format('y');
     }
 
     private function projecoesPorCategoria(int $propertyId, array $filtros)
@@ -891,15 +950,15 @@ class RelatorioFinanceiroService
 
     private function orcadoRealizadoMensal(int $propertyId, array $filtros): Collection
     {
-        $inicio = (string)$filtros['data_inicio'];
-        $fim = (string)$filtros['data_fim'];
+        $inicio = (string) $filtros['data_inicio'];
+        $fim = (string) $filtros['data_fim'];
         $meses = collect();
         $cursor = strtotime(date('Y-m-01', strtotime($inicio)));
         $limite = strtotime(date('Y-m-01', strtotime($fim)));
 
         while ($cursor !== false && $limite !== false && $cursor <= $limite) {
             $key = date('Y-m', $cursor);
-            $meses[$key] = (object)[
+            $meses[$key] = (object) [
                 'key' => $key,
                 'label' => strtolower($this->mesAnoCurto(new \DateTimeImmutable(date('Y-m-01', $cursor)))),
                 'orcado' => 0.0,
@@ -920,13 +979,13 @@ class RelatorioFinanceiroService
 
         foreach ($orcado as $mes => $total) {
             if (isset($meses[$mes])) {
-                $meses[$mes]->orcado = (float)$total;
+                $meses[$mes]->orcado = (float) $total;
             }
         }
 
         foreach ($this->realizadoMensal($propertyId, $filtros) as $mes => $total) {
             if (isset($meses[$mes])) {
-                $meses[$mes]->realizado = (float)$total;
+                $meses[$mes]->realizado = (float) $total;
             }
         }
 
@@ -935,8 +994,8 @@ class RelatorioFinanceiroService
 
     private function realizadoMensal(int $propertyId, array $filtros): Collection
     {
-        $inicio = (string)$filtros['data_inicio'];
-        $fim = (string)$filtros['data_fim'];
+        $inicio = (string) $filtros['data_inicio'];
+        $fim = (string) $filtros['data_fim'];
 
         $receitas = DB::table('receitas')
             ->where('receitas.propriedade_id', $propertyId)
@@ -977,32 +1036,32 @@ class RelatorioFinanceiroService
 
     private function normalizarFiltrosOrcadoRealizado(int $propertyId, array $filtros): array
     {
-        $tipo = (string)($filtros['tipo'] ?? 'todos');
+        $tipo = (string) ($filtros['tipo'] ?? 'todos');
         if (in_array($tipo, ['despesa', 'despesas'], true)) {
             $tipo = 'custos_despesas';
         }
-        if (!in_array($tipo, ['todos', 'receita', 'custos_despesas'], true)) {
+        if (! in_array($tipo, ['todos', 'receita', 'custos_despesas'], true)) {
             $tipo = 'todos';
         }
 
-        $safraId = (int)($filtros['safra_id'] ?? 0);
-        if ($safraId > 0 && !DB::table('safras')->where('id', $safraId)->where('propriedade_id', $propertyId)->exists()) {
+        $safraId = (int) ($filtros['safra_id'] ?? 0);
+        if ($safraId > 0 && ! DB::table('safras')->where('id', $safraId)->where('propriedade_id', $propertyId)->exists()) {
             $safraId = 0;
         }
 
-        $categoriaId = (int)($filtros['categoria_id'] ?? 0);
-        if ($categoriaId > 0 && !DB::table('categorias')->where('id', $categoriaId)->where('ativo', 1)->exists()) {
+        $categoriaId = (int) ($filtros['categoria_id'] ?? 0);
+        if ($categoriaId > 0 && ! DB::table('categorias')->where('id', $categoriaId)->where('ativo', 1)->exists()) {
             $categoriaId = 0;
         }
 
         $dataInicio = $this->dataFiltro($filtros['data_inicio'] ?? null);
         $dataFim = $this->dataFiltro($filtros['data_fim'] ?? null);
-        if (!$dataInicio && !$dataFim) {
+        if (! $dataInicio && ! $dataFim) {
             $dataInicio = date('Y-01-01');
             $dataFim = date('Y-m-d');
-        } elseif (!$dataInicio && $dataFim) {
+        } elseif (! $dataInicio && $dataFim) {
             $dataInicio = date('Y-01-01', strtotime($dataFim));
-        } elseif ($dataInicio && !$dataFim) {
+        } elseif ($dataInicio && ! $dataFim) {
             $dataFim = date('Y-m-d');
         }
         if ($dataInicio && $dataFim && $dataFim < $dataInicio) {
@@ -1020,13 +1079,43 @@ class RelatorioFinanceiroService
 
     private function dataFiltro($value): ?string
     {
-        $value = trim((string)$value);
+        $value = trim((string) $value);
+
         return preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) ? $value : null;
     }
 
     private function propertyId(): int
     {
         return app(FarmContext::class)->propertyId();
+    }
+
+    /**
+     * @param  Collection<int, object>  $safras
+     * @param  array<int, int|string>  $selectedIds
+     * @return array{selectedSafraIds: array<int, int>, allSafrasSelected: bool, safraButton: string}
+     */
+    private function safraSelector(Collection $safras, array $selectedIds): array
+    {
+        $selectedIds = collect($selectedIds)->map(fn ($id) => (int) $id)->values()->all();
+        $allSelected = $selectedIds !== [] && count($selectedIds) === $safras->count();
+
+        return [
+            'selectedSafraIds' => $selectedIds,
+            'allSafrasSelected' => $allSelected,
+            'safraButton' => $allSelected || $selectedIds === []
+                ? 'Todas as safras'
+                : $safras->whereIn('id', $selectedIds)->pluck('descricao')->implode(' + '),
+        ];
+    }
+
+    /** @param Collection<int, object> $rows */
+    private function withRevenuePercentages(Collection $rows, float $totalRevenue): Collection
+    {
+        return $rows->map(function ($row) use ($totalRevenue) {
+            $row->percentual_receita = $this->metrics->percentage($row->valor_total, $totalRevenue);
+
+            return $row;
+        });
     }
 
     private function safrasDaPropriedade(int $propertyId)
@@ -1042,7 +1131,7 @@ class RelatorioFinanceiroService
     {
         return $safraId && $safras->contains('id', $safraId)
             ? $safraId
-            : (int)($safras->first()->id ?? 0);
+            : (int) ($safras->first()->id ?? 0);
     }
 
     private function despesasMensaisDaSafra(int $propertyId, int $safraId)
@@ -1092,7 +1181,9 @@ class RelatorioFinanceiroService
                 DB::raw("COALESCE((SELECT SUM(r.valor_total) FROM receitas r WHERE r.safra_id = s.id AND r.status != 'cancelado'), 0) as total_receitas"),
             ])
             ->map(function ($row) {
-                $row->resultado = (float)$row->total_receitas - (float)$row->total_despesas;
+                $row->resultado = (float) $row->total_receitas - (float) $row->total_despesas;
+                $row->result_tone = $row->resultado >= 0 ? 'success' : 'danger';
+
                 return $row;
             });
     }
@@ -1100,11 +1191,11 @@ class RelatorioFinanceiroService
     private function custoPorSaca(float $totalDespesas, float $producaoRealizada, float $producaoEstimadaTotal): string
     {
         if ($producaoRealizada > 0) {
-            return FarmFormat::money($totalDespesas / $producaoRealizada) . '/sc';
+            return FarmFormat::money($totalDespesas / $producaoRealizada).'/sc';
         }
 
         if ($producaoEstimadaTotal > 0) {
-            return FarmFormat::money($totalDespesas / $producaoEstimadaTotal) . '/sc';
+            return FarmFormat::money($totalDespesas / $producaoEstimadaTotal).'/sc';
         }
 
         return 'R$ 0,00/sc';

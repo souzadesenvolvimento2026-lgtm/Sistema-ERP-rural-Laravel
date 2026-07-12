@@ -55,10 +55,10 @@ class UsuarioService
                 'gestores' => 'Gestores',
             ],
             'cards' => [
-                ['label' => 'Usuários', 'value' => (string)$rows->count(), 'tone' => 'success'],
-                ['label' => 'Ativos', 'value' => (string)$rows->where('ativo', true)->count(), 'tone' => 'success'],
-                ['label' => 'Gestores', 'value' => (string)$rows->whereIn('perfil_key', ['gestor_propriedade', 'gestor_financeiro', 'gestao'])->count(), 'tone' => 'warning'],
-                ['label' => 'Visualizadores', 'value' => (string)$rows->where('perfil_key', 'visualizador')->count(), 'tone' => ''],
+                ['label' => 'Usuários', 'value' => (string) $rows->count(), 'tone' => 'success'],
+                ['label' => 'Ativos', 'value' => (string) $rows->where('ativo', true)->count(), 'tone' => 'success'],
+                ['label' => 'Gestores', 'value' => (string) $rows->whereIn('perfil_key', ['gestor_propriedade', 'gestor_financeiro', 'gestao'])->count(), 'tone' => 'warning'],
+                ['label' => 'Visualizadores', 'value' => (string) $rows->where('perfil_key', 'visualizador')->count(), 'tone' => ''],
             ],
         ];
     }
@@ -83,10 +83,10 @@ class UsuarioService
                 'gestores' => 'Gestores',
             ],
             'cards' => [
-                ['label' => 'Usuários internos', 'value' => (string)$rows->count(), 'tone' => 'success'],
-                ['label' => 'Ativos', 'value' => (string)$rows->where('ativo', true)->count(), 'tone' => 'success'],
-                ['label' => 'Administradores', 'value' => (string)$rows->where('perfil_key', 'administrador_sistema')->count(), 'tone' => 'warning'],
-                ['label' => 'Gerência', 'value' => (string)$rows->where('perfil_key', 'gerencia_sistema')->count(), 'tone' => ''],
+                ['label' => 'Usuários internos', 'value' => (string) $rows->count(), 'tone' => 'success'],
+                ['label' => 'Ativos', 'value' => (string) $rows->where('ativo', true)->count(), 'tone' => 'success'],
+                ['label' => 'Administradores', 'value' => (string) $rows->where('perfil_key', 'administrador_sistema')->count(), 'tone' => 'warning'],
+                ['label' => 'Gerência', 'value' => (string) $rows->where('perfil_key', 'gerencia_sistema')->count(), 'tone' => ''],
             ],
         ];
     }
@@ -107,7 +107,7 @@ class UsuarioService
             'ativo' => 1,
         ]);
 
-        $usuarioId = (int)DB::getPdo()->lastInsertId();
+        $usuarioId = (int) DB::getPdo()->lastInsertId();
         DB::table('usuario_propriedades')->updateOrInsert([
             'usuario_id' => $usuarioId,
             'propriedade_id' => $propriedadeId,
@@ -139,13 +139,13 @@ class UsuarioService
             'ativo' => 1,
         ]);
 
-        $usuarioId = (int)DB::getPdo()->lastInsertId();
+        $usuarioId = (int) DB::getPdo()->lastInsertId();
         $this->auditar(
             $usuarioLogadoId,
             'salvar_usuario',
             'usuarios',
             $usuarioId,
-            (int)session('propriedade_id'),
+            (int) session('propriedade_id'),
             'Login interno FarmFort criado: '.$nome.' ('.$email.') - Perfil: '.$this->perfilLabel($perfil)
         );
 
@@ -176,7 +176,7 @@ class UsuarioService
             ->select('u.id', 'u.nome', 'u.email', 'u.perfil', 'u.ativo')
             ->first();
 
-        abort_if(!$usuario, 404);
+        abort_if(! $usuario, 404);
 
         return $usuario;
     }
@@ -189,7 +189,7 @@ class UsuarioService
             ->select('u.id', 'u.nome', 'u.email', 'u.perfil', 'u.ativo')
             ->first();
 
-        abort_if(!$usuario, 404);
+        abort_if(! $usuario, 404);
 
         return $usuario;
     }
@@ -201,7 +201,7 @@ class UsuarioService
         $nome = trim($dados['nome']);
         $email = strtolower(trim($dados['email']));
         $perfil = $dados['perfil'] ?: 'visualizador';
-        $senhaAlterada = trim((string)($dados['senha'] ?? '')) !== '';
+        $senhaAlterada = trim((string) ($dados['senha'] ?? '')) !== '';
         $payload = [
             'nome' => $nome,
             'email' => $email,
@@ -216,7 +216,7 @@ class UsuarioService
 
         $detalhes = 'Usuario atualizado: '.$nome.' ('.$email.') - Perfil: '.$this->perfilLabel($perfil);
         if ($usuarioAnterior->nome !== $nome || $usuarioAnterior->email !== $email || $usuarioAnterior->perfil !== $perfil) {
-            $detalhes .= ' - Anterior: '.$usuarioAnterior->nome.' ('.$usuarioAnterior->email.') - Perfil: '.$this->perfilLabel((string)$usuarioAnterior->perfil);
+            $detalhes .= ' - Anterior: '.$usuarioAnterior->nome.' ('.$usuarioAnterior->email.') - Perfil: '.$this->perfilLabel((string) $usuarioAnterior->perfil);
         }
 
         $this->auditar($usuarioLogadoId, 'salvar_usuario', 'usuarios', $usuarioId, $propriedadeId, $detalhes);
@@ -245,7 +245,7 @@ class UsuarioService
             'perfil' => $perfil,
         ];
 
-        if (trim((string)($dados['senha'] ?? '')) !== '') {
+        if (trim((string) ($dados['senha'] ?? '')) !== '') {
             $payload['senha'] = Hash::make($dados['senha']);
         }
 
@@ -256,7 +256,7 @@ class UsuarioService
             'salvar_usuario',
             'usuarios',
             $usuarioId,
-            (int)session('propriedade_id'),
+            (int) session('propriedade_id'),
             'Login interno FarmFort atualizado: '.$nome.' ('.$email.') - Perfil: '.$this->perfilLabel($perfil).' - Anterior: '.$usuarioAnterior->nome.' ('.$usuarioAnterior->email.')'
         );
     }
@@ -264,7 +264,7 @@ class UsuarioService
     public function alternarStatus(int $usuarioId, int $propriedadeId, ?int $usuarioLogadoId = null): bool
     {
         $usuario = $this->buscar($usuarioId, $propriedadeId);
-        $ativo = (int)$usuario->ativo === 1 ? 0 : 1;
+        $ativo = (int) $usuario->ativo === 1 ? 0 : 1;
 
         DB::table('usuarios')->where('id', $usuarioId)->update(['ativo' => $ativo]);
 
@@ -283,7 +283,7 @@ class UsuarioService
     public function alternarStatusSistema(int $usuarioId, ?int $usuarioLogadoId = null): bool
     {
         $usuario = $this->buscarSistema($usuarioId);
-        $ativo = (int)$usuario->ativo === 1 ? 0 : 1;
+        $ativo = (int) $usuario->ativo === 1 ? 0 : 1;
 
         DB::table('usuarios')->where('id', $usuarioId)->update(['ativo' => $ativo]);
 
@@ -292,7 +292,7 @@ class UsuarioService
             $ativo === 1 ? 'ativar_usuario' : 'desativar_usuario',
             'usuarios',
             $usuarioId,
-            (int)session('propriedade_id'),
+            (int) session('propriedade_id'),
             ($ativo === 1 ? 'Login interno ativado: ' : 'Login interno inativado: ').$usuario->nome.' ('.$usuario->email.')'
         );
 
@@ -301,14 +301,14 @@ class UsuarioService
 
     private function filtros(Request $request): array
     {
-        $status = (string)$request->query('status', '');
-        if (!in_array($status, ['', 'ativos', 'inativos', 'gestores'], true)) {
+        $status = (string) $request->query('status', '');
+        if (! in_array($status, ['', 'ativos', 'inativos', 'gestores'], true)) {
             $status = '';
         }
 
         return [
             'status' => $status,
-            'search' => trim((string)$request->query('search', '')),
+            'search' => trim((string) $request->query('search', '')),
         ];
     }
 
@@ -404,14 +404,14 @@ class UsuarioService
 
     private function normalizar($row): object
     {
-        return (object)[
-            'id' => (int)$row->id,
+        return (object) [
+            'id' => (int) $row->id,
             'nome' => FarmFormat::value($row->nome),
             'email' => FarmFormat::value($row->email),
-            'perfil_key' => (string)$row->perfil,
-            'perfil' => $this->perfilLabel((string)$row->perfil),
-            'ativo' => (int)$row->ativo === 1,
-            'status' => (int)$row->ativo === 1 ? 'Ativo' : 'Inativo',
+            'perfil_key' => (string) $row->perfil,
+            'perfil' => $this->perfilLabel((string) $row->perfil),
+            'ativo' => (int) $row->ativo === 1,
+            'status' => (int) $row->ativo === 1 ? 'Ativo' : 'Inativo',
             'ultimo_acesso' => FarmFormat::date($row->ultimo_acesso),
             'criado_em' => FarmFormat::date($row->criado_em),
         ];
@@ -425,11 +425,11 @@ class UsuarioService
     private function validarLimitePropriedade(int $propriedadeId): void
     {
         $propriedade = DB::table('propriedades')->where('id', $propriedadeId)->first(['nome', 'plano']);
-        if (!$propriedade) {
+        if (! $propriedade) {
             throw new RuntimeException('Propriedade nao encontrada para vincular o usuario.');
         }
 
-        $plano = (string)($propriedade->plano ?: 'basico');
+        $plano = (string) ($propriedade->plano ?: 'basico');
         $limite = ['basico' => 3, 'avancado' => 5, 'premium' => 10][$plano] ?? 3;
         $total = $this->contarUsuariosEfetivos($propriedadeId);
 
@@ -480,7 +480,8 @@ class UsuarioService
                 'ip' => request()->ip(),
                 'criado_em' => now(),
             ]);
-        } catch (\Throwable) {
+        } catch (\Throwable $exception) {
+            report($exception);
         }
     }
 }

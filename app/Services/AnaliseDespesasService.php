@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Domain\Finance\FinancialMetrics;
 use App\Support\FarmFormat;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -10,6 +11,8 @@ use Illuminate\Support\Facades\Schema;
 
 class AnaliseDespesasService
 {
+    public function __construct(private readonly FinancialMetrics $metrics) {}
+
     public function dados(int $propertyId, Request $request): array
     {
         $safras = DB::table('safras')
@@ -35,8 +38,13 @@ class AnaliseDespesasService
         $categoriasResumo = $this->categoriasResumo($propertyId, $filtros);
         $total = $categoriasResumo->sum('value');
         $totalLancamentos = $categoriasResumo->sum('count');
-        $valorHa = $area > 0 ? $total / $area : 0.0;
-        $sacasHa = ($valorHa > 0 && $precoMedio > 0) ? $valorHa / $precoMedio : 0.0;
+        $distribuicaoTotal = $this->metrics->categoryDistribution($total, $total, $area, $precoMedio);
+        $valorHa = $distribuicaoTotal['value_per_hectare'];
+        $sacasHa = $distribuicaoTotal['sacks_per_hectare'];
+        $categoriasResumo = $categoriasResumo->map(fn (array $categoria) => array_merge(
+            $categoria,
+            $this->metrics->categoryDistribution($categoria['value'], $total, $area, $precoMedio),
+        ));
 
         return [
             'activeModule' => 'financeiro',
@@ -69,22 +77,22 @@ class AnaliseDespesasService
     private function filtros(Request $request, Collection $safras, Collection $talhoes, Collection $categorias): array
     {
         $safraId = $request->integer('safra_id') ?: $request->integer('fd_safra') ?: null;
-        if ($safraId && !$safras->contains('id', $safraId)) {
+        if ($safraId && ! $safras->contains('id', $safraId)) {
             $safraId = null;
         }
 
         $categoriaId = $request->integer('categoria_id') ?: $request->integer('fd_categoria') ?: null;
-        if ($categoriaId && !$categorias->contains('id', $categoriaId)) {
+        if ($categoriaId && ! $categorias->contains('id', $categoriaId)) {
             $categoriaId = null;
         }
 
         $talhaoId = $request->integer('talhao_id') ?: null;
-        if ($talhaoId && !$talhoes->contains('id', $talhaoId)) {
+        if ($talhaoId && ! $talhoes->contains('id', $talhaoId)) {
             $talhaoId = null;
         }
 
-        $tipo = (string)$request->query('tipo', 'custos_despesas');
-        if (!in_array($tipo, ['custos_despesas', 'despesas', 'receitas'], true)) {
+        $tipo = (string) $request->query('tipo', 'custos_despesas');
+        if (! in_array($tipo, ['custos_despesas', 'despesas', 'receitas'], true)) {
             $tipo = 'custos_despesas';
         }
 
@@ -104,7 +112,7 @@ class AnaliseDespesasService
             $rows = $rows->merge($this->despesasPorCategoria($propertyId, $filtros));
         }
 
-        if (in_array($filtros['tipo'], ['custos_despesas', 'receitas'], true) && !$filtros['talhao_id']) {
+        if (in_array($filtros['tipo'], ['custos_despesas', 'receitas'], true) && ! $filtros['talhao_id']) {
             $rows = $rows->merge($this->receitasPorCategoria($propertyId, $filtros));
         }
 
@@ -114,13 +122,19 @@ class AnaliseDespesasService
             ->groupBy('group_key')
             ->map(function (Collection $groupRows, string $key) {
                 $first = $groupRows->first();
+                $groupTotal = (float) $groupRows->sum('value');
                 $subcategories = $groupRows
                     ->groupBy('subcategory')
-                    ->map(fn (Collection $items, string $label) => [
-                        'label' => $label,
-                        'value' => (float)$items->sum('value'),
-                        'count' => (int)$items->sum('count'),
-                    ])
+                    ->map(function (Collection $items, string $label) use ($groupTotal) {
+                        $value = (float) $items->sum('value');
+
+                        return [
+                            'label' => $label,
+                            'value' => $value,
+                            'count' => (int) $items->sum('count'),
+                            'share_percentage' => $this->metrics->percentage($value, $groupTotal),
+                        ];
+                    })
                     ->sortByDesc('value')
                     ->values()
                     ->all();
@@ -128,8 +142,8 @@ class AnaliseDespesasService
                 return [
                     'key' => $key,
                     'label' => $first['group_label'],
-                    'value' => (float)$groupRows->sum('value'),
-                    'count' => (int)$groupRows->sum('count'),
+                    'value' => $groupTotal,
+                    'count' => (int) $groupRows->sum('count'),
                     'subcategories' => $subcategories,
                 ];
             })
@@ -137,6 +151,7 @@ class AnaliseDespesasService
             ->values()
             ->map(function (array $row, int $idx) use ($cores) {
                 $row['color'] = $cores[$idx % count($cores)];
+
                 return $row;
             });
     }
@@ -163,16 +178,16 @@ class AnaliseDespesasService
             ])
             ->map(fn ($row) => [
                 'group_key' => 'despesa_'.$row->group_key,
-                'group_label' => $this->tipoLabel((string)$row->group_type),
-                'subcategory' => (string)$row->subcategory,
-                'count' => (int)$row->count,
-                'value' => (float)$row->value,
+                'group_label' => $this->tipoLabel((string) $row->group_type),
+                'subcategory' => (string) $row->subcategory,
+                'count' => (int) $row->count,
+                'value' => (float) $row->value,
             ]);
     }
 
     private function receitasPorCategoria(int $propertyId, array $filtros): Collection
     {
-        if (!Schema::hasTable('receitas')) {
+        if (! Schema::hasTable('receitas')) {
             return collect();
         }
 
@@ -194,26 +209,26 @@ class AnaliseDespesasService
             ->map(fn ($row) => [
                 'group_key' => 'receitas',
                 'group_label' => 'Receitas',
-                'subcategory' => (string)$row->subcategory,
-                'count' => (int)$row->count,
-                'value' => (float)$row->value,
+                'subcategory' => (string) $row->subcategory,
+                'count' => (int) $row->count,
+                'value' => (float) $row->value,
             ]);
     }
 
     private function areaConsiderada(int $propertyId, array $filtros, Collection $safras, Collection $talhoes): float
     {
         if ($filtros['talhao_id']) {
-            return (float)($talhoes->firstWhere('id', $filtros['talhao_id'])->area ?? 0);
+            return (float) ($talhoes->firstWhere('id', $filtros['talhao_id'])->area ?? 0);
         }
 
         if ($filtros['safra_id']) {
-            $areaSafra = (float)($safras->firstWhere('id', $filtros['safra_id'])->area_plantada ?? 0);
+            $areaSafra = (float) ($safras->firstWhere('id', $filtros['safra_id'])->area_plantada ?? 0);
             if ($areaSafra > 0) {
                 return $areaSafra;
             }
         }
 
-        return (float)DB::table('talhoes')
+        return (float) DB::table('talhoes')
             ->where('propriedade_id', $propertyId)
             ->where('ativo', 1)
             ->sum('area');
@@ -221,7 +236,7 @@ class AnaliseDespesasService
 
     private function precoMedioSaca(int $propertyId, array $filtros): float
     {
-        if (!Schema::hasTable('receitas')) {
+        if (! Schema::hasTable('receitas')) {
             return 0.0;
         }
 
@@ -233,8 +248,9 @@ class AnaliseDespesasService
             ->selectRaw('COALESCE(SUM(r.valor_total), 0) as total_valor, COALESCE(SUM(r.quantidade), 0) as total_quantidade')
             ->first();
 
-        $quantidade = (float)($row->total_quantidade ?? 0);
-        return $quantidade > 0 ? (float)$row->total_valor / $quantidade : 0.0;
+        $quantidade = (float) ($row->total_quantidade ?? 0);
+
+        return $quantidade > 0 ? (float) $row->total_valor / $quantidade : 0.0;
     }
 
     private function tipoLabel(string $tipo): string

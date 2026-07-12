@@ -32,18 +32,18 @@
                         <td>
                             {{ $certificado->validade_fim ? \Illuminate\Support\Carbon::parse($certificado->validade_fim)->format('d/m/Y') : '-' }}
                             <br>
-                            <span class="muted">{{ app(\App\Services\CertificadoDigitalService::class)->validadeTexto($certificado->validade_fim) }}</span>
+                            <span class="muted">{{ $certificado->validade_texto }}</span>
                         </td>
-                        <td><span class="pill {{ $certificado->status === 'inativo' ? 'danger' : 'success' }}">{{ \App\Support\FarmFormat::statusLabel($certificado->status) }}</span></td>
+                        <td><span class="pill {{ $certificado->status_tone }}">{{ \App\Support\FarmFormat::statusLabel($certificado->status) }}</span></td>
                         <td>
                             <div class="inline-actions">
-                                @if (!$certificado->principal && $certificado->status !== 'inativo')
+                                @if ($certificado->can_make_primary)
                                     <form method="POST" action="{{ route('fiscal.certificados.principal', $certificado->id) }}">
                                         @csrf
                                         <button class="btn small" type="submit">Principal</button>
                                     </form>
                                 @endif
-                                @if ($certificado->status !== 'inativo')
+                                @if ($certificado->can_deactivate)
                                     <form method="POST" action="{{ route('fiscal.certificados.desativar', $certificado->id) }}">
                                         @csrf
                                         <button class="btn small danger" type="submit">Desativar</button>

@@ -2,11 +2,15 @@
 
 namespace App\Services;
 
+use App\Domain\Geo\InvalidPolygon;
+use App\Domain\Geo\PolygonGeometry;
+use App\Domain\Geo\TalhaoMapCapabilities;
 use App\Support\FarmFormat;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -14,11 +18,17 @@ use ZipArchive;
 
 class TalhaoService
 {
+    public function __construct(
+        private readonly PolygonGeometry $geometry,
+        private readonly TalhaoMapCapabilities $mapCapabilities,
+    ) {}
+
     public function pagina(int $propriedadeId, Request $request): array
     {
         $filtros = $this->filtros($request);
         $rows = $this->rows($propriedadeId, $filtros);
-        $propertyName = (string)(DB::table('propriedades')->where('id', $propriedadeId)->value('nome') ?: 'Propriedade');
+        $talhoesAtivos = $this->talhoesAtivos($propriedadeId);
+        $propertyName = (string) (DB::table('propriedades')->where('id', $propriedadeId)->value('nome') ?: 'Propriedade');
         $counts = [
             'ativos' => DB::table('talhoes')->where('propriedade_id', $propriedadeId)->where('ativo', 1)->count(),
             'desativados' => DB::table('talhoes')->where('propriedade_id', $propriedadeId)->where('ativo', 0)->count(),
@@ -32,16 +42,20 @@ class TalhaoService
             'filtros' => $filtros,
             'rows' => $rows,
             'counts' => $counts,
-            'talhoesAtivos' => $this->talhoesAtivos($propriedadeId),
+            'talhoesAtivos' => $talhoesAtivos,
+            'unification' => [
+                'can_unify' => $talhoesAtivos->count() >= 2,
+                'block_reason' => 'Cadastre pelo menos dois talhoes ativos para usar a unificacao.',
+            ],
             'statusOptions' => [
                 'ativos' => 'Ativos',
                 'desativados' => 'Desativados',
                 'todos' => 'Todos',
             ],
             'cards' => [
-                ['label' => 'Total de talhões', 'value' => (string)$counts['ativos'], 'tone' => 'success'],
+                ['label' => 'Total de talhões', 'value' => (string) $counts['ativos'], 'tone' => 'success'],
                 ['label' => 'Área total', 'value' => FarmFormat::decimal($rows->where('ativo', true)->sum('area_raw'), 2).' ha', 'tone' => 'success'],
-                ['label' => 'Georreferenciados', 'value' => (string)$rows->where('georreferenciado', true)->count(), 'tone' => 'warning'],
+                ['label' => 'Georreferenciados', 'value' => (string) $rows->where('georreferenciado', true)->count(), 'tone' => 'warning'],
                 ['label' => 'Arquivo geoespacial', 'value' => 'Opcional', 'hint' => 'KML, KMZ ou SHP', 'tone' => ''],
             ],
         ];
@@ -68,6 +82,8 @@ class TalhaoService
             ->selectRaw('talhao_id, COUNT(*) as qtd, COALESCE(SUM(valor_total), 0) as total')
             ->get()
             ->keyBy('talhao_id');
+        $safrasEmUsoPorTalhao = $this->safrasEmUso($propriedadeId)
+            ->groupBy('talhao_id');
 
         $talhoes = DB::table('talhoes')
             ->where('propriedade_id', $propriedadeId)
@@ -91,28 +107,35 @@ class TalhaoService
                 'pivo_raio_m',
                 'pivo_area_ha',
             ])
-            ->map(function ($talhao) use ($gastosPorTalhao) {
+            ->map(function ($talhao) use ($gastosPorTalhao, $safrasEmUsoPorTalhao) {
                 $mapa = $this->talhaoMapa($talhao);
                 $gasto = $gastosPorTalhao->get($mapa['id']);
-                $mapa['custo'] = (float)($gasto->total ?? 0);
+                $safrasEmUso = $this->normalizarSafrasEmUso($safrasEmUsoPorTalhao->get($mapa['id'], collect()));
+                $mapa['custo'] = (float) ($gasto->total ?? 0);
                 $mapa['custo_formatado'] = FarmFormat::money($mapa['custo']);
                 $mapa['total_despesas_formatado'] = $mapa['custo_formatado'];
                 $mapa['custo_ha_formatado'] = $mapa['area'] > 0
                     ? FarmFormat::money($mapa['custo'] / $mapa['area']).'/ha'
                     : FarmFormat::money(0).'/ha';
-                $mapa['qtd_despesas'] = (int)($gasto->qtd ?? 0);
+                $mapa['qtd_despesas'] = (int) ($gasto->qtd ?? 0);
+                foreach ($this->mapCapabilities->for(
+                    $safrasEmUso,
+                    count($mapa['exclusoes']),
+                ) as $capability => $value) {
+                    $mapa[$capability] = $value;
+                }
 
                 return $mapa;
             });
 
         $centro = $talhoes->first(fn ($talhao) => $talhao['lat'] && $talhao['lng']) ?? ['lat' => -15.7801, 'lng' => -47.9292];
-        $areaTotal = (float)$talhoes->sum('area');
-        $totalGasto = (float)$talhoes->sum('custo');
+        $areaTotal = (float) $talhoes->sum('area');
+        $totalGasto = (float) $talhoes->sum('custo');
         $talhoesGeo = $talhoes->filter(fn ($talhao) => ($talhao['lat'] && $talhao['lng']) || count($talhao['points'] ?? []) >= 3)->count();
-        $regiao = trim((string)($propriedade->regiao_cotacao ?? ''))
-            ?: trim((string)($propriedade->municipio ?? ''))
+        $regiao = trim((string) ($propriedade->regiao_cotacao ?? ''))
+            ?: trim((string) ($propriedade->municipio ?? ''))
             ?: 'Regiao da fazenda';
-        if (!empty($propriedade->estado) && stripos($regiao, (string)$propriedade->estado) === false) {
+        if (! empty($propriedade->estado) && stripos($regiao, (string) $propriedade->estado) === false) {
             $regiao = trim($regiao.' / '.$propriedade->estado, ' /');
         }
 
@@ -122,7 +145,6 @@ class TalhaoService
             'propertyName' => $propriedade->nome ?? session('propriedade_nome', 'Fazenda'),
             'safraName' => $safraAtual->descricao ?? null,
             'talhoes' => $talhoes,
-            'talhoesJson' => $talhoes->values()->toJson(JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             'centro' => $centro,
             'mapCards' => [
                 'talhoes' => $talhoes->count(),
@@ -130,113 +152,211 @@ class TalhaoService
                 'area_total' => $areaTotal,
                 'total_gasto' => $totalGasto,
                 'regiao' => $regiao,
-                'coordenadas' => number_format((float)($centro['lat'] ?? -15.7801), 6, '.', '').', '.number_format((float)($centro['lng'] ?? -47.9292), 6, '.', ''),
+                'coordenadas' => number_format((float) ($centro['lat'] ?? -15.7801), 6, '.', '').', '.number_format((float) ($centro['lng'] ?? -47.9292), 6, '.', ''),
             ],
         ];
     }
 
     public function atualizarDadosMapa(int $talhaoId, int $propriedadeId, array $dados, ?int $usuarioId): void
     {
-        $talhao = $this->buscar($talhaoId, $propriedadeId);
-        $nome = trim((string)($dados['nome'] ?? ''));
+        $nome = trim((string) ($dados['nome'] ?? ''));
         abort_if($nome === '', 422, 'Informe o nome do talhao.');
 
-        $duplicado = DB::table('talhoes')
-            ->where('propriedade_id', $propriedadeId)
-            ->where('ativo', 1)
-            ->where('nome', $nome)
-            ->where('id', '<>', $talhaoId)
-            ->exists();
-        abort_if($duplicado, 422, 'Ja existe um talhao ativo com esse nome nesta propriedade.');
+        DB::transaction(function () use ($talhaoId, $propriedadeId, $dados, $usuarioId, $nome): void {
+            $talhao = DB::table('talhoes')
+                ->where('id', $talhaoId)
+                ->where('propriedade_id', $propriedadeId)
+                ->lockForUpdate()
+                ->first();
+            abort_if(! $talhao, 404);
 
-        $area = $this->decimal($dados['area'] ?? ($talhao->area ?? 0));
-        DB::table('talhoes')
-            ->where('id', $talhaoId)
-            ->where('propriedade_id', $propriedadeId)
-            ->update([
+            $duplicado = DB::table('talhoes')
+                ->where('propriedade_id', $propriedadeId)
+                ->where('ativo', 1)
+                ->where('nome', $nome)
+                ->where('id', '<>', $talhaoId)
+                ->exists();
+            abort_if($duplicado, 422, 'Ja existe um talhao ativo com esse nome nesta propriedade.');
+
+            $payload = [
                 'nome' => $nome,
-                'area' => $area,
-                'descricao' => trim((string)($dados['descricao'] ?? '')) ?: null,
-            ]);
+                'descricao' => trim((string) ($dados['descricao'] ?? '')) ?: null,
+            ];
+            $hasPolygon = count($this->normalizarPontos($talhao->coordenadas_json ?? '')) >= 3;
 
-        $this->auditar($usuarioId, 'editar_talhao_mapa', 'talhoes', $talhaoId, $propriedadeId, 'Dados do talhao editados no mapa');
+            if (! $hasPolygon) {
+                $requestedArea = $this->decimal($dados['area'] ?? ($talhao->area ?? 0));
+                if (abs($requestedArea - (float) ($talhao->area ?? 0)) > 0.000001) {
+                    $this->assertMapMutationAllowed($talhao, $propriedadeId, 'area');
+                    $excludedArea = max(0, (float) ($talhao->area_excluida_ha ?? 0));
+                    $payload['area'] = $requestedArea;
+                    $payload['area_bruta'] = round($requestedArea + $excludedArea, 2);
+                }
+            }
+
+            DB::table('talhoes')
+                ->where('id', $talhaoId)
+                ->where('propriedade_id', $propriedadeId)
+                ->update($payload);
+
+            $this->auditarObrigatorio(
+                $usuarioId,
+                'editar_talhao_mapa',
+                'talhoes',
+                $talhaoId,
+                $propriedadeId,
+                'Dados do talhao editados no mapa',
+            );
+        }, 3);
     }
 
     public function salvarExclusao(int $talhaoId, int $propriedadeId, string $exclusaoJson, ?int $usuarioId): void
     {
-        $talhao = $this->buscar($talhaoId, $propriedadeId);
-        abort_if((int)$talhao->ativo !== 1, 422, 'Talhao inativo.');
+        try {
+            $exclusion = $this->geometry->decodeJsonRing($exclusaoJson);
+        } catch (InvalidPolygon $exception) {
+            throw ValidationException::withMessages(['exclusao_json' => $exception->getMessage()]);
+        }
 
-        $exclusion = $this->normalizarPontos($exclusaoJson);
-        abort_if(count($exclusion) < 3, 422, 'Desenhe uma area de exclusao com pelo menos 3 pontos.');
+        DB::transaction(function () use ($talhaoId, $propriedadeId, $exclusion, $usuarioId): void {
+            $talhao = DB::table('talhoes')
+                ->where('id', $talhaoId)
+                ->where('propriedade_id', $propriedadeId)
+                ->lockForUpdate()
+                ->first();
+            abort_if(! $talhao, 404);
+            $this->assertMapMutationAllowed($talhao, $propriedadeId, 'exclusao_json');
 
-        $outer = $this->pontosTalhao($talhao);
-        abort_if(count($outer) < 3, 422, 'O talhao precisa de poligono para receber area excluida.');
-        abort_unless($this->ringInsidePolygon($exclusion, $outer), 422, 'A area excluida precisa ficar dentro do poligono do talhao.');
+            try {
+                $outer = $this->geometry->normalizeRing($this->pontosTalhao($talhao));
+            } catch (InvalidPolygon $exception) {
+                throw ValidationException::withMessages([
+                    'exclusao_json' => 'O talhão precisa de um polígono válido para receber área excluída.',
+                ]);
+            }
 
-        $rings = $this->exclusoesTalhao($talhao);
-        $rings[] = $exclusion;
-        $areas = $this->areaLiquida($outer, $rings);
+            $existingRings = $this->exclusoesTalhaoEstritas($talhao);
+            try {
+                $this->geometry->areaBreakdown($outer, $existingRings);
+            } catch (InvalidPolygon $exception) {
+                throw new RuntimeException('As áreas excluídas existentes estão inconsistentes.', previous: $exception);
+            }
 
-        DB::table('talhoes')
-            ->where('id', $talhaoId)
-            ->where('propriedade_id', $propriedadeId)
-            ->update([
-                'exclusoes_json' => json_encode($rings, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-                'area' => $areas['liquida'],
-                'area_bruta' => $areas['bruta'],
-                'area_excluida_ha' => $areas['excluida'],
-            ]);
+            try {
+                $rings = $this->geometry->appendExclusion(
+                    $outer,
+                    $existingRings,
+                    $exclusion,
+                );
+                if ($rings === $existingRings) {
+                    return;
+                }
+                $areas = $this->geometry->areaBreakdown($outer, $rings);
+            } catch (InvalidPolygon $exception) {
+                throw ValidationException::withMessages(['exclusao_json' => $exception->getMessage()]);
+            }
 
-        $this->auditar($usuarioId, 'criar_exclusao_talhao', 'talhoes', $talhaoId, $propriedadeId, 'Area excluida adicionada ao talhao '.$talhao->nome);
+            DB::table('talhoes')
+                ->where('id', $talhaoId)
+                ->where('propriedade_id', $propriedadeId)
+                ->update([
+                    'exclusoes_json' => json_encode(
+                        $rings,
+                        JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
+                    ),
+                    'area' => $areas['liquida'],
+                    'area_bruta' => $areas['bruta'],
+                    'area_excluida_ha' => $areas['excluida'],
+                ]);
+
+            $this->auditarObrigatorio(
+                $usuarioId,
+                'criar_exclusao_talhao',
+                'talhoes',
+                $talhaoId,
+                $propriedadeId,
+                'Area excluida adicionada ao talhao '.$talhao->nome,
+            );
+        }, 3);
     }
 
     public function limparExclusoes(int $talhaoId, int $propriedadeId, ?int $usuarioId): void
     {
-        $talhao = $this->buscar($talhaoId, $propriedadeId);
-        $outer = $this->pontosTalhao($talhao);
-        $area = count($outer) >= 3 ? $this->areaHa($outer) : (float)($talhao->area ?? 0);
+        DB::transaction(function () use ($talhaoId, $propriedadeId, $usuarioId): void {
+            $talhao = DB::table('talhoes')
+                ->where('id', $talhaoId)
+                ->where('propriedade_id', $propriedadeId)
+                ->lockForUpdate()
+                ->first();
+            abort_if(! $talhao, 404);
+            $this->assertMapMutationAllowed($talhao, $propriedadeId, 'exclusao_json');
 
-        DB::table('talhoes')
-            ->where('id', $talhaoId)
-            ->where('propriedade_id', $propriedadeId)
-            ->update([
-                'exclusoes_json' => null,
-                'area' => $area,
-                'area_bruta' => $area,
-                'area_excluida_ha' => 0,
-            ]);
+            $outer = $this->pontosTalhao($talhao);
+            $area = count($outer) >= 3 ? $this->areaHa($outer) : (float) ($talhao->area ?? 0);
 
-        $this->auditar($usuarioId, 'limpar_exclusoes_talhao', 'talhoes', $talhaoId, $propriedadeId, 'Areas excluidas removidas do talhao '.$talhao->nome);
+            DB::table('talhoes')
+                ->where('id', $talhaoId)
+                ->where('propriedade_id', $propriedadeId)
+                ->update([
+                    'exclusoes_json' => null,
+                    'area' => $area,
+                    'area_bruta' => $area,
+                    'area_excluida_ha' => 0,
+                ]);
+
+            $this->auditarObrigatorio(
+                $usuarioId,
+                'limpar_exclusoes_talhao',
+                'talhoes',
+                $talhaoId,
+                $propriedadeId,
+                'Areas excluidas removidas do talhao '.$talhao->nome,
+            );
+        }, 3);
     }
 
     public function salvarPivo(int $talhaoId, int $propriedadeId, array $dados, ?int $usuarioId): void
     {
-        $talhao = $this->buscar($talhaoId, $propriedadeId);
         $lat = $this->nullableDecimal($dados['pivo_lat'] ?? null);
         $lng = $this->nullableDecimal($dados['pivo_lng'] ?? null);
         $raio = $this->nullableDecimal($dados['pivo_raio_m'] ?? null);
         abort_if($lat === null || $lat < -90 || $lat > 90 || $lng === null || $lng < -180 || $lng > 180 || $raio === null || $raio <= 0, 422, 'Informe um pivo valido.');
 
         $areaPivo = round((pi() * ($raio ** 2)) / 10000, 2);
-        DB::table('talhoes')
-            ->where('id', $talhaoId)
-            ->where('propriedade_id', $propriedadeId)
-            ->where('ativo', 1)
-            ->update([
-                'pivo_ativo' => 1,
-                'pivo_lat' => round($lat, 8),
-                'pivo_lng' => round($lng, 8),
-                'pivo_raio_m' => round($raio, 2),
-                'pivo_area_ha' => $areaPivo,
-            ]);
+        DB::transaction(function () use ($talhaoId, $propriedadeId, $usuarioId, $lat, $lng, $raio, $areaPivo): void {
+            $talhao = DB::table('talhoes')
+                ->where('id', $talhaoId)
+                ->where('propriedade_id', $propriedadeId)
+                ->lockForUpdate()
+                ->first();
+            abort_if(! $talhao, 404);
+            $this->assertMapMutationAllowed($talhao, $propriedadeId, 'pivo');
 
-        $this->auditar($usuarioId, 'salvar_pivo_talhao', 'talhoes', $talhaoId, $propriedadeId, 'Pivo criado/atualizado no talhao '.$talhao->nome);
+            DB::table('talhoes')
+                ->where('id', $talhaoId)
+                ->where('propriedade_id', $propriedadeId)
+                ->update([
+                    'pivo_ativo' => 1,
+                    'pivo_lat' => round($lat, 8),
+                    'pivo_lng' => round($lng, 8),
+                    'pivo_raio_m' => round($raio, 2),
+                    'pivo_area_ha' => $areaPivo,
+                ]);
+
+            $this->auditarObrigatorio(
+                $usuarioId,
+                'salvar_pivo_talhao',
+                'talhoes',
+                $talhaoId,
+                $propriedadeId,
+                'Pivo criado/atualizado no talhao '.$talhao->nome,
+            );
+        }, 3);
     }
 
     public function criarPivoComoTalhao(int $propriedadeId, array $dados, ?int $usuarioId): int
     {
-        $nome = trim((string)($dados['nome'] ?? ''));
+        $nome = trim((string) ($dados['nome'] ?? ''));
         abort_if($nome === '', 422, 'Informe o nome do talhao/pivo.');
 
         $lat = $this->nullableDecimal($dados['pivo_lat'] ?? null);
@@ -276,7 +396,7 @@ class TalhaoService
             'ativo' => 1,
         ]);
 
-        $talhaoId = (int)DB::getPdo()->lastInsertId();
+        $talhaoId = (int) DB::getPdo()->lastInsertId();
         $this->auditar($usuarioId, 'criar_pivo_talhao_mapa', 'talhoes', $talhaoId, $propriedadeId, 'Pivo/talhao '.$nome.' desenhado no mapa');
 
         return $talhaoId;
@@ -284,21 +404,35 @@ class TalhaoService
 
     public function removerPivo(int $talhaoId, int $propriedadeId, ?int $usuarioId): void
     {
-        $this->buscar($talhaoId, $propriedadeId);
+        DB::transaction(function () use ($talhaoId, $propriedadeId, $usuarioId): void {
+            $talhao = DB::table('talhoes')
+                ->where('id', $talhaoId)
+                ->where('propriedade_id', $propriedadeId)
+                ->lockForUpdate()
+                ->first();
+            abort_if(! $talhao, 404);
+            $this->assertMapMutationAllowed($talhao, $propriedadeId, 'pivo');
 
-        DB::table('talhoes')
-            ->where('id', $talhaoId)
-            ->where('propriedade_id', $propriedadeId)
-            ->where('ativo', 1)
-            ->update([
-                'pivo_ativo' => 0,
-                'pivo_lat' => null,
-                'pivo_lng' => null,
-                'pivo_raio_m' => null,
-                'pivo_area_ha' => null,
-            ]);
+            DB::table('talhoes')
+                ->where('id', $talhaoId)
+                ->where('propriedade_id', $propriedadeId)
+                ->update([
+                    'pivo_ativo' => 0,
+                    'pivo_lat' => null,
+                    'pivo_lng' => null,
+                    'pivo_raio_m' => null,
+                    'pivo_area_ha' => null,
+                ]);
 
-        $this->auditar($usuarioId, 'remover_pivo_talhao', 'talhoes', $talhaoId, $propriedadeId, 'Pivo removido do talhao');
+            $this->auditarObrigatorio(
+                $usuarioId,
+                'remover_pivo_talhao',
+                'talhoes',
+                $talhaoId,
+                $propriedadeId,
+                'Pivo removido do talhao',
+            );
+        }, 3);
     }
 
     public function criar(array $dados, int $propriedadeId, ?int $usuarioId): int
@@ -311,7 +445,7 @@ class TalhaoService
             'ativo' => 1,
         ]);
 
-        $talhaoId = (int)DB::getPdo()->lastInsertId();
+        $talhaoId = (int) DB::getPdo()->lastInsertId();
         $this->auditar($usuarioId, 'salvar_talhao', 'talhoes', $talhaoId, $propriedadeId, trim($dados['nome']));
 
         return $talhaoId;
@@ -344,9 +478,9 @@ class TalhaoService
     public function alternarAtivo(int $talhaoId, int $propriedadeId, ?int $usuarioId): void
     {
         $talhao = $this->buscar($talhaoId, $propriedadeId);
-        $ativar = (int)$talhao->ativo !== 1;
+        $ativar = (int) $talhao->ativo !== 1;
 
-        if (!$ativar) {
+        if (! $ativar) {
             $bloqueios = $this->bloqueiosSafraAtiva($propriedadeId, $talhaoId);
             if ($bloqueios) {
                 throw new RuntimeException('Este talhao possui '.implode(', ', $bloqueios).'. Finalize ou arquive a safra ativa antes de desativar.');
@@ -371,14 +505,14 @@ class TalhaoService
             'talhoes',
             $talhaoId,
             $propriedadeId,
-            (string)$talhao->nome
+            (string) $talhao->nome
         );
     }
 
     public function unificar(int $propriedadeId, int $destinoId, array $origemIds, bool $somarArea, ?int $usuarioId): int
     {
         $origemIds = collect($origemIds)
-            ->map(fn ($id) => (int)$id)
+            ->map(fn ($id) => (int) $id)
             ->filter(fn ($id) => $id > 0 && $id !== $destinoId)
             ->unique()
             ->values()
@@ -394,7 +528,7 @@ class TalhaoService
             ->keyBy('id');
 
         $destino = $talhoes->get($destinoId);
-        abort_if(!$destino || $talhoes->count() !== count($origemIds) + 1, 422, 'Talhao destino ou origem invalido para esta propriedade.');
+        abort_if(! $destino || $talhoes->count() !== count($origemIds) + 1, 422, 'Talhao destino ou origem invalido para esta propriedade.');
 
         $origens = collect($origemIds)->map(fn ($id) => $talhoes->get($id))->filter()->values();
 
@@ -418,9 +552,9 @@ class TalhaoService
             ];
 
             if ($somarArea) {
-                $payloadDestino['area'] = (float)($destino->area ?? 0) + $origens->sum(fn ($talhao) => (float)($talhao->area ?? 0));
-                $payloadDestino['area_bruta'] = (float)($destino->area_bruta ?? $destino->area ?? 0)
-                    + $origens->sum(fn ($talhao) => (float)($talhao->area_bruta ?? $talhao->area ?? 0));
+                $payloadDestino['area'] = (float) ($destino->area ?? 0) + $origens->sum(fn ($talhao) => (float) ($talhao->area ?? 0));
+                $payloadDestino['area_bruta'] = (float) ($destino->area_bruta ?? $destino->area ?? 0)
+                    + $origens->sum(fn ($talhao) => (float) ($talhao->area_bruta ?? $talhao->area ?? 0));
             }
 
             DB::table('talhoes')
@@ -449,8 +583,11 @@ class TalhaoService
 
     public function criarPorPoligono(array $dados, int $propriedadeId, ?int $usuarioId): int
     {
-        $points = $this->normalizarPontos($dados['coordenadas_json'] ?? '');
-        abort_if(count($points) < 3, 422, 'Desenhe um polígono com pelo menos 3 pontos.');
+        try {
+            $points = $this->geometry->decodeJsonRing((string) ($dados['coordenadas_json'] ?? ''));
+        } catch (InvalidPolygon $exception) {
+            throw ValidationException::withMessages(['coordenadas_json' => $exception->getMessage()]);
+        }
 
         $centro = $this->centroide($points);
         $area = $this->areaHa($points);
@@ -469,7 +606,7 @@ class TalhaoService
             'coordenadas_json' => json_encode($points, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         ]);
 
-        $talhaoId = (int)DB::getPdo()->lastInsertId();
+        $talhaoId = (int) DB::getPdo()->lastInsertId();
         $nome = trim($dados['nome']);
         $this->auditar($usuarioId, 'criar_talhao_mapa', 'talhoes', $talhaoId, $propriedadeId, 'Talhao '.$nome.' desenhado no mapa');
 
@@ -478,30 +615,59 @@ class TalhaoService
 
     public function atualizarPoligono(int $talhaoId, array $dados, int $propriedadeId, ?int $usuarioId): void
     {
-        $this->buscar($talhaoId, $propriedadeId);
-
-        $points = $this->normalizarPontos($dados['coordenadas_json'] ?? '');
-        abort_if(count($points) < 3, 422, 'Desenhe um poligono com pelo menos 3 pontos.');
+        try {
+            $points = $this->geometry->decodeJsonRing((string) ($dados['coordenadas_json'] ?? ''));
+        } catch (InvalidPolygon $exception) {
+            throw ValidationException::withMessages(['coordenadas_json' => $exception->getMessage()]);
+        }
 
         $centro = $this->centroide($points);
-        $area = $this->areaHa($points);
 
-        DB::table('talhoes')
-            ->where('id', $talhaoId)
-            ->where('propriedade_id', $propriedadeId)
-            ->update([
-                'nome' => trim($dados['nome']),
-                'area' => $area,
-                'area_bruta' => $area,
-                'area_excluida_ha' => 0,
-                'descricao' => trim($dados['descricao'] ?? '') ?: null,
-                'latitude' => $centro['lat'],
-                'longitude' => $centro['lng'],
-                'geometria_tipo' => 'polygon',
-                'coordenadas_json' => json_encode($points, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            ]);
+        DB::transaction(function () use ($talhaoId, $dados, $propriedadeId, $usuarioId, $points, $centro): void {
+            $talhao = DB::table('talhoes')
+                ->where('id', $talhaoId)
+                ->where('propriedade_id', $propriedadeId)
+                ->lockForUpdate()
+                ->first();
+            abort_if(! $talhao, 404);
+            $this->assertMapMutationAllowed($talhao, $propriedadeId, 'coordenadas_json');
 
-        $this->auditar($usuarioId, 'salvar_poligono_talhao', 'talhoes', $talhaoId, $propriedadeId, 'Poligono do talhao atualizado. Area recalculada: '.number_format($area, 2, ',', '.').' ha.');
+            $existingRings = $this->exclusoesTalhaoEstritas($talhao);
+            try {
+                $areas = $this->geometry->areaBreakdown($points, $existingRings);
+            } catch (InvalidPolygon $exception) {
+                throw ValidationException::withMessages([
+                    'coordenadas_json' => 'O novo polígono não comporta as exclusões existentes. Limpe ou ajuste as exclusões antes de redesenhar.',
+                ]);
+            }
+
+            DB::table('talhoes')
+                ->where('id', $talhaoId)
+                ->where('propriedade_id', $propriedadeId)
+                ->update([
+                    'nome' => trim($dados['nome']),
+                    'area' => $areas['liquida'],
+                    'area_bruta' => $areas['bruta'],
+                    'area_excluida_ha' => $areas['excluida'],
+                    'descricao' => trim($dados['descricao'] ?? '') ?: null,
+                    'latitude' => $centro['lat'],
+                    'longitude' => $centro['lng'],
+                    'geometria_tipo' => 'polygon',
+                    'coordenadas_json' => json_encode(
+                        $points,
+                        JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
+                    ),
+                ]);
+
+            $this->auditarObrigatorio(
+                $usuarioId,
+                'salvar_poligono_talhao',
+                'talhoes',
+                $talhaoId,
+                $propriedadeId,
+                'Poligono do talhao atualizado. Area recalculada: '.number_format($areas['liquida'], 2, ',', '.').' ha.',
+            );
+        }, 3);
     }
 
     public function exportarKmlPropriedade(int $propriedadeId): Response
@@ -540,7 +706,7 @@ class TalhaoService
             ->first();
         abort_unless($talhao, 404);
 
-        $baseName = 'farmfort_'.$this->slug((string)$talhao->nome);
+        $baseName = 'farmfort_'.$this->slug((string) $talhao->nome);
         $formato = strtolower($formato);
 
         if ($formato === 'kml') {
@@ -568,23 +734,27 @@ class TalhaoService
     public function importarArquivoGeo(int $propriedadeId, UploadedFile $arquivo, ?string $nomeImportacao = null, ?int $usuarioId = null): array
     {
         $ext = strtolower($arquivo->getClientOriginalExtension() ?: $arquivo->extension());
-        if (!in_array($ext, ['kml', 'kmz', 'shp', 'zip'], true)) {
+        if (! in_array($ext, ['kml', 'kmz', 'shp', 'zip'], true)) {
             throw new RuntimeException('Envie um arquivo KML, KMZ ou SHP.');
         }
 
         $nomeBase = $this->slug(pathinfo($arquivo->getClientOriginalName(), PATHINFO_FILENAME) ?: 'talhoes');
         $arquivoNome = 'talhoes_prop_'.$propriedadeId.'_'.date('YmdHis').'_'.$nomeBase.'.'.$ext;
         $dir = public_path('uploads/geo');
-        if (!is_dir($dir)) {
+        if (! is_dir($dir)) {
             mkdir($dir, 0755, true);
         }
         $arquivo->move($dir, $arquivoNome);
         $relativePath = 'uploads/geo/'.$arquivoNome;
         $absolutePath = $dir.DIRECTORY_SEPARATOR.$arquivoNome;
 
-        $items = $this->parseGeoFile($absolutePath, $ext);
-        $items = $this->nomearItensImportados($items, trim((string)$nomeImportacao));
-        if (!$items) {
+        try {
+            $items = $this->parseGeoFile($absolutePath, $ext);
+        } catch (InvalidPolygon $exception) {
+            throw new RuntimeException('O arquivo contém um polígono inválido: '.$exception->getMessage(), previous: $exception);
+        }
+        $items = $this->nomearItensImportados($items, trim((string) $nomeImportacao));
+        if (! $items) {
             throw new RuntimeException('Nenhum talhao foi encontrado no arquivo.');
         }
 
@@ -635,15 +805,66 @@ class TalhaoService
 
     private function filtros(Request $request): array
     {
-        $status = (string)$request->query('status', 'ativos');
-        if (!in_array($status, ['ativos', 'desativados', 'todos'], true)) {
+        $status = (string) $request->query('status', 'ativos');
+        if (! in_array($status, ['ativos', 'desativados', 'todos'], true)) {
             $status = 'ativos';
         }
 
         return [
             'status' => $status,
-            'search' => trim((string)$request->query('search', '')),
+            'search' => trim((string) $request->query('search', '')),
         ];
+    }
+
+    private function safrasEmUso(int $propriedadeId, ?int $talhaoId = null): Collection
+    {
+        return DB::table('safra_talhoes as st')
+            ->join('safras as s', function ($join) {
+                $join->on('s.id', '=', 'st.safra_id')
+                    ->on('s.propriedade_id', '=', 'st.propriedade_id');
+            })
+            ->where('st.propriedade_id', $propriedadeId)
+            ->whereIn('s.status', $this->mapCapabilities->blockingStatuses())
+            ->when($talhaoId !== null, fn ($query) => $query->where('st.talhao_id', $talhaoId))
+            ->orderByDesc('s.data_inicio')
+            ->orderByDesc('s.id')
+            ->get([
+                'st.talhao_id',
+                's.id as safra_id',
+                's.descricao as safra_nome',
+                's.status',
+            ]);
+    }
+
+    /**
+     * @return list<array{nome: string, status: string}>
+     */
+    private function normalizarSafrasEmUso(Collection $safras): array
+    {
+        return $safras
+            ->map(fn ($safra): array => [
+                'nome' => trim((string) ($safra->safra_nome ?? '')),
+                'status' => (string) ($safra->status ?? ''),
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function assertMapMutationAllowed(object $talhao, int $propriedadeId, string $errorKey): void
+    {
+        if ((int) ($talhao->ativo ?? 0) !== 1) {
+            throw ValidationException::withMessages([$errorKey => 'Talhão inativo.']);
+        }
+
+        $capabilities = $this->mapCapabilities->for(
+            $this->normalizarSafrasEmUso($this->safrasEmUso($propriedadeId, (int) $talhao->id)),
+        );
+
+        if (! $capabilities['can_edit_geometry']) {
+            throw ValidationException::withMessages([
+                $errorKey => (string) $capabilities['block_reason'],
+            ]);
+        }
     }
 
     private function talhoesAtivos(int $propriedadeId): Collection
@@ -653,9 +874,9 @@ class TalhaoService
             ->where('ativo', 1)
             ->orderBy('nome')
             ->get(['id', 'nome', 'area'])
-            ->map(fn ($talhao) => (object)[
-                'id' => (int)$talhao->id,
-                'nome' => (string)$talhao->nome,
+            ->map(fn ($talhao) => (object) [
+                'id' => (int) $talhao->id,
+                'nome' => (string) $talhao->nome,
                 'area' => FarmFormat::decimal($talhao->area, 2).' ha',
             ]);
     }
@@ -782,13 +1003,13 @@ class TalhaoService
 
     private function normalizarLinha($row): object
     {
-        $area = (float)$row->area;
-        $total = (float)$row->total_despesas;
-        $lat = $row->latitude !== null ? (float)$row->latitude : null;
-        $lng = $row->longitude !== null ? (float)$row->longitude : null;
+        $area = (float) $row->area;
+        $total = (float) $row->total_despesas;
+        $lat = $row->latitude !== null ? (float) $row->latitude : null;
+        $lng = $row->longitude !== null ? (float) $row->longitude : null;
 
-        return (object)[
-            'id' => (int)$row->id,
+        return (object) [
+            'id' => (int) $row->id,
             'nome' => FarmFormat::value($row->nome),
             'kml_nome' => FarmFormat::value($row->kml_nome),
             'area_raw' => $area,
@@ -800,16 +1021,16 @@ class TalhaoService
                 ? number_format($lat, 6, '.', '').', '.number_format($lng, 6, '.', '')
                 : '-',
             'georreferenciado' => $lat !== null && $lng !== null,
-            'qtd_despesas' => (int)$row->qtd_despesas,
+            'qtd_despesas' => (int) $row->qtd_despesas,
             'total_despesas_raw' => $total,
             'total_despesas' => FarmFormat::money($total),
             'custo_ha' => $area > 0 ? FarmFormat::money($total / $area) : '-',
             'descricao' => FarmFormat::value($row->descricao),
-            'pivo' => (int)$row->pivo_ativo === 1 ? 'Ativo' : 'Não',
-            'pivo_ativo' => (int)$row->pivo_ativo === 1,
+            'pivo' => (int) $row->pivo_ativo === 1 ? 'Ativo' : 'Não',
+            'pivo_ativo' => (int) $row->pivo_ativo === 1,
             'pivo_area' => FarmFormat::decimal($row->pivo_area_ha, 2).' ha',
-            'ativo' => (int)$row->ativo === 1,
-            'status' => (int)$row->ativo === 1 ? 'Ativo' : 'Desativado',
+            'ativo' => (int) $row->ativo === 1,
+            'status' => (int) $row->ativo === 1 ? 'Ativo' : 'Desativado',
         ];
     }
 
@@ -836,6 +1057,7 @@ class TalhaoService
                             'colheita_finalizada_por' => $vinculo->colheita_finalizada_por,
                         ]);
                 }
+
                 continue;
             }
 
@@ -857,7 +1079,7 @@ class TalhaoService
 
     private function descricaoComNota(?string $descricao, string $nota): string
     {
-        $descricao = trim((string)$descricao);
+        $descricao = trim((string) $descricao);
 
         return $descricao === '' ? $nota : $descricao."\n".$nota;
     }
@@ -877,7 +1099,7 @@ class TalhaoService
         }
 
         abort_unless(class_exists(ZipArchive::class), 500, 'Extensao ZIP nao disponivel.');
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
         if ($zip->open($path) !== true) {
             return [];
         }
@@ -885,7 +1107,7 @@ class TalhaoService
         $shpIndexes = [];
         for ($i = 0; $i < $zip->numFiles; $i++) {
             $name = $zip->getNameIndex($i);
-            if (!$name) {
+            if (! $name) {
                 continue;
             }
             $entryExt = strtolower(pathinfo($name, PATHINFO_EXTENSION));
@@ -905,7 +1127,7 @@ class TalhaoService
             $raw = $zip->getFromIndex($index);
             $name = $zip->getNameIndex($index);
             if ($raw !== false) {
-                $items = array_merge($items, $this->parseShpContent($raw, pathinfo((string)$name, PATHINFO_FILENAME) ?: 'Talhao SHP'));
+                $items = array_merge($items, $this->parseShpContent($raw, pathinfo((string) $name, PATHINFO_FILENAME) ?: 'Talhao SHP'));
             }
         }
 
@@ -917,7 +1139,7 @@ class TalhaoService
     private function parseKmlContent(string $raw, string $defaultName): array
     {
         $xml = simplexml_load_string($raw, 'SimpleXMLElement', LIBXML_NONET);
-        if (!$xml) {
+        if (! $xml) {
             return [];
         }
 
@@ -925,19 +1147,19 @@ class TalhaoService
         $items = [];
         foreach ($placemarks as $index => $placemark) {
             $nameNode = $placemark->xpath('./*[local-name()="name"]');
-            $name = $nameNode ? trim((string)$nameNode[0]) : $defaultName.' '.($index + 1);
+            $name = $nameNode ? trim((string) $nameNode[0]) : $defaultName.' '.($index + 1);
             $coordNode = $placemark->xpath('.//*[local-name()="coordinates"]');
-            if (!$coordNode) {
+            if (! $coordNode) {
                 continue;
             }
 
-            $points = $this->pointsFromKmlCoordinates((string)$coordNode[0]);
-            if (!$points) {
+            $points = $this->pointsFromKmlCoordinates((string) $coordNode[0]);
+            if (! $points) {
                 continue;
             }
 
-            $isPolygon = (bool)$placemark->xpath('.//*[local-name()="Polygon"]');
-            $isLine = (bool)$placemark->xpath('.//*[local-name()="LineString"]');
+            $isPolygon = (bool) $placemark->xpath('.//*[local-name()="Polygon"]');
+            $isLine = (bool) $placemark->xpath('.//*[local-name()="LineString"]');
             $type = $isPolygon ? 'polygon' : ($isLine ? 'line' : 'point');
             $centroid = $this->centroide($points);
 
@@ -961,10 +1183,10 @@ class TalhaoService
                 continue;
             }
             $parts = explode(',', $coord);
-            if (count($parts) < 2 || !is_numeric($parts[0]) || !is_numeric($parts[1])) {
+            if (count($parts) < 2 || ! is_numeric($parts[0]) || ! is_numeric($parts[1])) {
                 continue;
             }
-            $points[] = ['lat' => (float)$parts[1], 'lng' => (float)$parts[0]];
+            $points[] = ['lat' => (float) $parts[1], 'lng' => (float) $parts[0]];
         }
 
         return $points;
@@ -980,7 +1202,7 @@ class TalhaoService
         foreach ($items as $index => $item) {
             $items[$index]['name'] = $total === 1
                 ? $nomeImportacao
-                : $nomeImportacao.' '.str_pad((string)($index + 1), 2, '0', STR_PAD_LEFT);
+                : $nomeImportacao.' '.str_pad((string) ($index + 1), 2, '0', STR_PAD_LEFT);
         }
 
         return $items;
@@ -1028,10 +1250,11 @@ class TalhaoService
                         'area' => 0,
                     ];
                 }
+
                 continue;
             }
 
-            if (!in_array($shapeType, [3, 5, 13, 15, 23, 25], true) || strlen($record) < 44) {
+            if (! in_array($shapeType, [3, 5, 13, 15, 23, 25], true) || strlen($record) < 44) {
                 continue;
             }
 
@@ -1064,7 +1287,7 @@ class TalhaoService
 
             for ($part = 0; $part < $numParts; $part++) {
                 $partPoints = array_slice($points, $parts[$part], max(0, $parts[$part + 1] - $parts[$part]));
-                if (!$partPoints || !$this->pointsAreLatLng($partPoints)) {
+                if (! $partPoints || ! $this->pointsAreLatLng($partPoints)) {
                     continue;
                 }
 
@@ -1084,13 +1307,13 @@ class TalhaoService
     private function pointsAreLatLng(array $points): bool
     {
         foreach ($points as $point) {
-            if (!isset($point['lat'], $point['lng'])) {
+            if (! isset($point['lat'], $point['lng'])) {
                 return false;
             }
-            if ((float)$point['lat'] < -90 || (float)$point['lat'] > 90) {
+            if ((float) $point['lat'] < -90 || (float) $point['lat'] > 90) {
                 return false;
             }
-            if ((float)$point['lng'] < -180 || (float)$point['lng'] > 180) {
+            if ((float) $point['lng'] < -180 || (float) $point['lng'] > 180) {
                 return false;
             }
         }
@@ -1102,41 +1325,41 @@ class TalhaoService
     {
         $value = unpack('V', substr($data, $offset, 4));
 
-        return (int)($value[1] ?? 0);
+        return (int) ($value[1] ?? 0);
     }
 
     private function beInt32(string $data, int $offset): int
     {
         $value = unpack('N', substr($data, $offset, 4));
 
-        return (int)($value[1] ?? 0);
+        return (int) ($value[1] ?? 0);
     }
 
     private function leDouble(string $data, int $offset): float
     {
         $value = unpack('e', substr($data, $offset, 8));
 
-        return (float)($value[1] ?? 0);
+        return (float) ($value[1] ?? 0);
     }
 
     private function talhaoMapa($talhao): array
     {
         $points = $this->normalizarPontos($talhao->coordenadas_json ?? '');
-        $lat = $points[0]['lat'] ?? ($talhao->latitude !== null ? (float)$talhao->latitude : null);
-        $lng = $points[0]['lng'] ?? ($talhao->longitude !== null ? (float)$talhao->longitude : null);
+        $lat = $points[0]['lat'] ?? ($talhao->latitude !== null ? (float) $talhao->latitude : null);
+        $lng = $points[0]['lng'] ?? ($talhao->longitude !== null ? (float) $talhao->longitude : null);
         $tipo = $talhao->geometria_tipo ?: (count($points) >= 3 ? 'polygon' : 'point');
-        $area = (float)$talhao->area;
+        $area = (float) $talhao->area;
         $exclusoes = $this->exclusoesTalhao($talhao);
-        $downloadUrl = route('talhoes.exportar-talhao', ['talhao' => (int)$talhao->id]);
+        $downloadUrl = route('talhoes.exportar-talhao', ['talhao' => (int) $talhao->id]);
 
         return [
-            'id' => (int)$talhao->id,
+            'id' => (int) $talhao->id,
             'nome' => $talhao->nome,
             'descricao' => $talhao->descricao ?? '',
             'area' => $area,
             'area_formatada' => FarmFormat::decimal($area, 2).' ha',
-            'area_bruta' => (float)($talhao->area_bruta ?? $talhao->area ?? 0),
-            'area_excluida_ha' => (float)($talhao->area_excluida_ha ?? 0),
+            'area_bruta' => (float) ($talhao->area_bruta ?? $talhao->area ?? 0),
+            'area_excluida_ha' => (float) ($talhao->area_excluida_ha ?? 0),
             'area_excluida_formatada' => FarmFormat::decimal($talhao->area_excluida_ha ?? 0, 2).' ha',
             'lat' => $lat,
             'lng' => $lng,
@@ -1151,11 +1374,11 @@ class TalhaoService
             'points' => $points,
             'exclusoes' => $exclusoes,
             'exclusoes_count' => count($exclusoes),
-            'pivo_ativo' => (int)($talhao->pivo_ativo ?? 0) === 1,
-            'pivo_lat' => $talhao->pivo_lat !== null ? (float)$talhao->pivo_lat : null,
-            'pivo_lng' => $talhao->pivo_lng !== null ? (float)$talhao->pivo_lng : null,
-            'pivo_raio_m' => $talhao->pivo_raio_m !== null ? (float)$talhao->pivo_raio_m : null,
-            'pivo_area_ha' => $talhao->pivo_area_ha !== null ? (float)$talhao->pivo_area_ha : null,
+            'pivo_ativo' => (int) ($talhao->pivo_ativo ?? 0) === 1,
+            'pivo_lat' => $talhao->pivo_lat !== null ? (float) $talhao->pivo_lat : null,
+            'pivo_lng' => $talhao->pivo_lng !== null ? (float) $talhao->pivo_lng : null,
+            'pivo_raio_m' => $talhao->pivo_raio_m !== null ? (float) $talhao->pivo_raio_m : null,
+            'pivo_area_ha' => $talhao->pivo_area_ha !== null ? (float) $talhao->pivo_area_ha : null,
             'pivo_area_formatada' => $talhao->pivo_area_ha !== null ? FarmFormat::decimal($talhao->pivo_area_ha, 2).' ha' : '',
             'google_url' => ($lat !== null && $lng !== null) ? 'https://www.google.com/maps?q='.$lat.','.$lng : null,
             'download_url' => $downloadUrl,
@@ -1170,19 +1393,19 @@ class TalhaoService
     private function normalizarPontos($json): array
     {
         $decoded = is_string($json) ? json_decode($json, true) : $json;
-        if (!is_array($decoded)) {
+        if (! is_array($decoded)) {
             return [];
         }
 
         $points = [];
         foreach ($decoded as $point) {
-            if (!is_array($point)) {
+            if (! is_array($point)) {
                 continue;
             }
             $lat = $point['lat'] ?? ($point[0] ?? null);
             $lng = $point['lng'] ?? ($point[1] ?? null);
             if (is_numeric($lat) && is_numeric($lng)) {
-                $points[] = ['lat' => (float)$lat, 'lng' => (float)$lng];
+                $points[] = ['lat' => (float) $lat, 'lng' => (float) $lng];
             }
         }
 
@@ -1192,8 +1415,8 @@ class TalhaoService
     private function pontosTalhao($talhao): array
     {
         $points = $this->normalizarPontos($talhao->coordenadas_json ?? '');
-        if (!$points && $talhao->latitude !== null && $talhao->longitude !== null) {
-            $points[] = ['lat' => (float)$talhao->latitude, 'lng' => (float)$talhao->longitude];
+        if (! $points && $talhao->latitude !== null && $talhao->longitude !== null) {
+            $points[] = ['lat' => (float) $talhao->latitude, 'lng' => (float) $talhao->longitude];
         }
 
         return $points;
@@ -1202,7 +1425,7 @@ class TalhaoService
     private function exclusoesTalhao($talhao): array
     {
         $decoded = is_string($talhao->exclusoes_json ?? null) ? json_decode($talhao->exclusoes_json, true) : [];
-        if (!is_array($decoded)) {
+        if (! is_array($decoded)) {
             return [];
         }
 
@@ -1215,6 +1438,28 @@ class TalhaoService
         }
 
         return $rings;
+    }
+
+    private function exclusoesTalhaoEstritas($talhao): array
+    {
+        if ($talhao->exclusoes_json === null || trim((string) $talhao->exclusoes_json) === '') {
+            return [];
+        }
+
+        try {
+            $decoded = json_decode((string) $talhao->exclusoes_json, true, 512, JSON_THROW_ON_ERROR);
+            if (! is_array($decoded)) {
+                throw new RuntimeException('As áreas excluídas existentes não formam uma lista válida.');
+            }
+
+            return array_values(array_map(fn (array $ring) => $this->geometry->normalizeRing($ring), $decoded));
+        } catch (\Throwable $exception) {
+            if ($exception instanceof RuntimeException) {
+                throw $exception;
+            }
+
+            throw new RuntimeException('As áreas excluídas existentes estão corrompidas.', previous: $exception);
+        }
     }
 
     private function tipoGeo($talhao, array $points): string
@@ -1240,7 +1485,7 @@ class TalhaoService
 
         return '<?xml version="1.0" encoding="UTF-8"?>'."\n"
             .'<kml xmlns="http://www.opengis.net/kml/2.2"><Document>'
-            .'<name>'.$this->xml((string)$talhao->nome).'</name>'
+            .'<name>'.$this->xml((string) $talhao->nome).'</name>'
             .$placemark
             .'</Document></kml>';
     }
@@ -1249,15 +1494,15 @@ class TalhaoService
     {
         $points = $this->pontosTalhao($talhao);
         $type = $this->tipoGeo($talhao, $points);
-        if (!$type || !$points) {
+        if (! $type || ! $points) {
             return '';
         }
 
-        $description = trim((string)($talhao->descricao ?? '')."\nArea: ".FarmFormat::decimal($talhao->area ?? 0, 2).' ha');
+        $description = trim((string) ($talhao->descricao ?? '')."\nArea: ".FarmFormat::decimal($talhao->area ?? 0, 2).' ha');
         $geometry = $this->kmlGeometry($talhao, $points, $type);
         $pivo = $this->pivoPlacemark($talhao);
 
-        return '<Placemark><name>'.$this->xml((string)$talhao->nome).'</name>'
+        return '<Placemark><name>'.$this->xml((string) $talhao->nome).'</name>'
             .'<description>'.$this->xml($description).'</description>'
             .$geometry
             .'</Placemark>'.$pivo;
@@ -1290,18 +1535,18 @@ class TalhaoService
 
     private function pivoPlacemark($talhao): string
     {
-        if (empty($talhao->pivo_ativo) || $talhao->pivo_lat === null || $talhao->pivo_lng === null || (float)$talhao->pivo_raio_m <= 0) {
+        if (empty($talhao->pivo_ativo) || $talhao->pivo_lat === null || $talhao->pivo_lng === null || (float) $talhao->pivo_raio_m <= 0) {
             return '';
         }
 
-        $points = $this->circlePoints((float)$talhao->pivo_lat, (float)$talhao->pivo_lng, (float)$talhao->pivo_raio_m);
-        if (!$points) {
+        $points = $this->circlePoints((float) $talhao->pivo_lat, (float) $talhao->pivo_lng, (float) $talhao->pivo_raio_m);
+        if (! $points) {
             return '';
         }
 
         $description = 'Raio: '.FarmFormat::decimal($talhao->pivo_raio_m, 2).' m'."\nArea: ".FarmFormat::decimal($talhao->pivo_area_ha ?? 0, 2).' ha';
 
-        return '<Placemark><name>'.$this->xml((string)$talhao->nome.' - Pivo').'</name>'
+        return '<Placemark><name>'.$this->xml((string) $talhao->nome.' - Pivo').'</name>'
             .'<description>'.$this->xml($description).'</description>'
             .'<LineString><coordinates>'.$this->kmlCoordinates($points).'</coordinates></LineString>'
             .'</Placemark>';
@@ -1310,7 +1555,7 @@ class TalhaoService
     private function kmlCoordinates(array $points): string
     {
         return implode(' ', array_map(
-            fn ($p) => number_format((float)$p['lng'], 12, '.', '').','.number_format((float)$p['lat'], 12, '.', '').',0',
+            fn ($p) => number_format((float) $p['lng'], 12, '.', '').','.number_format((float) $p['lat'], 12, '.', '').',0',
             $points
         ));
     }
@@ -1339,7 +1584,7 @@ class TalhaoService
     {
         $points = $this->pontosTalhao($talhao);
         $type = $this->tipoGeo($talhao, $points);
-        abort_if(!$type || !$points, 422, 'Este talhao nao possui geometria para exportar.');
+        abort_if(! $type || ! $points, 422, 'Este talhao nao possui geometria para exportar.');
 
         if ($type === 'polygon') {
             if ($points[0] !== end($points)) {
@@ -1386,9 +1631,9 @@ class TalhaoService
             }
         }
 
-        $contentWords = (int)(strlen($content) / 2);
+        $contentWords = (int) (strlen($content) / 2);
         $record = pack('N', 1).pack('N', $contentWords).$content;
-        $shp = $this->shpHeader($shapeType, (int)((100 + strlen($record)) / 2), $bbox).$record;
+        $shp = $this->shpHeader($shapeType, (int) ((100 + strlen($record)) / 2), $bbox).$record;
         $shx = $this->shpHeader($shapeType, 54, $bbox).pack('N', 50).pack('N', $contentWords);
         $dbf = $this->dbfTalhao($talhao, $type);
         $prj = 'GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137,298.257223563]],PRIMEM["Greenwich",0],UNIT["Degree",0.017453292519943295]]';
@@ -1409,7 +1654,7 @@ class TalhaoService
         $zipPath = $tmp.'.zip';
         @rename($tmp, $zipPath);
 
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
         abort_unless($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true, 500, 'Nao foi possivel gerar o arquivo.');
         foreach ($files as $name => $content) {
             $zip->addFromString($name, $content);
@@ -1449,7 +1694,7 @@ class TalhaoService
         ];
         $recordLength = 1 + array_sum(array_column($fields, 2));
         $headerLength = 32 + (32 * count($fields)) + 1;
-        $header = chr(3).chr((int)date('Y') - 1900).chr((int)date('n')).chr((int)date('j'))
+        $header = chr(3).chr((int) date('Y') - 1900).chr((int) date('n')).chr((int) date('j'))
             .pack('V', 1).pack('v', $headerLength).pack('v', $recordLength)
             .str_repeat("\0", 20);
         foreach ($fields as $field) {
@@ -1457,10 +1702,10 @@ class TalhaoService
         }
         $header .= "\r";
 
-        $name = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', (string)$talhao->nome) ?: (string)$talhao->nome;
+        $name = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', (string) $talhao->nome) ?: (string) $talhao->nome;
         $record = ' '
             .str_pad(substr($name, 0, 80), 80)
-            .str_pad(number_format((float)($talhao->area ?? 0), 2, '.', ''), 14, ' ', STR_PAD_LEFT)
+            .str_pad(number_format((float) ($talhao->area ?? 0), 2, '.', ''), 14, ' ', STR_PAD_LEFT)
             .str_pad($type, 12);
 
         return $header.$record.chr(0x1A);
@@ -1481,7 +1726,7 @@ class TalhaoService
         $safeName = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value) ?: $value;
         $safeName = preg_replace('/[^a-zA-Z0-9_-]+/', '_', $safeName);
 
-        return strtolower(trim((string)$safeName, '_')) ?: 'talhao';
+        return strtolower(trim((string) $safeName, '_')) ?: 'talhao';
     }
 
     private function xml(string $value): string
@@ -1499,87 +1744,23 @@ class TalhaoService
 
     private function areaHa(array $points): float
     {
-        $centro = $this->centroide($points);
-        $meters = array_map(function ($point) use ($centro) {
-            $x = deg2rad($point['lng'] - $centro['lng']) * 6371000 * cos(deg2rad($centro['lat']));
-            $y = deg2rad($point['lat'] - $centro['lat']) * 6371000;
-            return [$x, $y];
-        }, $points);
-
-        $sum = 0.0;
-        $count = count($meters);
-        for ($i = 0; $i < $count; $i++) {
-            [$x1, $y1] = $meters[$i];
-            [$x2, $y2] = $meters[($i + 1) % $count];
-            $sum += ($x1 * $y2) - ($x2 * $y1);
-        }
-
-        return round(abs($sum) / 2 / 10000, 2);
-    }
-
-    private function areaLiquida(array $outerPoints, array $exclusionRings): array
-    {
-        $areaBruta = $this->areaHa($outerPoints);
-        $areaExcluida = 0.0;
-        foreach ($exclusionRings as $ring) {
-            $areaExcluida += $this->areaHa($ring);
-        }
-        $areaExcluida = round($areaExcluida, 2);
-
-        return [
-            'bruta' => $areaBruta,
-            'excluida' => $areaExcluida,
-            'liquida' => max(0, round($areaBruta - $areaExcluida, 2)),
-        ];
-    }
-
-    private function ringInsidePolygon(array $ring, array $polygon): bool
-    {
-        foreach ($ring as $point) {
-            if (!$this->pointInsidePolygon($point, $polygon)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private function pointInsidePolygon(array $point, array $polygon): bool
-    {
-        $inside = false;
-        $count = count($polygon);
-        $x = (float)$point['lng'];
-        $y = (float)$point['lat'];
-
-        for ($i = 0, $j = $count - 1; $i < $count; $j = $i++) {
-            $xi = (float)$polygon[$i]['lng'];
-            $yi = (float)$polygon[$i]['lat'];
-            $xj = (float)$polygon[$j]['lng'];
-            $yj = (float)$polygon[$j]['lat'];
-            $intersects = (($yi > $y) !== ($yj > $y))
-                && ($x < (($xj - $xi) * ($y - $yi) / (($yj - $yi) ?: 0.0000000001)) + $xi);
-
-            if ($intersects) {
-                $inside = !$inside;
-            }
-        }
-
-        return $inside;
+        return $this->geometry->areaHectares($points);
     }
 
     private function decimal($value): float
     {
-        $value = str_replace(',', '.', trim((string)$value));
-        return max(0.0, (float)$value);
+        $value = str_replace(',', '.', trim((string) $value));
+
+        return max(0.0, (float) $value);
     }
 
     private function nullableDecimal($value): ?float
     {
-        if ($value === null || trim((string)$value) === '') {
+        if ($value === null || trim((string) $value) === '') {
             return null;
         }
 
-        return (float)str_replace(',', '.', trim((string)$value));
+        return (float) str_replace(',', '.', trim((string) $value));
     }
 
     private function payload(array $dados, float $area): array
@@ -1593,7 +1774,7 @@ class TalhaoService
             'latitude' => $this->nullableDecimal($dados['latitude'] ?? null),
             'longitude' => $this->nullableDecimal($dados['longitude'] ?? null),
             'geometria_tipo' => ($dados['geometria_tipo'] ?? null) ?: null,
-            'pivo_ativo' => (bool)($dados['pivo_ativo'] ?? false),
+            'pivo_ativo' => (bool) ($dados['pivo_ativo'] ?? false),
             'pivo_lat' => $this->nullableDecimal($dados['pivo_lat'] ?? null),
             'pivo_lng' => $this->nullableDecimal($dados['pivo_lng'] ?? null),
             'pivo_raio_m' => $this->nullableDecimal($dados['pivo_raio_m'] ?? null),
@@ -1614,8 +1795,28 @@ class TalhaoService
                 'ip' => request()->ip(),
                 'criado_em' => now(),
             ]);
-        } catch (\Throwable) {
-            // Auditoria nao deve impedir a gestao dos talhoes.
+        } catch (\Throwable $exception) {
+            report($exception);
         }
+    }
+
+    private function auditarObrigatorio(
+        ?int $usuarioId,
+        string $acao,
+        string $tabela,
+        int $registroId,
+        int $propriedadeId,
+        string $detalhes,
+    ): void {
+        DB::table('logs_auditoria')->insert([
+            'usuario_id' => $usuarioId,
+            'acao' => $acao,
+            'tabela' => $tabela,
+            'registro_id' => $registroId,
+            'propriedade_id' => $propriedadeId,
+            'detalhes' => $detalhes,
+            'ip' => request()->ip(),
+            'criado_em' => now(),
+        ]);
     }
 }

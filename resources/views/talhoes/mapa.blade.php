@@ -2,6 +2,7 @@
 
 @php
     use App\Support\FarmFormat;
+    use Illuminate\Support\Js;
 
     $cards = $mapCards ?? [];
     $formatArea = fn ($value) => number_format((float)$value, 2, ',', '.');
@@ -24,9 +25,6 @@
                 </button>
                 <button class="btn btn-info-outline" type="button" id="btnDrawPivoTop">
                     <i class="bi bi-record-circle"></i> Pivô
-                </button>
-                <button class="btn btn-warning" type="button" id="btnDrawExclusionTop">
-                    <i class="bi bi-scissors"></i> Área excluída
                 </button>
                 <a class="btn btn-success-outline" href="{{ route('talhoes.index') }}">
                     <i class="bi bi-upload"></i> Importar KML/KMZ/SHP
@@ -83,11 +81,8 @@
                                 <span class="map-list-meta">Polígono - {{ $formatArea($talhao['area'] ?? 0) }} ha - {{ $talhao['custo_formatado'] ?? FarmFormat::money(0) }}</span>
                                 <span class="map-list-meta">{{ $coords }}</span>
                             </button>
-                            <button class="map-list-edit" type="button" data-map-edit-talhao="{{ $talhao['id'] }}" title="Editar talhão">
+                            <button class="map-list-edit" type="button" data-map-edit-talhao="{{ $talhao['id'] }}" title="Editar dados do talhão" aria-label="Editar dados do talhão {{ $talhao['nome'] }}">
                                 <i class="bi bi-pencil-square"></i>
-                            </button>
-                            <button class="map-list-exclusion" type="button" data-map-draw-exclusion="{{ $talhao['id'] }}" title="Adicionar área excluída">
-                                <i class="bi bi-scissors"></i>
                             </button>
                         </div>
                     @empty
@@ -116,7 +111,7 @@
     <script src="{{ asset('js/talhao-mapa.js') }}?v={{ @filemtime(public_path('js/talhao-mapa.js')) }}"></script>
     <script>
         window.initTalhaoMapa({
-            talhoes: {!! $talhoesJson !!},
+            talhoes: {{ Js::from($talhoes) }},
             centro: [{{ $centro['lat'] ?? -15.7801 }}, {{ $centro['lng'] ?? -47.9292 }}],
         });
     </script>

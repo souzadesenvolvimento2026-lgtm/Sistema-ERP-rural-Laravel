@@ -119,27 +119,21 @@
                 @forelse ($lancamentos as $row)
                     <tr>
                         <td>{{ FarmFormat::date($row->data) }}</td>
-                        <td><span class="badge {{ $row->tipo === 'receita' ? 'bg-success' : ($row->tipo === 'transferencia' ? 'bg-info' : 'bg-danger') }}">{{ $row->tipo_label }}</span></td>
+                        <td><span class="badge {{ $row->type_tone }}">{{ $row->tipo_label }}</span></td>
                         <td>{{ $row->descricao }}</td>
                         <td>{{ $row->pessoa }}</td>
                         <td>{{ $row->safra_categoria ?: '-' }}</td>
                         <td>{{ $row->conta }}</td>
-                        <td class="{{ $row->tipo === 'receita' ? 'text-success' : ($row->tipo === 'despesa' ? 'text-danger' : '') }}">{{ $fmtMoney($row->valor) }}</td>
+                        <td class="{{ $row->value_tone }}">{{ $fmtMoney($row->valor) }}</td>
                         <td>{{ FarmFormat::date($row->previsto) }}</td>
                         <td>
-                            <span class="pill {{ in_array($row->status, ['pago', 'recebido', 'transferido'], true) ? 'success' : 'warning' }}">{{ FarmFormat::statusLabel($row->status) }}</span>
-                            @if ($row->status_aprovacao === 'pendente')
+                            <span class="pill {{ $row->status_tone }}">{{ FarmFormat::statusLabel($row->status) }}</span>
+                            @if ($row->show_pending_approval)
                                 <small class="d-block text-warning">Aguardando aprovação</small>
                             @endif
                         </td>
                         <td>
-                            @if ($row->tipo === 'receita')
-                                <a class="btn btn-sm btn-outline-secondary" href="{{ route('financeiro.receitas.edit', $row->id) }}" title="Abrir"><i class="bi bi-three-dots-vertical"></i></a>
-                            @elseif ($row->tipo === 'despesa')
-                                <a class="btn btn-sm btn-outline-secondary" href="{{ route('financeiro.despesas.edit', $row->id) }}" title="Abrir"><i class="bi bi-three-dots-vertical"></i></a>
-                            @else
-                                <a class="btn btn-sm btn-outline-secondary" href="{{ route('financeiro.contas.index') }}" title="Abrir"><i class="bi bi-three-dots-vertical"></i></a>
-                            @endif
+                            <a class="btn btn-sm btn-outline-secondary" href="{{ $row->action_url }}" title="Abrir"><i class="bi bi-three-dots-vertical"></i></a>
                         </td>
                     </tr>
                 @empty

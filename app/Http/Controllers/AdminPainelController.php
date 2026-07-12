@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Domain\Access\ProfileAccess;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -10,9 +11,11 @@ use Illuminate\View\View;
 
 class AdminPainelController extends Controller
 {
+    public function __construct(private readonly ProfileAccess $access) {}
+
     public function index(): View|RedirectResponse
     {
-        if (!in_array((string)session('perfil'), ['administrador_sistema', 'gerencia_sistema'], true)) {
+        if (! $this->access->isSystemAdministrator((string) session('perfil'))) {
             return redirect()->route('dashboard')->with('error', 'Acesso restrito ao administrador do sistema.');
         }
 
@@ -127,7 +130,7 @@ class AdminPainelController extends Controller
 
     private function countTable(string $table, array $where = []): int
     {
-        if (!Schema::hasTable($table)) {
+        if (! Schema::hasTable($table)) {
             return 0;
         }
 
@@ -138,16 +141,16 @@ class AdminPainelController extends Controller
             }
         }
 
-        return (int)$query->count();
+        return (int) $query->count();
     }
 
     private function countRecentSessions(): int
     {
-        if (!Schema::hasTable('usuarios') || !Schema::hasColumn('usuarios', 'sessao_atualizada_em')) {
+        if (! Schema::hasTable('usuarios') || ! Schema::hasColumn('usuarios', 'sessao_atualizada_em')) {
             return 0;
         }
 
-        return (int)DB::table('usuarios')
+        return (int) DB::table('usuarios')
             ->where('ativo', 1)
             ->where('sessao_atualizada_em', '>=', now()->subDay())
             ->count();
@@ -155,7 +158,7 @@ class AdminPainelController extends Controller
 
     private function countOpenSupport(): int
     {
-        if (!Schema::hasTable('suporte_conversas')) {
+        if (! Schema::hasTable('suporte_conversas')) {
             return 0;
         }
 
@@ -164,7 +167,7 @@ class AdminPainelController extends Controller
             $query->whereNotIn('status', ['fechado', 'encerrado', 'finalizado']);
         }
 
-        return (int)$query->count();
+        return (int) $query->count();
     }
 
     private function diskPercent(): int
@@ -175,17 +178,17 @@ class AdminPainelController extends Controller
             return 0;
         }
 
-        return (int)round((($total - $free) / $total) * 100);
+        return (int) round((($total - $free) / $total) * 100);
     }
 
     private function diskFreeLabel(): string
     {
-        return $this->bytesLabel((int)(@disk_free_space(base_path()) ?: 0));
+        return $this->bytesLabel((int) (@disk_free_space(base_path()) ?: 0));
     }
 
     private function diskTotalLabel(): string
     {
-        return $this->bytesLabel((int)(@disk_total_space(base_path()) ?: 0));
+        return $this->bytesLabel((int) (@disk_total_space(base_path()) ?: 0));
     }
 
     private function databaseSize(): string
@@ -197,8 +200,10 @@ class AdminPainelController extends Controller
                 [$database]
             );
 
-            return $this->bytesLabel((int)($size->total ?? 0));
-        } catch (\Throwable) {
+            return $this->bytesLabel((int) ($size->total ?? 0));
+        } catch (\Throwable $exception) {
+            report($exception);
+
             return 'Indisponível';
         }
     }
@@ -206,7 +211,7 @@ class AdminPainelController extends Controller
     private function uploadsSize(): string
     {
         $path = base_path('../uploads');
-        if (!File::isDirectory($path)) {
+        if (! File::isDirectory($path)) {
             return '0 B';
         }
 
@@ -221,6 +226,7 @@ class AdminPainelController extends Controller
     private function uploadsCount(): int
     {
         $path = base_path('../uploads');
+
         return File::isDirectory($path) ? count(File::allFiles($path)) : 0;
     }
 

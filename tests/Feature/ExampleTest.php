@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
-use App\Services\NotaFiscalXmlService;
+use App\Domain\Access\ProfileAccess;
+use App\Services\AuthenticationService;
 use App\Services\CotacaoSojaService;
+use App\Services\NotaFiscalXmlService;
 use App\Support\FarmContext;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -12,20 +14,143 @@ use Tests\TestCase;
 
 class ExampleTest extends TestCase
 {
-    private function loggedSession(): array
+    /** @var array<int, string> */
+    private array $originalUserProfiles = [];
+
+    /** @var array<string, array{usuario_id: int, propriedade_id: int}> */
+    private array $temporaryPropertyLinks = [];
+
+    protected function tearDown(): void
     {
-        return ['usuario_id' => $this->userId(), 'usuario_nome' => 'Teste'];
+        try {
+            foreach ($this->temporaryPropertyLinks as $link) {
+                DB::table('usuario_propriedades')
+                    ->where('usuario_id', $link['usuario_id'])
+                    ->where('propriedade_id', $link['propriedade_id'])
+                    ->delete();
+            }
+
+            foreach ($this->originalUserProfiles as $userId => $profile) {
+                DB::table('usuarios')->where('id', $userId)->update(['perfil' => $profile]);
+            }
+        } finally {
+            parent::tearDown();
+        }
+    }
+
+    private function loggedSession(
+        ?int $propertyId = null,
+        ?string $profile = null,
+        ?int $userId = null,
+    ): array {
+        $user = $this->activeSessionUser($userId, $profile);
+        $userId = (int) $user->id;
+        $profile = (string) $user->perfil;
+        $authentication = app(AuthenticationService::class);
+
+        if ($propertyId !== null) {
+            $this->authorizeSessionUserForProperty($userId, $profile, $propertyId);
+        } else {
+            $propertyId = $authentication->defaultPropertyId($userId, $profile);
+
+            if ($propertyId === null && ! app(ProfileAccess::class)->isSystemAdministrator($profile)) {
+                $propertyId = DB::table('propriedades')->where('ativo', 1)->orderBy('id')->value('id');
+                $this->assertNotNull($propertyId, 'O fixture precisa de uma propriedade ativa para autenticar este perfil.');
+                $propertyId = (int) $propertyId;
+                $this->authorizeSessionUserForProperty($userId, $profile, $propertyId);
+            }
+        }
+
+        $this->assertTrue(
+            $authentication->canAccessProperty($userId, $profile, $propertyId),
+            'O fixture de sessão deve representar um usuário ativo e autorizado à propriedade.',
+        );
+
+        return [
+            'usuario_id' => $userId,
+            'usuario_nome' => (string) $user->nome,
+            'perfil' => $profile,
+            'propriedade_id' => $propertyId,
+        ];
+    }
+
+    private function activeSessionUser(?int $userId, ?string $profile): object
+    {
+        $query = DB::table('usuarios')->where('ativo', 1);
+
+        if ($userId !== null) {
+            $query->where('id', $userId);
+        } elseif ($profile !== null) {
+            $query->where('perfil', $profile);
+        } else {
+            $query->where('id', $this->userId());
+        }
+
+        $user = $query->orderBy('id')->first(['id', 'nome', 'perfil']);
+
+        if (! $user && $profile !== null && $userId === null) {
+            $userId = $this->userId();
+            $user = DB::table('usuarios')->where('id', $userId)->first(['id', 'nome', 'perfil']);
+            $this->assertNotNull($user, 'O fixture precisa de um usuário ativo.');
+
+            $this->originalUserProfiles[$userId] ??= (string) $user->perfil;
+            DB::table('usuarios')->where('id', $userId)->update(['perfil' => $profile]);
+            $user->perfil = $profile;
+        }
+
+        $this->assertNotNull($user, 'O fixture precisa de um usuário ativo com o perfil solicitado.');
+        $this->assertSame($profile ?? (string) $user->perfil, (string) $user->perfil);
+
+        return $user;
+    }
+
+    private function authorizeSessionUserForProperty(int $userId, string $profile, int $propertyId): void
+    {
+        $authentication = app(AuthenticationService::class);
+
+        if ($authentication->canAccessProperty($userId, $profile, $propertyId)) {
+            return;
+        }
+
+        $this->assertDatabaseHas('propriedades', ['id' => $propertyId, 'ativo' => 1]);
+
+        $link = ['usuario_id' => $userId, 'propriedade_id' => $propertyId];
+        $key = $userId.':'.$propertyId;
+
+        if (! DB::table('usuario_propriedades')->where($link)->exists()) {
+            DB::table('usuario_propriedades')->insert($link);
+            $this->temporaryPropertyLinks[$key] = $link;
+        }
+
+        $this->assertTrue($authentication->canAccessProperty($userId, $profile, $propertyId));
     }
 
     private function userId(): int
     {
-        return (int)DB::table('usuarios')->orderBy('id')->value('id');
+        return (int) DB::table('usuarios as u')
+            ->where('u.ativo', 1)
+            ->where(function ($access) {
+                $access->whereIn('u.perfil', ['administrador_sistema', 'gerencia_sistema', 'colaborador_sistema'])
+                    ->orWhereExists(function ($direct) {
+                        $direct->selectRaw('1')
+                            ->from('usuario_propriedades as up')
+                            ->whereColumn('up.usuario_id', 'u.id');
+                    })->orWhereExists(function ($group) {
+                        $group->selectRaw('1')
+                            ->from('usuario_grupos_fazendas as ugf')
+                            ->join('grupos_fazendas as gf', 'gf.id', '=', 'ugf.grupo_id')
+                            ->whereColumn('ugf.usuario_id', 'u.id')
+                            ->where('gf.ativo', 1);
+                    });
+            })
+            ->orderBy('u.id')
+            ->value('u.id');
     }
 
     private function simplePointShp(float $lng, float $lat): string
     {
         $record = pack('V', 1).pack('e', $lng).pack('e', $lat);
-        $fileLengthWords = (int)((100 + 8 + strlen($record)) / 2);
+        $fileLengthWords = (int) ((100 + 8 + strlen($record)) / 2);
 
         $header = pack('N', 9994)
             .str_repeat(pack('N', 0), 5)
@@ -35,7 +160,7 @@ class ExampleTest extends TestCase
             .pack('e', $lng).pack('e', $lat).pack('e', $lng).pack('e', $lat)
             .str_repeat(pack('e', 0), 4);
 
-        return $header.pack('N', 1).pack('N', (int)(strlen($record) / 2)).$record;
+        return $header.pack('N', 1).pack('N', (int) (strlen($record) / 2)).$record;
     }
 
     public function test_the_homepage_redirects_to_dashboard(): void
@@ -93,7 +218,7 @@ class ExampleTest extends TestCase
 
     public function test_property_manager_sidebar_shows_users_menu_entry(): void
     {
-        $this->withSession([...$this->loggedSession(), 'perfil' => 'gestor_propriedade'])
+        $this->withSession($this->loggedSession(profile: 'gestor_propriedade'))
             ->get('/dashboard')
             ->assertStatus(200)
             ->assertSee('Dashboard')
@@ -112,7 +237,7 @@ class ExampleTest extends TestCase
 
     public function test_system_unlock_requires_system_writer_profile(): void
     {
-        $this->withSession([...$this->loggedSession(), 'perfil' => 'visualizador'])
+        $this->withSession($this->loggedSession(profile: 'visualizador'))
             ->post('/sistema/liberar-edicao', [
                 'senha_confirmacao' => 'qualquer',
                 'return_to' => '/dashboard',
@@ -132,11 +257,7 @@ class ExampleTest extends TestCase
                 'ativo' => 1,
             ]);
 
-            $this->withSession([
-                'usuario_id' => $userId,
-                'usuario_nome' => 'Teste',
-                'perfil' => 'gerencia_sistema',
-            ])
+            $this->withSession($this->loggedSession(profile: 'gerencia_sistema', userId: $userId))
                 ->post('/sistema/liberar-edicao', [
                     'senha_confirmacao' => 'senha-teste',
                     'return_to' => '/dashboard',
@@ -151,7 +272,7 @@ class ExampleTest extends TestCase
 
     public function test_support_admin_page_returns_a_successful_response_for_system_staff(): void
     {
-        $this->withSession([...$this->loggedSession(), 'perfil' => 'gerencia_sistema'])
+        $this->withSession($this->loggedSession(profile: 'gerencia_sistema'))
             ->get('/suporte')
             ->assertStatus(200)
             ->assertSee('Chat de Duvidas')
@@ -164,12 +285,11 @@ class ExampleTest extends TestCase
         $arquivoPath = null;
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
-            $clienteId = (int)DB::table('usuarios')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
-            $this->assertGreaterThan(0, $clienteId);
 
-            $clienteSession = ['usuario_id' => $clienteId, 'usuario_nome' => 'Cliente Teste', 'propriedade_id' => $propertyId];
+            $clienteSession = $this->loggedSession(propertyId: $propertyId, profile: 'visualizador');
+            $clienteId = (int) $clienteSession['usuario_id'];
 
             $response = $this->withSession($clienteSession)
                 ->post('/suporte/chat/mensagens', [
@@ -183,8 +303,8 @@ class ExampleTest extends TestCase
                 ->assertJsonPath('messages.0.autor_tipo', 'cliente')
                 ->assertJsonPath('messages.0.anexos.0.nome', 'print-suporte.pdf');
 
-            $conversaId = (int)$response->json('conversa.id');
-            $anexoId = (int)$response->json('messages.0.anexos.0.id');
+            $conversaId = (int) $response->json('conversa.id');
+            $anexoId = (int) $response->json('messages.0.anexos.0.id');
             $this->assertGreaterThan(0, $conversaId);
             $this->assertGreaterThan(0, $anexoId);
 
@@ -197,18 +317,21 @@ class ExampleTest extends TestCase
             $arquivoPath = base_path('../'.DB::table('suporte_anexos')->where('id', $anexoId)->value('caminho_relativo'));
             $this->assertFileExists($arquivoPath);
 
-            $this->withSession([...$this->loggedSession(), 'perfil' => 'gerencia_sistema', 'propriedade_id' => $propertyId])
+            $adminSession = $this->loggedSession(propertyId: $propertyId, profile: 'gerencia_sistema');
+            $adminId = (int) $adminSession['usuario_id'];
+
+            $this->withSession($adminSession)
                 ->get('/suporte/chat/anexos/'.$anexoId)
                 ->assertStatus(200)
                 ->assertDownload('print-suporte.pdf');
 
             $this->assertDatabaseHas('suporte_anexos', [
                 'id' => $anexoId,
-                'baixado_por' => $this->userId(),
+                'baixado_por' => $adminId,
                 'caminho_relativo' => null,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'perfil' => 'gerencia_sistema', 'propriedade_id' => $propertyId])
+            $this->withSession($adminSession)
                 ->postJson('/suporte/chat/'.$conversaId.'/responder', [
                     'mensagem' => 'Atendimento respondido pelo Laravel',
                 ])
@@ -220,7 +343,7 @@ class ExampleTest extends TestCase
             $this->assertDatabaseHas('suporte_conversas', [
                 'id' => $conversaId,
                 'status' => 'respondida',
-                'atendente_usuario_id' => $this->userId(),
+                'atendente_usuario_id' => $adminId,
             ]);
         } finally {
             if ($arquivoPath && file_exists($arquivoPath)) {
@@ -236,7 +359,7 @@ class ExampleTest extends TestCase
         $arquivoPath = null;
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $userId = $this->userId();
             $this->assertGreaterThan(0, $propertyId);
 
@@ -247,7 +370,7 @@ class ExampleTest extends TestCase
                 'perfil' => 'colaborador',
                 'ativo' => 1,
             ]);
-            $remetenteId = (int)DB::getPdo()->lastInsertId();
+            $remetenteId = (int) DB::getPdo()->lastInsertId();
             DB::table('usuario_propriedades')->insert(['usuario_id' => $remetenteId, 'propriedade_id' => $propertyId]);
 
             DB::table('usuarios')->insert([
@@ -257,11 +380,11 @@ class ExampleTest extends TestCase
                 'perfil' => 'visualizador',
                 'ativo' => 1,
             ]);
-            $destinatarioId = (int)DB::getPdo()->lastInsertId();
+            $destinatarioId = (int) DB::getPdo()->lastInsertId();
             DB::table('usuario_propriedades')->insert(['usuario_id' => $destinatarioId, 'propriedade_id' => $propertyId]);
 
-            $remetenteSession = ['usuario_id' => $remetenteId, 'usuario_nome' => 'Chat Remetente Laravel', 'propriedade_id' => $propertyId];
-            $destinatarioSession = ['usuario_id' => $destinatarioId, 'usuario_nome' => 'Chat Destinatario Laravel', 'propriedade_id' => $propertyId];
+            $remetenteSession = $this->loggedSession(propertyId: $propertyId, userId: $remetenteId);
+            $destinatarioSession = $this->loggedSession(propertyId: $propertyId, userId: $destinatarioId);
 
             $this->withSession($remetenteSession)
                 ->getJson('/chat-interno/contatos')
@@ -281,7 +404,7 @@ class ExampleTest extends TestCase
                 ->assertJsonPath('messages.0.mine', true)
                 ->assertJsonPath('messages.0.anexos.0.nome', 'chat-interno.pdf');
 
-            $anexoId = (int)$response->json('messages.0.anexos.0.id');
+            $anexoId = (int) $response->json('messages.0.anexos.0.id');
             $this->assertGreaterThan(0, $anexoId);
 
             $arquivoPath = base_path('../'.DB::table('chat_anexos')->where('id', $anexoId)->value('caminho_relativo'));
@@ -344,7 +467,7 @@ class ExampleTest extends TestCase
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $userId = $this->userId();
             $this->assertGreaterThan(0, $propertyId);
 
@@ -361,7 +484,7 @@ class ExampleTest extends TestCase
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-            $orderId = (int)DB::getPdo()->lastInsertId();
+            $orderId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('fiscal_order_items')->insert([
                 [
@@ -400,13 +523,13 @@ class ExampleTest extends TestCase
                 'updated_at' => now(),
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/compras/pedidos/'.$orderId.'/editar')
                 ->assertStatus(200)
                 ->assertSee('Editar Pedido')
                 ->assertSee('Fornecedor original');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->put('/compras/pedidos/'.$orderId, [
                     'order_number' => 'PED-LARAVEL-EDIT',
                     'issue_date' => '2026-07-10',
@@ -445,7 +568,7 @@ class ExampleTest extends TestCase
 
             DB::table('fiscal_orders')->where('id', $orderId)->update(['status' => 'aprovado_baixado']);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->from('/compras/pedidos/'.$orderId.'/editar')
                 ->put('/compras/pedidos/'.$orderId, [
                     'order_number' => 'PED-LARAVEL-EDIT',
@@ -474,7 +597,7 @@ class ExampleTest extends TestCase
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('fiscal_orders')->insert([
@@ -489,7 +612,7 @@ class ExampleTest extends TestCase
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-            $orderId = (int)DB::getPdo()->lastInsertId();
+            $orderId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('fiscal_order_items')->insert([
                 [
@@ -528,7 +651,7 @@ class ExampleTest extends TestCase
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-            $otherOrderId = (int)DB::getPdo()->lastInsertId();
+            $otherOrderId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('fiscal_invoices')->insert([
                 'propriedade_id' => $propertyId,
@@ -548,7 +671,7 @@ class ExampleTest extends TestCase
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-            $invoiceId = (int)DB::getPdo()->lastInsertId();
+            $invoiceId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('fiscal_invoice_items')->insert([
                 [
@@ -571,7 +694,7 @@ class ExampleTest extends TestCase
                 ],
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/compras/pedidos/'.$orderId.'/notas', ['invoice_id' => $invoiceId])
                 ->assertRedirect('/compras/pedidos/'.$orderId)
                 ->assertSessionHas('success')
@@ -579,21 +702,21 @@ class ExampleTest extends TestCase
 
             $preview = session('fiscal_order_invoice_preview');
             $this->assertIsArray($preview);
-            $this->assertSame($orderId, (int)$preview['order_id']);
-            $this->assertSame($invoiceId, (int)$preview['invoice_id']);
+            $this->assertSame($orderId, (int) $preview['order_id']);
+            $this->assertSame($invoiceId, (int) $preview['invoice_id']);
 
             $this->assertDatabaseMissing('fiscal_order_invoices', [
                 'order_id' => $orderId,
                 'invoice_id' => $invoiceId,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId, 'fiscal_order_invoice_preview' => $preview])
+            $this->withSession([...$this->loggedSession(propertyId: $propertyId), 'fiscal_order_invoice_preview' => $preview])
                 ->get('/compras/pedidos/'.$orderId)
                 ->assertStatus(200)
                 ->assertSee('Conferencia da nota fiscal')
                 ->assertSee('Valor unitario divergente');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId, 'fiscal_order_invoice_preview' => $preview])
+            $this->withSession([...$this->loggedSession(propertyId: $propertyId), 'fiscal_order_invoice_preview' => $preview])
                 ->post('/compras/pedidos/'.$orderId.'/notas/confirmar')
                 ->assertRedirect('/compras/pedidos/'.$orderId)
                 ->assertSessionHas('success');
@@ -604,7 +727,7 @@ class ExampleTest extends TestCase
                 'match_status' => 'divergente',
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/compras/pedidos/'.$orderId)
                 ->assertStatus(200)
                 ->assertSee('Notas fiscais vinculadas')
@@ -612,13 +735,13 @@ class ExampleTest extends TestCase
                 ->assertSee('Itens divergentes')
                 ->assertSee('Valor unitario divergente');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->from('/compras/pedidos/'.$otherOrderId)
                 ->post('/compras/pedidos/'.$otherOrderId.'/notas', ['invoice_id' => $invoiceId])
                 ->assertRedirect('/compras/pedidos/'.$otherOrderId)
                 ->assertSessionHasErrors();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->delete('/compras/pedidos/'.$orderId.'/notas/'.$invoiceId)
                 ->assertRedirect('/compras/pedidos/'.$orderId)
                 ->assertSessionHas('success');
@@ -638,7 +761,7 @@ class ExampleTest extends TestCase
         Storage::fake('local');
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('fiscal_orders')->insert([
@@ -653,7 +776,7 @@ class ExampleTest extends TestCase
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-            $orderId = (int)DB::getPdo()->lastInsertId();
+            $orderId = (int) DB::getPdo()->lastInsertId();
             DB::table('fiscal_order_items')->insert([
                 'order_id' => $orderId,
                 'product_code' => 'PXML001',
@@ -684,7 +807,7 @@ XML;
 
             $file = UploadedFile::fake()->createWithContent('pedido-link.xml', $xml);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/compras/pedidos/'.$orderId.'/notas/importar', ['xml' => $file])
                 ->assertRedirect('/compras/pedidos/'.$orderId)
                 ->assertSessionHas('fiscal_order_invoice_preview');
@@ -692,10 +815,10 @@ XML;
             $invoice = DB::table('fiscal_invoices')->where('access_key', $accessKey)->first();
             $this->assertNotNull($invoice);
             $preview = session('fiscal_order_invoice_preview');
-            $this->assertSame((int)$invoice->id, (int)$preview['invoice_id']);
-            $this->assertSame(1, (int)$preview['comparison']['match_count']);
+            $this->assertSame((int) $invoice->id, (int) $preview['invoice_id']);
+            $this->assertSame(1, (int) $preview['comparison']['match_count']);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId, 'fiscal_order_invoice_preview' => $preview])
+            $this->withSession([...$this->loggedSession(propertyId: $propertyId), 'fiscal_order_invoice_preview' => $preview])
                 ->post('/compras/pedidos/'.$orderId.'/notas/confirmar')
                 ->assertRedirect('/compras/pedidos/'.$orderId);
 
@@ -715,7 +838,7 @@ XML;
         Storage::fake('local');
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('fiscal_orders')->insert([
@@ -730,7 +853,7 @@ XML;
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-            $orderId = (int)DB::getPdo()->lastInsertId();
+            $orderId = (int) DB::getPdo()->lastInsertId();
             DB::table('fiscal_order_items')->insert([
                 'order_id' => $orderId,
                 'product_code' => 'PXML002',
@@ -760,7 +883,7 @@ XML;
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-            $invoiceId = (int)DB::getPdo()->lastInsertId();
+            $invoiceId = (int) DB::getPdo()->lastInsertId();
             DB::table('fiscal_invoice_items')->insert([
                 'invoice_id' => $invoiceId,
                 'product_code' => 'PXML002',
@@ -790,15 +913,15 @@ XML;
 
             $file = UploadedFile::fake()->createWithContent('pedido-existente.xml', $xml);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/compras/pedidos/'.$orderId.'/notas/importar', ['xml' => $file])
                 ->assertRedirect('/compras/pedidos/'.$orderId)
                 ->assertSessionHas('fiscal_order_invoice_preview');
 
             $this->assertSame(1, DB::table('fiscal_invoices')->where('access_key', $accessKey)->count());
             $preview = session('fiscal_order_invoice_preview');
-            $this->assertSame($invoiceId, (int)$preview['invoice_id']);
-            $this->assertSame(1, (int)$preview['comparison']['match_count']);
+            $this->assertSame($invoiceId, (int) $preview['invoice_id']);
+            $this->assertSame(1, (int) $preview['comparison']['match_count']);
         } finally {
             DB::rollBack();
         }
@@ -809,7 +932,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
             session(['propriedade_id' => $propertyId]);
 
@@ -826,7 +949,7 @@ XML;
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-            $orderId = (int)DB::getPdo()->lastInsertId();
+            $orderId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('fiscal_order_items')->insert([
                 'order_id' => $orderId,
@@ -840,7 +963,7 @@ XML;
                 'updated_at' => now(),
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/compras/pedidos/'.$orderId.'/aprovar', ['confirmar_aprovacao' => '1'])
                 ->assertRedirect('/compras/pedidos/'.$orderId);
 
@@ -876,7 +999,7 @@ XML;
     public function test_patrimony_detail_page_returns_a_successful_response(): void
     {
         $patrimonioId = DB::table('maquinas')->where('ativo', 1)->orderBy('id')->value('id');
-        if (!$patrimonioId) {
+        if (! $patrimonioId) {
             $this->markTestSkipped('Sem patrimonio cadastrado para testar detalhe.');
         }
 
@@ -890,7 +1013,7 @@ XML;
     public function test_patrimony_entry_can_be_stored(): void
     {
         $patrimonioId = DB::table('maquinas')->where('ativo', 1)->orderBy('id')->value('id');
-        if (!$patrimonioId) {
+        if (! $patrimonioId) {
             $this->markTestSkipped('Sem patrimonio cadastrado para testar lancamento.');
         }
 
@@ -945,7 +1068,7 @@ XML;
     {
         DB::beginTransaction();
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('maquinas')->insert([
@@ -964,14 +1087,14 @@ XML;
                 'horimetro_atual' => 10,
                 'ativo' => 1,
             ]);
-            $patrimonioId = (int)DB::getPdo()->lastInsertId();
+            $patrimonioId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/patrimonio/'.$patrimonioId.'/editar')
                 ->assertStatus(200)
                 ->assertSee('Editar');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->put('/patrimonio/'.$patrimonioId, [
                     'nome' => 'Patrimonio atualizado Laravel',
                     'tipo' => 'implemento',
@@ -1009,7 +1132,7 @@ XML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/patrimonio/'.$patrimonioId.'/alternar-status')
                 ->assertRedirect('/modulos/patrimonio');
 
@@ -1033,7 +1156,7 @@ XML;
     {
         DB::beginTransaction();
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('maquinas')->insert([
@@ -1044,15 +1167,15 @@ XML;
                 'nota_fiscal_numero' => 'NF-VALOR-001',
                 'ativo' => 1,
             ]);
-            $patrimonioId = (int)DB::getPdo()->lastInsertId();
+            $patrimonioId = (int) DB::getPdo()->lastInsertId();
             $nfCountBefore = DB::table('nf_entradas')->where('propriedade_id', $propertyId)->count();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/patrimonio/'.$patrimonioId)
                 ->assertStatus(200)
                 ->assertSee('Salvar preco');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/patrimonio/'.$patrimonioId.'/valor', [
                     'valor_aquisicao' => '45.500,75',
                 ])
@@ -1080,12 +1203,12 @@ XML;
     {
         DB::beginTransaction();
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             $nome = 'Patrimonio medidores Laravel '.uniqid();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/patrimonio', [
                     'nome' => $nome,
                     'tipo' => 'trator',
@@ -1113,7 +1236,7 @@ XML;
                 'odometro_atual' => '5678.90',
                 'ativo' => 1,
             ]);
-            $patrimonioId = (int)DB::table('maquinas')
+            $patrimonioId = (int) DB::table('maquinas')
                 ->where('propriedade_id', $propertyId)
                 ->where('nome', $nome)
                 ->value('id');
@@ -1134,11 +1257,11 @@ XML;
         $arquivoNome = null;
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
             $nome = 'Patrimonio NF Laravel '.uniqid();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/patrimonio', [
                     'nome' => $nome,
                     'tipo' => 'implemento',
@@ -1181,7 +1304,7 @@ XML;
             $arquivoNome = $patrimonio->nota_fiscal_arquivo;
             $this->assertFileExists(base_path('../uploads/comprovantes/'.$arquivoNome));
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/patrimonio/'.$patrimonio->id)
                 ->assertStatus(200)
                 ->assertSee('Entrada fiscal')
@@ -1225,28 +1348,28 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/receitas/compradores', [
                     'nome' => 'Comprador Lancamento Laravel',
                     'documento' => '123',
                 ])
                 ->assertRedirect('/financeiro/receitas');
 
-            $compradorId = (int)DB::table('compradores')
+            $compradorId = (int) DB::table('compradores')
                 ->where('propriedade_id', $propertyId)
                 ->where('nome', 'Comprador Lancamento Laravel')
                 ->value('id');
             $this->assertGreaterThan(0, $compradorId);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/financeiro/lancamentos/novo?tipo=receita')
                 ->assertStatus(200)
                 ->assertSee('Comprador Lancamento Laravel');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/lancamentos', [
                     'tipo' => 'receita',
                     'descricao' => 'Receita via comprador cadastrado',
@@ -1281,7 +1404,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('categorias')->insert([
@@ -1290,7 +1413,7 @@ XML;
                 'cor' => '#35c49a',
                 'icone' => 'circle',
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('compradores')->insert([
                 'propriedade_id' => $propertyId,
@@ -1298,7 +1421,7 @@ XML;
                 'documento' => '456',
                 'ativo' => 1,
             ]);
-            $compradorId = (int)DB::getPdo()->lastInsertId();
+            $compradorId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('receitas')->insert([
                 'propriedade_id' => $propertyId,
@@ -1310,15 +1433,15 @@ XML;
                 'status_aprovacao' => 'aprovada',
                 'usuario_id' => $this->userId(),
             ]);
-            $receitaId = (int)DB::getPdo()->lastInsertId();
+            $receitaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/financeiro/receitas/'.$receitaId.'/editar')
                 ->assertStatus(200)
                 ->assertSee('Editar receita')
                 ->assertSee('Receita antes edicao Laravel');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->put('/financeiro/receitas/'.$receitaId, [
                     'tipo' => 'receita',
                     'descricao' => 'Receita editada Laravel',
@@ -1367,7 +1490,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('compradores')->insert([
@@ -1376,7 +1499,7 @@ XML;
                 'documento' => '789',
                 'ativo' => 1,
             ]);
-            $compradorId = (int)DB::getPdo()->lastInsertId();
+            $compradorId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('receitas')->insert([
                 'propriedade_id' => $propertyId,
@@ -1391,15 +1514,15 @@ XML;
                 'status_aprovacao' => 'aprovada',
                 'usuario_id' => $this->userId(),
             ]);
-            $receitaId = (int)DB::getPdo()->lastInsertId();
+            $receitaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/financeiro/receitas/'.$receitaId.'/duplicar')
                 ->assertStatus(200)
                 ->assertSee('Duplicar receita')
                 ->assertSee('Receita original duplicar Laravel');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/lancamentos', [
                     'tipo' => 'receita',
                     'descricao' => 'Receita duplicada Laravel',
@@ -1445,7 +1568,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('categorias')->insert([
@@ -1455,7 +1578,7 @@ XML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('categorias')->insert([
                 'categoria_pai_id' => $categoriaId,
@@ -1465,7 +1588,7 @@ XML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $subcategoriaId = (int)DB::getPdo()->lastInsertId();
+            $subcategoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safras')->insert([
                 'propriedade_id' => $propertyId,
@@ -1478,7 +1601,7 @@ XML;
                 'preco_estimado' => 100,
                 'status' => 'planejamento',
             ]);
-            $safraId = (int)DB::getPdo()->lastInsertId();
+            $safraId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('talhoes')->insert([
                 'propriedade_id' => $propertyId,
@@ -1487,7 +1610,7 @@ XML;
                 'area_excluida_ha' => 0,
                 'ativo' => 1,
             ]);
-            $talhaoId = (int)DB::getPdo()->lastInsertId();
+            $talhaoId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('produtores')->insert([
                 'propriedade_id' => $propertyId,
@@ -1496,9 +1619,9 @@ XML;
                 'participacao_percentual' => 10,
                 'ativo' => 1,
             ]);
-            $produtorId = (int)DB::getPdo()->lastInsertId();
+            $produtorId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/lancamentos', [
                     'tipo' => 'despesa',
                     'descricao' => 'Despesa parcelada Laravel',
@@ -1525,15 +1648,15 @@ XML;
 
             $this->assertCount(3, $parcelas);
             $this->assertSame(['2026-07-10', '2026-08-10', '2026-09-10'], $parcelas->pluck('data_vencimento')->all());
-            $this->assertSame([1, 2, 3], $parcelas->pluck('parcela_atual')->map(fn ($value) => (int)$value)->all());
-            $this->assertTrue($parcelas->every(fn ($parcela) => (int)$parcela->numero_parcelas === 3));
-            $this->assertTrue($parcelas->every(fn ($parcela) => (float)$parcela->valor_total === 300.0));
+            $this->assertSame([1, 2, 3], $parcelas->pluck('parcela_atual')->map(fn ($value) => (int) $value)->all());
+            $this->assertTrue($parcelas->every(fn ($parcela) => (int) $parcela->numero_parcelas === 3));
+            $this->assertTrue($parcelas->every(fn ($parcela) => (float) $parcela->valor_total === 300.0));
             $this->assertTrue($parcelas->every(fn ($parcela) => $parcela->status_pagamento === 'pendente'));
-            $this->assertTrue($parcelas->every(fn ($parcela) => (int)$parcela->safra_id === $safraId));
-            $this->assertTrue($parcelas->every(fn ($parcela) => (int)$parcela->talhao_id === $talhaoId));
-            $this->assertTrue($parcelas->every(fn ($parcela) => (int)$parcela->categoria_id === $categoriaId));
-            $this->assertTrue($parcelas->every(fn ($parcela) => (int)$parcela->subcategoria_id === $subcategoriaId));
-            $this->assertTrue($parcelas->every(fn ($parcela) => (int)$parcela->produtor_id === $produtorId));
+            $this->assertTrue($parcelas->every(fn ($parcela) => (int) $parcela->safra_id === $safraId));
+            $this->assertTrue($parcelas->every(fn ($parcela) => (int) $parcela->talhao_id === $talhaoId));
+            $this->assertTrue($parcelas->every(fn ($parcela) => (int) $parcela->categoria_id === $categoriaId));
+            $this->assertTrue($parcelas->every(fn ($parcela) => (int) $parcela->subcategoria_id === $subcategoriaId));
+            $this->assertTrue($parcelas->every(fn ($parcela) => (int) $parcela->produtor_id === $produtorId));
         } finally {
             DB::rollBack();
         }
@@ -1544,7 +1667,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('categorias')->insert([
@@ -1554,7 +1677,7 @@ XML;
                 'icone' => 'circle',
                 'ativo' => 1,
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('despesas')->insert([
                 'propriedade_id' => $propertyId,
@@ -1568,15 +1691,15 @@ XML;
                 'status_aprovacao' => 'aprovada',
                 'usuario_id' => $this->userId(),
             ]);
-            $despesaId = (int)DB::getPdo()->lastInsertId();
+            $despesaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/financeiro/despesas/'.$despesaId.'/editar')
                 ->assertStatus(200)
                 ->assertSee('Editar despesa')
                 ->assertSee('Despesa antes edicao Laravel');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->put('/financeiro/despesas/'.$despesaId, [
                     'tipo' => 'despesa',
                     'descricao' => 'Despesa editada Laravel',
@@ -1628,7 +1751,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('categorias')->insert([
@@ -1638,7 +1761,7 @@ XML;
                 'icone' => 'circle',
                 'ativo' => 1,
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('despesas')->insert([
                 'propriedade_id' => $propertyId,
@@ -1655,15 +1778,15 @@ XML;
                 'status_aprovacao' => 'aprovada',
                 'usuario_id' => $this->userId(),
             ]);
-            $despesaId = (int)DB::getPdo()->lastInsertId();
+            $despesaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/financeiro/despesas/'.$despesaId.'/duplicar')
                 ->assertStatus(200)
                 ->assertSee('Duplicar despesa')
                 ->assertSee('Despesa original duplicar Laravel');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/lancamentos', [
                     'tipo' => 'despesa',
                     'descricao' => 'Despesa duplicada Laravel',
@@ -1723,7 +1846,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
             session(['propriedade_id' => $propertyId]);
 
@@ -1737,9 +1860,9 @@ XML;
                 'status_aprovacao' => 'pendente',
                 'usuario_id' => $this->userId(),
             ]);
-            $receitaId = (int)DB::getPdo()->lastInsertId();
+            $receitaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/receitas/'.$receitaId.'/aprovar')
                 ->assertRedirect('/financeiro/receitas');
 
@@ -1755,7 +1878,7 @@ XML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/receitas/'.$receitaId.'/receber', [
                     'data_recebimento' => '2026-07-10',
                 ])
@@ -1783,7 +1906,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             $ids = [];
@@ -1798,7 +1921,7 @@ XML;
                     'status_aprovacao' => 'pendente',
                     'usuario_id' => $this->userId(),
                 ]);
-                $ids[] = (int)DB::getPdo()->lastInsertId();
+                $ids[] = (int) DB::getPdo()->lastInsertId();
             }
 
             DB::table('receitas')->insert([
@@ -1811,9 +1934,9 @@ XML;
                 'status_aprovacao' => 'aprovada',
                 'usuario_id' => $this->userId(),
             ]);
-            $jaAprovadaId = (int)DB::getPdo()->lastInsertId();
+            $jaAprovadaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/receitas/aprovar-lote', [
                     'receitas' => [...$ids, $jaAprovadaId],
                 ])
@@ -1841,7 +1964,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('receitas')->insert([
@@ -1854,9 +1977,9 @@ XML;
                 'status_aprovacao' => 'pendente',
                 'usuario_id' => $this->userId(),
             ]);
-            $receitaId = (int)DB::getPdo()->lastInsertId();
+            $receitaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/receitas/'.$receitaId.'/reprovar', [
                     'motivo_reprovacao' => 'Valor divergente',
                 ])
@@ -1869,7 +1992,7 @@ XML;
                 'motivo_reprovacao' => 'Valor divergente',
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/financeiro/receitas?aprovacao=reprovada')
                 ->assertStatus(200)
                 ->assertSee('Receita Laravel reprovacao')
@@ -1884,7 +2007,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('receitas')->insert([
@@ -1897,9 +2020,9 @@ XML;
                 'status_aprovacao' => 'aprovada',
                 'usuario_id' => $this->userId(),
             ]);
-            $receitaId = (int)DB::getPdo()->lastInsertId();
+            $receitaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/receitas/'.$receitaId.'/cancelar')
                 ->assertRedirect('/financeiro/receitas');
 
@@ -1915,7 +2038,7 @@ XML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/financeiro/receitas')
                 ->assertStatus(200)
                 ->assertDontSee('Receita Laravel cancelamento');
@@ -1937,7 +2060,7 @@ XML;
                 'ativo' => 1,
                 'criado_em' => now(),
             ]);
-            $colaboradorId = (int)DB::getPdo()->lastInsertId();
+            $colaboradorId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('usuarios')->insert([
                 'nome' => 'Gestor receita Laravel',
@@ -1947,7 +2070,7 @@ XML;
                 'ativo' => 1,
                 'criado_em' => now(),
             ]);
-            $gestorId = (int)DB::getPdo()->lastInsertId();
+            $gestorId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('propriedades')->insert([
                 'nome' => 'Fazenda receita aprovacao exclusao',
@@ -1960,7 +2083,7 @@ XML;
                 'aprovador_usuario_id' => $gestorId,
                 'criado_em' => now(),
             ]);
-            $propertyId = (int)DB::getPdo()->lastInsertId();
+            $propertyId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('usuario_propriedades')->insert([
                 ['usuario_id' => $colaboradorId, 'propriedade_id' => $propertyId],
@@ -1977,16 +2100,16 @@ XML;
                 'status_aprovacao' => 'aprovada',
                 'usuario_id' => $colaboradorId,
             ]);
-            $receitaId = (int)DB::getPdo()->lastInsertId();
+            $receitaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession(['usuario_id' => $colaboradorId, 'usuario_nome' => 'Colaborador receita Laravel', 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $colaboradorId))
                 ->post('/financeiro/receitas/'.$receitaId.'/cancelar')
                 ->assertRedirect('/financeiro/receitas');
 
             $receita = DB::table('receitas')->where('id', $receitaId)->first();
             $this->assertSame('pendente', $receita->status);
             $this->assertSame('pendente', $receita->status_aprovacao);
-            $this->assertStringContainsString('[SOLICITACAO_EXCLUSAO_RECEITA]', (string)$receita->observacoes);
+            $this->assertStringContainsString('[SOLICITACAO_EXCLUSAO_RECEITA]', (string) $receita->observacoes);
             $this->assertDatabaseHas('logs_auditoria', [
                 'usuario_id' => $colaboradorId,
                 'acao' => 'solicitar_exclusao_receita',
@@ -1995,7 +2118,7 @@ XML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            $this->withSession(['usuario_id' => $gestorId, 'usuario_nome' => 'Gestor receita Laravel', 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $gestorId))
                 ->post('/financeiro/receitas/'.$receitaId.'/aprovar')
                 ->assertRedirect('/financeiro/receitas');
 
@@ -2029,7 +2152,7 @@ XML;
                 'ativo' => 1,
                 'criado_em' => now(),
             ]);
-            $gestorId = (int)DB::getPdo()->lastInsertId();
+            $gestorId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('propriedades')->insert([
                 'nome' => 'Fazenda receita reprova exclusao',
@@ -2042,7 +2165,7 @@ XML;
                 'aprovador_usuario_id' => $gestorId,
                 'criado_em' => now(),
             ]);
-            $propertyId = (int)DB::getPdo()->lastInsertId();
+            $propertyId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('usuario_propriedades')->insert([
                 'usuario_id' => $gestorId,
@@ -2060,9 +2183,9 @@ XML;
                 'observacoes' => "Observacao anterior\n[SOLICITACAO_EXCLUSAO_RECEITA] Solicitado por Colaborador em 09/07/2026 10:00",
                 'usuario_id' => $gestorId,
             ]);
-            $receitaId = (int)DB::getPdo()->lastInsertId();
+            $receitaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession(['usuario_id' => $gestorId, 'usuario_nome' => 'Gestor reprova receita Laravel', 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $gestorId))
                 ->post('/financeiro/receitas/'.$receitaId.'/reprovar', [
                     'motivo_reprovacao' => 'Manter receita',
                 ])
@@ -2071,7 +2194,7 @@ XML;
             $receita = DB::table('receitas')->where('id', $receitaId)->first();
             $this->assertSame('pendente', $receita->status);
             $this->assertSame('aprovada', $receita->status_aprovacao);
-            $this->assertSame('Observacao anterior', trim((string)$receita->observacoes));
+            $this->assertSame('Observacao anterior', trim((string) $receita->observacoes));
             $this->assertDatabaseHas('logs_auditoria', [
                 'usuario_id' => $gestorId,
                 'acao' => 'reprovar_exclusao_receita',
@@ -2089,10 +2212,10 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/receitas/compradores', [
                     'nome' => '  cooperativa sicoob ltda  ',
                     'documento' => '12.345.678/0001-99',
@@ -2117,7 +2240,7 @@ XML;
                 'usuario_id' => $this->userId(),
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/financeiro/receitas')
                 ->assertStatus(200)
                 ->assertSee('Cooperativa SICOOB LTDA')
@@ -2147,11 +2270,11 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
             session(['propriedade_id' => $propertyId]);
-            $categoriaId = (int)DB::table('categorias')->where('ativo', 1)->orderBy('id')->value('id');
-            if (!$categoriaId) {
+            $categoriaId = (int) DB::table('categorias')->where('ativo', 1)->orderBy('id')->value('id');
+            if (! $categoriaId) {
                 $this->markTestSkipped('Sem categoria ativa para criar despesa de teste.');
             }
 
@@ -2167,9 +2290,9 @@ XML;
                 'status_aprovacao' => 'pendente',
                 'usuario_id' => $this->userId(),
             ]);
-            $despesaId = (int)DB::getPdo()->lastInsertId();
+            $despesaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/despesas/'.$despesaId.'/aprovar')
                 ->assertRedirect('/financeiro/despesas');
 
@@ -2185,7 +2308,7 @@ XML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/despesas/'.$despesaId.'/pagar', [
                     'data_pagamento' => '2026-07-12',
                 ])
@@ -2213,10 +2336,10 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
-            $categoriaId = (int)DB::table('categorias')->where('ativo', 1)->orderBy('id')->value('id');
-            if (!$categoriaId) {
+            $categoriaId = (int) DB::table('categorias')->where('ativo', 1)->orderBy('id')->value('id');
+            if (! $categoriaId) {
                 $this->markTestSkipped('Sem categoria ativa para criar despesas de teste.');
             }
 
@@ -2234,7 +2357,7 @@ XML;
                     'status_aprovacao' => 'pendente',
                     'usuario_id' => $this->userId(),
                 ]);
-                $ids[] = (int)DB::getPdo()->lastInsertId();
+                $ids[] = (int) DB::getPdo()->lastInsertId();
             }
 
             DB::table('despesas')->insert([
@@ -2249,9 +2372,9 @@ XML;
                 'status_aprovacao' => 'aprovada',
                 'usuario_id' => $this->userId(),
             ]);
-            $jaAprovadaId = (int)DB::getPdo()->lastInsertId();
+            $jaAprovadaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/despesas/aprovar-lote', [
                     'despesas' => [...$ids, $jaAprovadaId],
                 ])
@@ -2286,10 +2409,10 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
-            $categoriaId = (int)DB::table('categorias')->where('ativo', 1)->orderBy('id')->value('id');
-            if (!$categoriaId) {
+            $categoriaId = (int) DB::table('categorias')->where('ativo', 1)->orderBy('id')->value('id');
+            if (! $categoriaId) {
                 $this->markTestSkipped('Sem categoria ativa para criar despesa de teste.');
             }
 
@@ -2305,9 +2428,9 @@ XML;
                 'status_aprovacao' => 'pendente',
                 'usuario_id' => $this->userId(),
             ]);
-            $despesaId = (int)DB::getPdo()->lastInsertId();
+            $despesaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/despesas/'.$despesaId.'/reprovar', [
                     'motivo_reprovacao' => 'Documento incompleto',
                 ])
@@ -2327,7 +2450,7 @@ XML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/financeiro/despesas?aprovacao=reprovada')
                 ->assertStatus(200)
                 ->assertSee('Despesa Laravel reprovacao')
@@ -2342,10 +2465,10 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
-            $categoriaId = (int)DB::table('categorias')->where('ativo', 1)->orderBy('id')->value('id');
-            if (!$categoriaId) {
+            $categoriaId = (int) DB::table('categorias')->where('ativo', 1)->orderBy('id')->value('id');
+            if (! $categoriaId) {
                 $this->markTestSkipped('Sem categoria ativa para criar despesa de teste.');
             }
 
@@ -2361,9 +2484,9 @@ XML;
                 'status_aprovacao' => 'aprovada',
                 'usuario_id' => $this->userId(),
             ]);
-            $despesaId = (int)DB::getPdo()->lastInsertId();
+            $despesaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/despesas/'.$despesaId.'/cancelar')
                 ->assertRedirect('/financeiro/despesas');
 
@@ -2379,7 +2502,7 @@ XML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/financeiro/despesas')
                 ->assertStatus(200)
                 ->assertDontSee('Despesa Laravel cancelamento');
@@ -2401,7 +2524,7 @@ XML;
                 'ativo' => 1,
                 'criado_em' => now(),
             ]);
-            $colaboradorId = (int)DB::getPdo()->lastInsertId();
+            $colaboradorId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('usuarios')->insert([
                 'nome' => 'Gestor despesa Laravel',
@@ -2411,7 +2534,7 @@ XML;
                 'ativo' => 1,
                 'criado_em' => now(),
             ]);
-            $gestorId = (int)DB::getPdo()->lastInsertId();
+            $gestorId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('propriedades')->insert([
                 'nome' => 'Fazenda despesa aprovacao exclusao',
@@ -2424,15 +2547,15 @@ XML;
                 'aprovador_usuario_id' => $gestorId,
                 'criado_em' => now(),
             ]);
-            $propertyId = (int)DB::getPdo()->lastInsertId();
+            $propertyId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('usuario_propriedades')->insert([
                 ['usuario_id' => $colaboradorId, 'propriedade_id' => $propertyId],
                 ['usuario_id' => $gestorId, 'propriedade_id' => $propertyId],
             ]);
 
-            $categoriaId = (int)DB::table('categorias')->where('ativo', 1)->orderBy('id')->value('id');
-            if (!$categoriaId) {
+            $categoriaId = (int) DB::table('categorias')->where('ativo', 1)->orderBy('id')->value('id');
+            if (! $categoriaId) {
                 $this->markTestSkipped('Sem categoria ativa para criar despesa de teste.');
             }
 
@@ -2447,16 +2570,16 @@ XML;
                 'status_aprovacao' => 'aprovada',
                 'usuario_id' => $colaboradorId,
             ]);
-            $despesaId = (int)DB::getPdo()->lastInsertId();
+            $despesaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession(['usuario_id' => $colaboradorId, 'usuario_nome' => 'Colaborador despesa Laravel', 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $colaboradorId))
                 ->post('/financeiro/despesas/'.$despesaId.'/cancelar')
                 ->assertRedirect('/financeiro/despesas');
 
             $despesa = DB::table('despesas')->where('id', $despesaId)->first();
             $this->assertSame('pendente', $despesa->status_pagamento);
             $this->assertSame('pendente', $despesa->status_aprovacao);
-            $this->assertStringContainsString('[SOLICITACAO_EXCLUSAO_DESPESA]', (string)$despesa->observacoes);
+            $this->assertStringContainsString('[SOLICITACAO_EXCLUSAO_DESPESA]', (string) $despesa->observacoes);
             $this->assertDatabaseHas('logs_auditoria', [
                 'usuario_id' => $colaboradorId,
                 'acao' => 'solicitar_exclusao_despesa',
@@ -2465,7 +2588,7 @@ XML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            $this->withSession(['usuario_id' => $gestorId, 'usuario_nome' => 'Gestor despesa Laravel', 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $gestorId))
                 ->post('/financeiro/despesas/'.$despesaId.'/aprovar')
                 ->assertRedirect('/financeiro/despesas');
 
@@ -2499,7 +2622,7 @@ XML;
                 'ativo' => 1,
                 'criado_em' => now(),
             ]);
-            $gestorId = (int)DB::getPdo()->lastInsertId();
+            $gestorId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('propriedades')->insert([
                 'nome' => 'Fazenda despesa reprova exclusao',
@@ -2512,15 +2635,15 @@ XML;
                 'aprovador_usuario_id' => $gestorId,
                 'criado_em' => now(),
             ]);
-            $propertyId = (int)DB::getPdo()->lastInsertId();
+            $propertyId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('usuario_propriedades')->insert([
                 'usuario_id' => $gestorId,
                 'propriedade_id' => $propertyId,
             ]);
 
-            $categoriaId = (int)DB::table('categorias')->where('ativo', 1)->orderBy('id')->value('id');
-            if (!$categoriaId) {
+            $categoriaId = (int) DB::table('categorias')->where('ativo', 1)->orderBy('id')->value('id');
+            if (! $categoriaId) {
                 $this->markTestSkipped('Sem categoria ativa para criar despesa de teste.');
             }
 
@@ -2536,9 +2659,9 @@ XML;
                 'observacoes' => "Observacao anterior\n[SOLICITACAO_EXCLUSAO_DESPESA] Solicitado por Colaborador em 09/07/2026 10:00",
                 'usuario_id' => $gestorId,
             ]);
-            $despesaId = (int)DB::getPdo()->lastInsertId();
+            $despesaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession(['usuario_id' => $gestorId, 'usuario_nome' => 'Gestor reprova despesa Laravel', 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $gestorId))
                 ->post('/financeiro/despesas/'.$despesaId.'/reprovar', [
                     'motivo_reprovacao' => 'Manter despesa',
                 ])
@@ -2547,7 +2670,7 @@ XML;
             $despesa = DB::table('despesas')->where('id', $despesaId)->first();
             $this->assertSame('pendente', $despesa->status_pagamento);
             $this->assertSame('aprovada', $despesa->status_aprovacao);
-            $this->assertSame('Observacao anterior', trim((string)$despesa->observacoes));
+            $this->assertSame('Observacao anterior', trim((string) $despesa->observacoes));
             $this->assertDatabaseHas('logs_auditoria', [
                 'usuario_id' => $gestorId,
                 'acao' => 'reprovar_exclusao_despesa',
@@ -2578,7 +2701,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $userId = $this->userId();
             $this->assertGreaterThan(0, $propertyId);
             $this->assertGreaterThan(0, $userId);
@@ -2590,7 +2713,7 @@ XML;
                 'saldo_inicial' => 1000,
                 'ativo' => 1,
             ]);
-            $origemId = (int)DB::getPdo()->lastInsertId();
+            $origemId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('contas')->insert([
                 'propriedade_id' => $propertyId,
@@ -2599,9 +2722,9 @@ XML;
                 'saldo_inicial' => 100,
                 'ativo' => 1,
             ]);
-            $destinoId = (int)DB::getPdo()->lastInsertId();
+            $destinoId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'usuario_id' => $userId, 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $userId))
                 ->post('/financeiro/contas/transferencias', [
                     'origem' => $origemId,
                     'destino' => $destinoId,
@@ -2611,7 +2734,7 @@ XML;
                 ])
                 ->assertRedirect('/financeiro/contas');
 
-            $transferenciaId = (int)DB::table('transferencias')
+            $transferenciaId = (int) DB::table('transferencias')
                 ->where('propriedade_id', $propertyId)
                 ->where('conta_origem_id', $origemId)
                 ->where('conta_destino_id', $destinoId)
@@ -2626,7 +2749,7 @@ XML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            $response = $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $response = $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/financeiro/contas')
                 ->assertStatus(200);
 
@@ -2744,8 +2867,8 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
-            $categoryId = (int)DB::table('categorias')->insertGetId([
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
+            $categoryId = (int) DB::table('categorias')->insertGetId([
                 'nome' => 'Categoria PDF paginado Laravel',
                 'tipo' => 'outros',
                 'cor' => '#2563eb',
@@ -2760,7 +2883,7 @@ XML;
                     'descricao' => 'Despesa PDF paginado Laravel '.$item,
                     'fornecedor' => 'Fornecedor PDF',
                     'valor_total' => 10 + $item,
-                    'data_lancamento' => '2026-07-'.str_pad((string)(($item % 28) + 1), 2, '0', STR_PAD_LEFT),
+                    'data_lancamento' => '2026-07-'.str_pad((string) (($item % 28) + 1), 2, '0', STR_PAD_LEFT),
                     'data_vencimento' => '2026-08-01',
                     'status_pagamento' => 'pendente',
                     'status_aprovacao' => 'aprovada',
@@ -2768,7 +2891,7 @@ XML;
                 ]);
             }
 
-            $response = $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $response = $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/financeiro/relatorio-lancamentos/exportar?todos=1&filtro=despesas&formato=pdf');
 
             $response->assertStatus(200)
@@ -2815,7 +2938,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('contas')->insert([
@@ -2828,15 +2951,15 @@ XML;
                 'saldo_inicial' => 10,
                 'ativo' => 1,
             ]);
-            $contaId = (int)DB::getPdo()->lastInsertId();
+            $contaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/financeiro/contas/'.$contaId.'/editar')
                 ->assertStatus(200)
                 ->assertSee('Editar conta bancária')
                 ->assertSee('Conta para editar Laravel');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->put('/financeiro/contas/'.$contaId, [
                     'nome' => 'Conta atualizada Laravel',
                     'tipo' => 'caixa_interno',
@@ -2856,7 +2979,7 @@ XML;
                 'ativo' => 1,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/contas/'.$contaId.'/alternar-status')
                 ->assertRedirect('/financeiro/contas');
 
@@ -2878,7 +3001,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('contas')->insert([
@@ -2891,7 +3014,7 @@ XML;
                 'saldo_inicial' => 1000,
                 'ativo' => 1,
             ]);
-            $origemId = (int)DB::getPdo()->lastInsertId();
+            $origemId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('contas')->insert([
                 'propriedade_id' => $propertyId,
@@ -2903,9 +3026,9 @@ XML;
                 'saldo_inicial' => 100,
                 'ativo' => 1,
             ]);
-            $destinoId = (int)DB::getPdo()->lastInsertId();
+            $destinoId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/contas/transferencias', [
                     'origem' => $origemId,
                     'destino' => $destinoId,
@@ -2924,7 +3047,7 @@ XML;
                 'descricao' => 'Aporte interno Laravel',
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/financeiro/contas')
                 ->assertStatus(200)
                 ->assertSee('Conta origem transferencia Laravel')
@@ -2942,7 +3065,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('contas')->insert([
@@ -2952,9 +3075,9 @@ XML;
                 'banco' => 'Banco Movimento',
                 'ativo' => 1,
             ]);
-            $contaId = (int)DB::getPdo()->lastInsertId();
+            $contaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/movimentacoes', [
                     'conta_id' => $contaId,
                     'data_movimento' => '2026-07-09',
@@ -2965,7 +3088,7 @@ XML;
                 ])
                 ->assertRedirect('/financeiro/movimentacoes');
 
-            $movimentacaoId = (int)DB::table('movimentacoes_bancarias')
+            $movimentacaoId = (int) DB::table('movimentacoes_bancarias')
                 ->where('descricao', 'Movimentacao bancaria teste')
                 ->value('id');
             $this->assertGreaterThan(0, $movimentacaoId);
@@ -2978,7 +3101,7 @@ XML;
                 'status' => 'pendente',
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/movimentacoes/'.$movimentacaoId.'/conciliar')
                 ->assertRedirect('/financeiro/movimentacoes');
 
@@ -2987,7 +3110,7 @@ XML;
                 'status' => 'conciliado',
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/movimentacoes/'.$movimentacaoId.'/ignorar')
                 ->assertRedirect('/financeiro/movimentacoes');
 
@@ -3009,13 +3132,13 @@ XML;
                 'nome' => 'Fazenda movimentos Laravel',
                 'ativo' => 1,
             ]);
-            $propertyId = (int)DB::getPdo()->lastInsertId();
+            $propertyId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('propriedades')->insert([
                 'nome' => 'Fazenda movimentos externa Laravel',
                 'ativo' => 1,
             ]);
-            $externalPropertyId = (int)DB::getPdo()->lastInsertId();
+            $externalPropertyId = (int) DB::getPdo()->lastInsertId();
             $userId = $this->userId();
 
             DB::table('usuario_propriedades')->insert([
@@ -3030,7 +3153,7 @@ XML;
                 'saldo_inicial' => 0,
                 'ativo' => 1,
             ]);
-            $contaId = (int)DB::getPdo()->lastInsertId();
+            $contaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('contas')->insert([
                 'propriedade_id' => $externalPropertyId,
@@ -3039,7 +3162,7 @@ XML;
                 'saldo_inicial' => 0,
                 'ativo' => 1,
             ]);
-            $externalContaId = (int)DB::getPdo()->lastInsertId();
+            $externalContaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('movimentacoes_bancarias')->insert([
                 [
@@ -3088,9 +3211,9 @@ XML;
                 'status' => 'pendente',
                 'usuario_id' => $userId,
             ]);
-            $externalMovementId = (int)DB::getPdo()->lastInsertId();
+            $externalMovementId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/movimentacoes/'.$externalMovementId.'/conciliar')
                 ->assertNotFound();
 
@@ -3100,7 +3223,7 @@ XML;
                 'status' => 'pendente',
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/financeiro/movimentacoes')
                 ->assertStatus(200)
                 ->assertSee('R$ 300,00')
@@ -3125,7 +3248,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('categorias')->insert([
@@ -3135,7 +3258,7 @@ XML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('despesas')->insert([
                 'propriedade_id' => $propertyId,
@@ -3173,7 +3296,7 @@ XML;
                 'status_aprovacao' => 'aprovada',
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/financeiro/agenda?fp=boleto')
                 ->assertStatus(200)
                 ->assertSee('Filtrando boletos pendentes')
@@ -3181,7 +3304,7 @@ XML;
                 ->assertDontSee('Pix agenda Laravel')
                 ->assertDontSee('Receita agenda filtro Laravel');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/financeiro/agenda?alerta=boletos_vencendo')
                 ->assertStatus(200)
                 ->assertSee('Filtrando boletos que geraram o alerta')
@@ -3230,7 +3353,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('categorias')->insert([
@@ -3240,7 +3363,7 @@ XML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('despesas')->insert([
                 'propriedade_id' => $propertyId,
@@ -3252,7 +3375,7 @@ XML;
                 'status_aprovacao' => 'aprovada',
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->delete('/financeiro/categorias/'.$categoriaId)
                 ->assertRedirect('/financeiro/categorias');
 
@@ -3270,7 +3393,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('categorias')->insert([
@@ -3280,7 +3403,7 @@ XML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safras')->insert([
                 'propriedade_id' => $propertyId,
@@ -3289,7 +3412,7 @@ XML;
                 'data_inicio' => '2026-07-01',
                 'status' => 'planejamento',
             ]);
-            $safraId = (int)DB::getPdo()->lastInsertId();
+            $safraId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('despesas')->insert([
                 'propriedade_id' => $propertyId,
@@ -3302,7 +3425,7 @@ XML;
                 'status_aprovacao' => 'aprovada',
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId, 'safra_id' => $safraId])
+            $this->withSession([...$this->loggedSession(propertyId: $propertyId), 'safra_id' => $safraId])
                 ->delete('/financeiro/categorias/'.$categoriaId)
                 ->assertRedirect('/financeiro/categorias')
                 ->assertSessionHas('error');
@@ -3328,7 +3451,7 @@ XML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('categorias')->insert([
                 'categoria_pai_id' => $categoriaId,
@@ -3361,7 +3484,7 @@ XML;
             ->orderByDesc('id')
             ->value('id');
 
-        if (!$despesaId) {
+        if (! $despesaId) {
             $this->markTestSkipped('Sem despesa aprovada pendente para baixar pela agenda.');
         }
 
@@ -3389,7 +3512,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('categorias')->insert([
@@ -3399,7 +3522,7 @@ XML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('contas')->insert([
                 'propriedade_id' => $propertyId,
@@ -3408,7 +3531,7 @@ XML;
                 'banco' => 'Banco Agenda',
                 'ativo' => 1,
             ]);
-            $contaId = (int)DB::getPdo()->lastInsertId();
+            $contaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('despesas')->insert([
                 'propriedade_id' => $propertyId,
@@ -3421,9 +3544,9 @@ XML;
                 'status_pagamento' => 'pendente',
                 'status_aprovacao' => 'aprovada',
             ]);
-            $despesaId = (int)DB::getPdo()->lastInsertId();
+            $despesaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/agenda/pagar', [
                     'id' => $despesaId,
                     'data_pagamento' => '2026-07-11',
@@ -3447,7 +3570,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $userId = $this->userId();
             $this->assertGreaterThan(0, $propertyId);
             $this->assertGreaterThan(0, $userId);
@@ -3459,7 +3582,7 @@ XML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('despesas')->insert([
                 'propriedade_id' => $propertyId,
@@ -3471,7 +3594,7 @@ XML;
                 'status_pagamento' => 'pendente',
                 'status_aprovacao' => 'aprovada',
             ]);
-            $despesaId = (int)DB::getPdo()->lastInsertId();
+            $despesaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('receitas')->insert([
                 'propriedade_id' => $propertyId,
@@ -3482,16 +3605,16 @@ XML;
                 'status' => 'pendente',
                 'status_aprovacao' => 'aprovada',
             ]);
-            $receitaId = (int)DB::getPdo()->lastInsertId();
+            $receitaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'usuario_id' => $userId, 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $userId))
                 ->post('/financeiro/agenda/pagar', [
                     'id' => $despesaId,
                     'data_pagamento' => '2026-07-11',
                 ])
                 ->assertRedirect('/financeiro/agenda');
 
-            $this->withSession([...$this->loggedSession(), 'usuario_id' => $userId, 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $userId))
                 ->post('/financeiro/agenda/receber', [
                     'id' => $receitaId,
                     'data_recebimento' => '2026-07-12',
@@ -3542,10 +3665,10 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/produtos', [
                     'descricao_generica' => 'Produto estoque criado Laravel',
                     'codigo_interno' => 'EST-LARAVEL-CREATE',
@@ -3553,7 +3676,7 @@ XML;
                 ])
                 ->assertRedirect('/produtos');
 
-            $produtoCriadoId = (int)DB::table('produtos')
+            $produtoCriadoId = (int) DB::table('produtos')
                 ->where('propriedade_id', $propertyId)
                 ->where('codigo_interno', 'EST-LARAVEL-CREATE')
                 ->value('id');
@@ -3572,15 +3695,15 @@ XML;
                 'unidade_medida' => 'kg',
                 'ativo' => 1,
             ]);
-            $produtoId = (int)DB::getPdo()->lastInsertId();
+            $produtoId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/produtos/'.$produtoId.'/editar')
                 ->assertStatus(200)
                 ->assertSee('Editar produto')
                 ->assertSee('Produto estoque Laravel');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->put('/produtos/'.$produtoId, [
                     'descricao_generica' => 'Produto estoque Laravel atualizado',
                     'codigo_interno' => 'EST-LARAVEL-002',
@@ -3637,7 +3760,7 @@ XML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/produtos/'.$produtoId.'/alternar-status')
                 ->assertRedirect('/produtos');
 
@@ -3686,8 +3809,8 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
-            $talhaoId = (int)DB::table('talhoes')
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
+            $talhaoId = (int) DB::table('talhoes')
                 ->where('propriedade_id', $propertyId)
                 ->where('ativo', 1)
                 ->orderBy('id')
@@ -3696,7 +3819,7 @@ XML;
             $this->assertGreaterThan(0, $propertyId);
             $this->assertGreaterThan(0, $talhaoId);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/safras', [
                     'descricao' => 'Safra criada auditoria Laravel',
                     'safra_referencia' => 'primeira',
@@ -3705,7 +3828,7 @@ XML;
                 ])
                 ->assertRedirect('/safras');
 
-            $safraCriadaId = (int)DB::table('safras')
+            $safraCriadaId = (int) DB::table('safras')
                 ->where('propriedade_id', $propertyId)
                 ->where('descricao', 'Safra criada auditoria Laravel')
                 ->value('id');
@@ -3728,15 +3851,15 @@ XML;
                 'preco_estimado' => 100,
                 'status' => 'planejamento',
             ]);
-            $safraId = (int)DB::getPdo()->lastInsertId();
+            $safraId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/safras/'.$safraId.'/editar')
                 ->assertStatus(200)
                 ->assertSee('Editar safra')
                 ->assertSee('Safra editar Laravel');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->put('/safras/'.$safraId, [
                     'descricao' => 'Safra atualizada Laravel',
                     'safra_referencia' => 'segunda',
@@ -3770,7 +3893,7 @@ XML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/safras/'.$safraId.'/status', ['status' => 'encerrada'])
                 ->assertRedirect('/safras?status=todas');
 
@@ -3785,7 +3908,7 @@ XML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/safras/'.$safraId.'/status', ['status' => 'planejamento'])
                 ->assertRedirect('/safras?status=todas');
 
@@ -3819,7 +3942,7 @@ XML;
                 'ativo' => 1,
                 'criado_em' => now(),
             ]);
-            $propertyId = (int)DB::getPdo()->lastInsertId();
+            $propertyId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('talhoes')->insert([
                 'propriedade_id' => $propertyId,
@@ -3827,7 +3950,7 @@ XML;
                 'area' => 50,
                 'ativo' => 1,
             ]);
-            $talhaoId = (int)DB::getPdo()->lastInsertId();
+            $talhaoId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safras')->insert([
                 'propriedade_id' => $propertyId,
@@ -3836,7 +3959,7 @@ XML;
                 'data_inicio' => '2026-07-01',
                 'status' => 'em_andamento',
             ]);
-            $safraEmAndamentoId = (int)DB::getPdo()->lastInsertId();
+            $safraEmAndamentoId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safra_talhoes')->insert([
                 'safra_id' => $safraEmAndamentoId,
@@ -3844,7 +3967,7 @@ XML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/safras', [
                     'descricao' => 'Safra bloqueada conflito Laravel',
                     'safra_referencia' => 'segunda',
@@ -3864,7 +3987,7 @@ XML;
                 ->where('talhao_id', $talhaoId)
                 ->update(['colheita_finalizada_em' => now()]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/safras', [
                     'descricao' => 'Safra liberada conflito Laravel',
                     'safra_referencia' => 'segunda',
@@ -3888,8 +4011,8 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
-            $talhaoId = (int)DB::table('talhoes')
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
+            $talhaoId = (int) DB::table('talhoes')
                 ->where('propriedade_id', $propertyId)
                 ->where('ativo', 1)
                 ->orderBy('id')
@@ -3911,13 +4034,13 @@ XML;
                 'data_inicio' => '2026-07-01',
                 'status' => 'planejamento',
             ]);
-            $blockedSafraId = (int)DB::getPdo()->lastInsertId();
+            $blockedSafraId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('despesas')->insert([
                 'propriedade_id' => $propertyId,
                 'descricao' => 'Despesa bloqueia delete safra',
                 'fornecedor' => 'Teste',
-                'categoria_id' => (int)DB::table('categorias')->orderBy('id')->value('id'),
+                'categoria_id' => (int) DB::table('categorias')->orderBy('id')->value('id'),
                 'safra_id' => $blockedSafraId,
                 'valor_total' => 10,
                 'data_lancamento' => '2026-07-02',
@@ -3925,7 +4048,7 @@ XML;
                 'status_aprovacao' => 'aprovada',
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->delete('/safras/'.$blockedSafraId, ['senha_exclusao' => 'senha-safra-delete'])
                 ->assertRedirect('/safras?status=todas')
                 ->assertSessionHasErrors();
@@ -3939,7 +4062,7 @@ XML;
                 'data_inicio' => '2026-08-01',
                 'status' => 'planejamento',
             ]);
-            $cleanSafraId = (int)DB::getPdo()->lastInsertId();
+            $cleanSafraId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safra_talhoes')->insert([
                 'safra_id' => $cleanSafraId,
@@ -3947,14 +4070,14 @@ XML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->delete('/safras/'.$cleanSafraId, ['senha_exclusao' => 'senha-errada'])
                 ->assertRedirect('/safras?status=todas')
                 ->assertSessionHasErrors();
 
             $this->assertDatabaseHas('safras', ['id' => $cleanSafraId]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId, 'safra_id' => $cleanSafraId])
+            $this->withSession([...$this->loggedSession(propertyId: $propertyId), 'safra_id' => $cleanSafraId])
                 ->delete('/safras/'.$cleanSafraId, ['senha_exclusao' => 'senha-safra-delete'])
                 ->assertRedirect('/safras?status=todas')
                 ->assertSessionMissing('safra_id');
@@ -4002,7 +4125,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             $points = json_encode([
@@ -4012,7 +4135,7 @@ XML;
                 ['lat' => -15.6900, 'lng' => -47.9000],
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/talhoes/mapa', [
                     'nome' => 'Talhao mapa Laravel',
                     'descricao' => 'Criado pelo desenho',
@@ -4020,7 +4143,7 @@ XML;
                 ])
                 ->assertRedirect('/talhoes/mapa');
 
-            $talhaoId = (int)DB::table('talhoes')->where('nome', 'Talhao mapa Laravel')->value('id');
+            $talhaoId = (int) DB::table('talhoes')->where('nome', 'Talhao mapa Laravel')->value('id');
             $this->assertGreaterThan(0, $talhaoId);
             $this->assertDatabaseHas('logs_auditoria', [
                 'acao' => 'criar_talhao_mapa',
@@ -4036,7 +4159,7 @@ XML;
                 ['lat' => -15.6950, 'lng' => -47.9100],
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/talhoes/mapa', [
                     'talhao_id' => $talhaoId,
                     'nome' => 'Talhao mapa atualizado',
@@ -4048,7 +4171,7 @@ XML;
             $talhao = DB::table('talhoes')->where('id', $talhaoId)->first();
             $this->assertSame('Talhao mapa atualizado', $talhao->nome);
             $this->assertSame('polygon', $talhao->geometria_tipo);
-            $this->assertGreaterThan(0, (float)$talhao->area);
+            $this->assertGreaterThan(0, (float) $talhao->area);
             $this->assertStringContainsString('-15.71', $talhao->coordenadas_json);
             $this->assertDatabaseHas('logs_auditoria', [
                 'acao' => 'salvar_poligono_talhao',
@@ -4066,7 +4189,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             $points = json_encode([
@@ -4089,9 +4212,9 @@ XML;
                 'coordenadas_json' => $points,
                 'ativo' => 1,
             ]);
-            $talhaoId = (int)DB::getPdo()->lastInsertId();
+            $talhaoId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/talhoes/'.$talhaoId.'/mapa/dados', [
                     'nome' => 'Talhao mapa recursos editado',
                     'area' => '481,5',
@@ -4102,11 +4225,13 @@ XML;
             $this->assertDatabaseHas('talhoes', [
                 'id' => $talhaoId,
                 'nome' => 'Talhao mapa recursos editado',
-                'area' => '481.50',
+                'area' => '480.00',
+                'area_bruta' => '480.00',
+                'area_excluida_ha' => '0.00',
                 'descricao' => 'Editado no mapa',
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/talhoes/'.$talhaoId.'/mapa/pivo', [
                     'pivo_lat' => '-15.71000000',
                     'pivo_lng' => '-47.91000000',
@@ -4120,13 +4245,13 @@ XML;
                 'pivo_raio_m' => '250.00',
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->delete('/talhoes/'.$talhaoId.'/mapa/pivo')
                 ->assertRedirect('/talhoes/mapa');
 
-            $this->assertSame(0, (int)DB::table('talhoes')->where('id', $talhaoId)->value('pivo_ativo'));
+            $this->assertSame(0, (int) DB::table('talhoes')->where('id', $talhaoId)->value('pivo_ativo'));
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/talhoes/mapa/pivo', [
                     'nome' => 'Pivo novo via mapa',
                     'pivo_lat' => '-15.715',
@@ -4149,7 +4274,7 @@ XML;
                 ['lat' => -15.7140, 'lng' => -47.9180],
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/talhoes/'.$talhaoId.'/mapa/exclusoes', [
                     'exclusao_json' => $exclusion,
                 ])
@@ -4157,16 +4282,16 @@ XML;
 
             $talhao = DB::table('talhoes')->where('id', $talhaoId)->first();
             $this->assertNotEmpty($talhao->exclusoes_json);
-            $this->assertGreaterThan(0, (float)$talhao->area_excluida_ha);
-            $this->assertLessThan((float)$talhao->area_bruta, (float)$talhao->area);
+            $this->assertGreaterThan(0, (float) $talhao->area_excluida_ha);
+            $this->assertLessThan((float) $talhao->area_bruta, (float) $talhao->area);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->delete('/talhoes/'.$talhaoId.'/mapa/exclusoes')
                 ->assertRedirect('/talhoes/mapa');
 
             $talhao = DB::table('talhoes')->where('id', $talhaoId)->first();
             $this->assertNull($talhao->exclusoes_json);
-            $this->assertSame(0.0, (float)$talhao->area_excluida_ha);
+            $this->assertSame(0.0, (float) $talhao->area_excluida_ha);
 
             foreach (['editar_talhao_mapa', 'salvar_pivo_talhao', 'remover_pivo_talhao', 'criar_pivo_talhao_mapa', 'criar_exclusao_talhao', 'limpar_exclusoes_talhao'] as $acao) {
                 $this->assertDatabaseHas('logs_auditoria', [
@@ -4185,7 +4310,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('talhoes')->insert([
@@ -4206,33 +4331,33 @@ XML;
                     ['lat' => -15.6900, 'lng' => -47.9000],
                 ]),
             ]);
-            $talhaoId = (int)DB::getPdo()->lastInsertId();
+            $talhaoId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/talhoes')
                 ->assertStatus(200)
                 ->assertSee('Exportar KML')
                 ->assertSee('SHP');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/talhoes/exportar/kml')
                 ->assertStatus(200)
                 ->assertHeader('content-type', 'application/vnd.google-earth.kml+xml; charset=UTF-8')
                 ->assertSee('Talhao export Laravel');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/talhoes/'.$talhaoId.'/exportar?formato=kml')
                 ->assertStatus(200)
                 ->assertHeader('content-type', 'application/vnd.google-earth.kml+xml; charset=UTF-8')
                 ->assertSee('<Polygon>', false);
 
             if (class_exists(\ZipArchive::class)) {
-                $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+                $this->withSession($this->loggedSession(propertyId: $propertyId))
                     ->get('/talhoes/'.$talhaoId.'/exportar?formato=kmz')
                     ->assertStatus(200)
                     ->assertDownload('farmfort_talhao_export_laravel.kmz');
 
-                $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+                $this->withSession($this->loggedSession(propertyId: $propertyId))
                     ->get('/talhoes/'.$talhaoId.'/exportar?formato=shp')
                     ->assertStatus(200)
                     ->assertDownload('farmfort_talhao_export_laravel_shp.zip');
@@ -4247,7 +4372,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             $kml = <<<'KML'
@@ -4272,7 +4397,7 @@ KML;
 
             $file = UploadedFile::fake()->createWithContent('talhao_import_laravel.kml', $kml);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/talhoes/importar-geo', [
                     'geo' => $file,
                     'nome_importacao' => 'Talhao importado KML Laravel',
@@ -4287,7 +4412,7 @@ KML;
 
             $this->assertNotNull($talhao);
             $this->assertSame('polygon', $talhao->geometria_tipo);
-            $this->assertGreaterThan(0, (float)$talhao->area);
+            $this->assertGreaterThan(0, (float) $talhao->area);
             $this->assertStringContainsString('-15.7', $talhao->coordenadas_json);
             $this->assertDatabaseHas('logs_auditoria', [
                 'acao' => 'importar_geometria',
@@ -4296,7 +4421,7 @@ KML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            if (!empty($talhao->kml_arquivo)) {
+            if (! empty($talhao->kml_arquivo)) {
                 @unlink(public_path($talhao->kml_arquivo));
             }
         } finally {
@@ -4309,7 +4434,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             $file = UploadedFile::fake()->createWithContent(
@@ -4317,7 +4442,7 @@ KML;
                 $this->simplePointShp(-47.895, -15.695)
             );
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/talhoes/importar-geo', [
                     'geo' => $file,
                     'nome_importacao' => 'Talhao importado SHP Laravel',
@@ -4332,8 +4457,8 @@ KML;
 
             $this->assertNotNull($talhao);
             $this->assertSame('point', $talhao->geometria_tipo);
-            $this->assertSame('-15.69500000', number_format((float)$talhao->latitude, 8, '.', ''));
-            $this->assertSame('-47.89500000', number_format((float)$talhao->longitude, 8, '.', ''));
+            $this->assertSame('-15.69500000', number_format((float) $talhao->latitude, 8, '.', ''));
+            $this->assertSame('-47.89500000', number_format((float) $talhao->longitude, 8, '.', ''));
             $this->assertDatabaseHas('logs_auditoria', [
                 'acao' => 'importar_geometria',
                 'tabela' => 'talhoes',
@@ -4341,7 +4466,7 @@ KML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            if (!empty($talhao->kml_arquivo)) {
+            if (! empty($talhao->kml_arquivo)) {
                 @unlink(public_path($talhao->kml_arquivo));
             }
         } finally {
@@ -4354,7 +4479,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('talhoes')->insert([
@@ -4365,7 +4490,7 @@ KML;
                 'area_excluida_ha' => 0,
                 'ativo' => 1,
             ]);
-            $destinoId = (int)DB::getPdo()->lastInsertId();
+            $destinoId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('talhoes')->insert([
                 'propriedade_id' => $propertyId,
@@ -4375,7 +4500,7 @@ KML;
                 'area_excluida_ha' => 0,
                 'ativo' => 1,
             ]);
-            $origemId = (int)DB::getPdo()->lastInsertId();
+            $origemId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safras')->insert([
                 'propriedade_id' => $propertyId,
@@ -4384,7 +4509,7 @@ KML;
                 'data_inicio' => '2026-07-01',
                 'status' => 'em_andamento',
             ]);
-            $safraId = (int)DB::getPdo()->lastInsertId();
+            $safraId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('chuvas')->insert([
                 'propriedade_id' => $propertyId,
@@ -4412,7 +4537,7 @@ KML;
                 'colheita_finalizada_por' => $this->userId(),
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/talhoes/unificar', [
                     'talhao_destino_id' => $destinoId,
                     'talhoes_origem' => [$origemId],
@@ -4421,8 +4546,8 @@ KML;
                 ->assertRedirect('/talhoes?status=todos');
 
             $destino = DB::table('talhoes')->where('id', $destinoId)->first();
-            $this->assertSame('15.00', number_format((float)$destino->area, 2, '.', ''));
-            $this->assertStringContainsString('Talhao origem merge Laravel', (string)$destino->descricao);
+            $this->assertSame('15.00', number_format((float) $destino->area, 2, '.', ''));
+            $this->assertStringContainsString('Talhao origem merge Laravel', (string) $destino->descricao);
 
             $this->assertDatabaseHas('talhoes', [
                 'id' => $origemId,
@@ -4463,7 +4588,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('talhoes')->insert([
@@ -4478,15 +4603,15 @@ KML;
                 'longitude' => -47.1,
                 'geometria_tipo' => 'point',
             ]);
-            $talhaoId = (int)DB::getPdo()->lastInsertId();
+            $talhaoId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/talhoes/'.$talhaoId.'/editar')
                 ->assertStatus(200)
                 ->assertSee('Editar talhão')
                 ->assertSee('Talhao editar Laravel');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->put('/talhoes/'.$talhaoId, [
                     'nome' => 'Talhao atualizado Laravel',
                     'area' => '20,50',
@@ -4518,7 +4643,7 @@ KML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/talhoes/'.$talhaoId.'/alternar-status')
                 ->assertRedirect('/talhoes?status=todos');
 
@@ -4533,7 +4658,7 @@ KML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/talhoes/'.$talhaoId.'/alternar-status')
                 ->assertRedirect('/talhoes?status=todos');
 
@@ -4557,7 +4682,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('talhoes')->insert([
@@ -4566,7 +4691,7 @@ KML;
                 'area' => 10,
                 'ativo' => 1,
             ]);
-            $talhaoId = (int)DB::getPdo()->lastInsertId();
+            $talhaoId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safras')->insert([
                 'propriedade_id' => $propertyId,
@@ -4575,7 +4700,7 @@ KML;
                 'data_inicio' => '2026-07-01',
                 'status' => 'em_andamento',
             ]);
-            $safraId = (int)DB::getPdo()->lastInsertId();
+            $safraId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safra_talhoes')->insert([
                 'safra_id' => $safraId,
@@ -4583,7 +4708,7 @@ KML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/talhoes/'.$talhaoId.'/alternar-status')
                 ->assertRedirect('/talhoes?status=todos')
                 ->assertSessionHas('error');
@@ -4598,7 +4723,7 @@ KML;
                 ->where('talhao_id', $talhaoId)
                 ->update(['colheita_finalizada_em' => '2026-07-09 12:00:00']);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/talhoes/'.$talhaoId.'/alternar-status')
                 ->assertRedirect('/talhoes?status=todos')
                 ->assertSessionHas('success');
@@ -4625,10 +4750,10 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/talhoes/chuva', [
                     'data_chuva' => now()->format('Y-m-d'),
                     'volume_mm' => '12,5',
@@ -4646,7 +4771,7 @@ KML;
                 'nome' => 'Propriedade chuva externa',
                 'ativo' => 1,
             ]);
-            $outraPropriedadeId = (int)DB::getPdo()->lastInsertId();
+            $outraPropriedadeId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('talhoes')->insert([
                 'propriedade_id' => $outraPropriedadeId,
@@ -4654,9 +4779,9 @@ KML;
                 'area' => 1,
                 'ativo' => 1,
             ]);
-            $talhaoExternoId = (int)DB::getPdo()->lastInsertId();
+            $talhaoExternoId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/talhoes/chuva', [
                     'talhao_id' => $talhaoExternoId,
                     'data_chuva' => now()->format('Y-m-d'),
@@ -4689,10 +4814,10 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/talhoes/atividades', [
                     'tipo' => 'manejo',
                     'data_inicio' => now()->format('Y-m-d'),
@@ -4711,13 +4836,13 @@ KML;
                 'status' => 'planejada',
             ]);
 
-            $atividadeId = (int)DB::table('atividades_campo')
+            $atividadeId = (int) DB::table('atividades_campo')
                 ->where('propriedade_id', $propertyId)
                 ->where('descricao', 'Atividade teste Laravel')
                 ->value('id');
             $this->assertGreaterThan(0, $atividadeId);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/talhoes/atividades/'.$atividadeId.'/status', ['status' => 'concluida'])
                 ->assertRedirect('/talhoes/atividades');
 
@@ -4730,7 +4855,7 @@ KML;
                 'nome' => 'Propriedade atividade externa',
                 'ativo' => 1,
             ]);
-            $outraPropriedadeId = (int)DB::getPdo()->lastInsertId();
+            $outraPropriedadeId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safras')->insert([
                 'propriedade_id' => $outraPropriedadeId,
@@ -4739,7 +4864,7 @@ KML;
                 'data_inicio' => '2026-07-01',
                 'status' => 'planejamento',
             ]);
-            $safraExternaId = (int)DB::getPdo()->lastInsertId();
+            $safraExternaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('talhoes')->insert([
                 'propriedade_id' => $outraPropriedadeId,
@@ -4747,9 +4872,9 @@ KML;
                 'area' => 1,
                 'ativo' => 1,
             ]);
-            $talhaoExternoId = (int)DB::getPdo()->lastInsertId();
+            $talhaoExternoId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/talhoes/atividades', [
                     'safra_id' => $safraExternaId,
                     'talhao_id' => $talhaoExternoId,
@@ -4776,7 +4901,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('talhoes')->insert([
@@ -4785,7 +4910,7 @@ KML;
                 'area' => 10,
                 'ativo' => 1,
             ]);
-            $talhaoId = (int)DB::getPdo()->lastInsertId();
+            $talhaoId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('chuvas')->insert([
                 'propriedade_id' => $propertyId,
@@ -4807,7 +4932,7 @@ KML;
                 'nome' => 'Propriedade chuva externa',
                 'ativo' => 1,
             ]);
-            $outraPropriedadeId = (int)DB::getPdo()->lastInsertId();
+            $outraPropriedadeId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('chuvas')->insert([
                 'propriedade_id' => $outraPropriedadeId,
@@ -4818,7 +4943,7 @@ KML;
                 'observacoes' => 'Chuva externa nao deve aparecer',
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/talhoes/chuva?ano=2026')
                 ->assertStatus(200)
                 ->assertSee('35,0 mm')
@@ -4837,14 +4962,14 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('propriedades')->insert([
                 'nome' => 'Propriedade chuva talhao externo',
                 'ativo' => 1,
             ]);
-            $outraPropriedadeId = (int)DB::getPdo()->lastInsertId();
+            $outraPropriedadeId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('talhoes')->insert([
                 'propriedade_id' => $outraPropriedadeId,
@@ -4852,9 +4977,9 @@ KML;
                 'area' => 10,
                 'ativo' => 1,
             ]);
-            $talhaoExternoId = (int)DB::getPdo()->lastInsertId();
+            $talhaoExternoId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/talhoes/chuva', [
                     'talhao_id' => $talhaoExternoId,
                     'data_chuva' => '2026-02-10',
@@ -4898,7 +5023,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('safras')->insert([
@@ -4908,7 +5033,7 @@ KML;
                 'data_inicio' => '2026-07-01',
                 'status' => 'planejamento',
             ]);
-            $safraId = (int)DB::getPdo()->lastInsertId();
+            $safraId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('talhoes')->insert([
                 'propriedade_id' => $propertyId,
@@ -4916,13 +5041,13 @@ KML;
                 'area' => 10,
                 'ativo' => 1,
             ]);
-            $talhaoId = (int)DB::getPdo()->lastInsertId();
+            $talhaoId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('propriedades')->insert([
                 'nome' => 'Propriedade colheita externa',
                 'ativo' => 1,
             ]);
-            $outraPropriedadeId = (int)DB::getPdo()->lastInsertId();
+            $outraPropriedadeId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safras')->insert([
                 'propriedade_id' => $outraPropriedadeId,
@@ -4931,7 +5056,7 @@ KML;
                 'data_inicio' => '2026-07-01',
                 'status' => 'planejamento',
             ]);
-            $safraExternaId = (int)DB::getPdo()->lastInsertId();
+            $safraExternaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('talhoes')->insert([
                 'propriedade_id' => $outraPropriedadeId,
@@ -4939,9 +5064,9 @@ KML;
                 'area' => 1,
                 'ativo' => 1,
             ]);
-            $talhaoExternoId = (int)DB::getPdo()->lastInsertId();
+            $talhaoExternoId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/colheita', [
                     'safra_id' => $safraId,
                     'talhao_id' => $talhaoId,
@@ -4960,7 +5085,7 @@ KML;
                 'ticket_numero' => 'COL-VALIDA',
                 'peso_final_kg' => 1050,
             ]);
-            $colheitaId = (int)DB::table('colheita_talhoes')
+            $colheitaId = (int) DB::table('colheita_talhoes')
                 ->where('propriedade_id', $propertyId)
                 ->where('ticket_numero', 'COL-VALIDA')
                 ->value('id');
@@ -4971,7 +5096,7 @@ KML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->from('/colheita/novo')
                 ->post('/colheita', [
                     'safra_id' => $safraExternaId,
@@ -4988,7 +5113,7 @@ KML;
                 'ticket_numero' => 'COL-SAFRA-BLOQUEADA',
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->from('/colheita/novo')
                 ->post('/colheita', [
                     'safra_id' => $safraId,
@@ -5013,7 +5138,7 @@ KML;
     {
         $safraId = DB::table('safras')->orderBy('id')->value('id');
         $talhaoId = DB::table('talhoes')->where('ativo', 1)->orderBy('id')->value('id');
-        if (!$safraId || !$talhaoId) {
+        if (! $safraId || ! $talhaoId) {
             $this->markTestSkipped('Sem safra ou talhao para testar finalizacao.');
         }
 
@@ -5088,7 +5213,7 @@ KML;
                 'data_inicio' => '2026-07-01',
                 'status' => 'planejamento',
             ]);
-            $safraId = (int)DB::getPdo()->lastInsertId();
+            $safraId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('talhoes')->insert([
                 'propriedade_id' => $propertyId,
@@ -5096,7 +5221,7 @@ KML;
                 'area' => 12,
                 'ativo' => 1,
             ]);
-            $talhaoId = (int)DB::getPdo()->lastInsertId();
+            $talhaoId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('colheita_talhoes')->insert([
                 'propriedade_id' => $propertyId,
@@ -5113,15 +5238,15 @@ KML;
                 'origem' => 'manual',
                 'usuario_id' => $this->userId(),
             ]);
-            $cargaId = (int)DB::getPdo()->lastInsertId();
+            $cargaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/colheita/'.$cargaId.'/editar')
                 ->assertStatus(200)
                 ->assertSee('Editar colheita')
                 ->assertSee('COL-EDITAR');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->put('/colheita/'.$cargaId, [
                     'safra_id' => $safraId,
                     'talhao_id' => $talhaoId,
@@ -5150,7 +5275,7 @@ KML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->delete('/colheita/'.$cargaId)
                 ->assertRedirect();
 
@@ -5217,14 +5342,14 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('propriedades')->insert([
                 'nome' => 'Propriedade contrato externa',
                 'ativo' => 1,
             ]);
-            $outraPropriedadeId = (int)DB::getPdo()->lastInsertId();
+            $outraPropriedadeId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safras')->insert([
                 'propriedade_id' => $outraPropriedadeId,
@@ -5233,11 +5358,11 @@ KML;
                 'data_inicio' => '2026-07-01',
                 'status' => 'planejamento',
             ]);
-            $safraExternaId = (int)DB::getPdo()->lastInsertId();
+            $safraExternaId = (int) DB::getPdo()->lastInsertId();
 
             $numero = 'CTR-SAFRA-EXTERNA-'.uniqid();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/estoque-producao/contratos', [
                     'safra_id' => $safraExternaId,
                     'tipo' => 'venda',
@@ -5266,7 +5391,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('contratos')->insert([
@@ -5283,9 +5408,9 @@ KML;
                 'status' => 'aberto',
                 'usuario_id' => $this->userId(),
             ]);
-            $contratoId = (int)DB::getPdo()->lastInsertId();
+            $contratoId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/estoque-producao/contratos/entregas', [
                     'contrato_id' => $contratoId,
                     'data_entrega' => '2026-07-10',
@@ -5301,7 +5426,7 @@ KML;
                 'status' => 'parcial',
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/estoque-producao/contratos/entregas', [
                     'contrato_id' => $contratoId,
                     'data_entrega' => '2026-07-11',
@@ -5316,7 +5441,7 @@ KML;
                 'id' => $contratoId,
                 'status' => 'entregue',
             ]);
-            $this->assertEquals(100.0, (float)DB::table('contrato_entregas')->where('contrato_id', $contratoId)->sum('quantidade'));
+            $this->assertEquals(100.0, (float) DB::table('contrato_entregas')->where('contrato_id', $contratoId)->sum('quantidade'));
         } finally {
             DB::rollBack();
         }
@@ -5327,7 +5452,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('contratos')->insert([
@@ -5344,7 +5469,7 @@ KML;
                 'status' => 'aberto',
                 'usuario_id' => $this->userId(),
             ]);
-            $contratoAbertoId = (int)DB::getPdo()->lastInsertId();
+            $contratoAbertoId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('contratos')->insert([
                 'propriedade_id' => $propertyId,
@@ -5361,7 +5486,7 @@ KML;
                 'usuario_id' => $this->userId(),
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/estoque-producao/contratos')
                 ->assertStatus(200)
                 ->assertSee('id="form-entrega-contrato"', false)
@@ -5396,13 +5521,13 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $userId = $this->userId();
             $email = 'usuario-criado-'.uniqid().'@teste.local';
 
             DB::table('propriedades')->where('id', $propertyId)->update(['plano' => 'premium']);
 
-            $this->withSession([...$this->loggedSession(), 'usuario_id' => $userId, 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $userId))
                 ->post('/usuarios', [
                     'nome' => 'Usuario Laravel Criado',
                     'email' => $email,
@@ -5412,7 +5537,7 @@ KML;
                 ])
                 ->assertRedirect('/usuarios');
 
-            $usuarioId = (int)DB::table('usuarios')->where('email', $email)->value('id');
+            $usuarioId = (int) DB::table('usuarios')->where('email', $email)->value('id');
             $this->assertGreaterThan(0, $usuarioId);
 
             $this->assertDatabaseHas('usuario_propriedades', [
@@ -5436,7 +5561,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $userId = $this->userId();
             $this->assertGreaterThan(0, $propertyId);
 
@@ -5447,7 +5572,7 @@ KML;
                 'perfil' => 'visualizador',
                 'ativo' => 1,
             ]);
-            $usuarioId = (int)DB::getPdo()->lastInsertId();
+            $usuarioId = (int) DB::getPdo()->lastInsertId();
             DB::table('usuario_propriedades')->insert([
                 'usuario_id' => $usuarioId,
                 'propriedade_id' => $propertyId,
@@ -5455,13 +5580,13 @@ KML;
 
             $novoEmail = 'usuario-editado-'.uniqid().'@teste.local';
 
-            $this->withSession([...$this->loggedSession(), 'usuario_id' => $userId, 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $userId))
                 ->get('/usuarios/'.$usuarioId.'/editar')
                 ->assertStatus(200)
                 ->assertSee('Editar usuário')
                 ->assertSee('Usuario Laravel Edicao');
 
-            $this->withSession([...$this->loggedSession(), 'usuario_id' => $userId, 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $userId))
                 ->put('/usuarios/'.$usuarioId, [
                     'nome' => 'Usuario Laravel Editado',
                     'email' => $novoEmail,
@@ -5493,7 +5618,7 @@ KML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'usuario_id' => $userId, 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $userId))
                 ->post('/usuarios/'.$usuarioId.'/alternar-status')
                 ->assertRedirect('/usuarios');
 
@@ -5518,7 +5643,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $userId = $this->userId();
             $this->assertGreaterThan(0, $propertyId);
 
@@ -5526,7 +5651,7 @@ KML;
                 'nome' => 'Grupo usuario Laravel',
                 'ativo' => 1,
             ]);
-            $grupoId = (int)DB::getPdo()->lastInsertId();
+            $grupoId = (int) DB::getPdo()->lastInsertId();
             DB::table('grupo_fazenda_propriedades')->insert([
                 'grupo_id' => $grupoId,
                 'propriedade_id' => $propertyId,
@@ -5539,19 +5664,19 @@ KML;
                 'perfil' => 'visualizador',
                 'ativo' => 1,
             ]);
-            $usuarioId = (int)DB::getPdo()->lastInsertId();
+            $usuarioId = (int) DB::getPdo()->lastInsertId();
             DB::table('usuario_grupos_fazendas')->insert([
                 'usuario_id' => $usuarioId,
                 'grupo_id' => $grupoId,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'usuario_id' => $userId, 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $userId))
                 ->get('/usuarios')
                 ->assertStatus(200)
                 ->assertSee('Usuario grupo Laravel');
 
             $novoEmail = 'usuario-grupo-editado-'.uniqid().'@teste.local';
-            $this->withSession([...$this->loggedSession(), 'usuario_id' => $userId, 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $userId))
                 ->put('/usuarios/'.$usuarioId, [
                     'nome' => 'Usuario grupo editado Laravel',
                     'email' => $novoEmail,
@@ -5572,7 +5697,7 @@ KML;
                 'grupo_id' => $grupoId,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'usuario_id' => $userId, 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $userId))
                 ->post('/usuarios/'.$usuarioId.'/alternar-status')
                 ->assertRedirect('/usuarios');
 
@@ -5597,7 +5722,7 @@ KML;
                 'nome' => 'Grupo limite usuarios Laravel',
                 'ativo' => 1,
             ]);
-            $grupoId = (int)DB::getPdo()->lastInsertId();
+            $grupoId = (int) DB::getPdo()->lastInsertId();
             DB::table('grupo_fazenda_propriedades')->insert([
                 'grupo_id' => $grupoId,
                 'propriedade_id' => $propertyId,
@@ -5617,7 +5742,7 @@ KML;
                     'perfil' => 'visualizador',
                     'ativo' => 1,
                 ]);
-                $usuarioId = (int)DB::getPdo()->lastInsertId();
+                $usuarioId = (int) DB::getPdo()->lastInsertId();
                 DB::table('usuario_propriedades')->insert([
                     'usuario_id' => $usuarioId,
                     'propriedade_id' => $propertyId,
@@ -5631,14 +5756,14 @@ KML;
                 'perfil' => 'visualizador',
                 'ativo' => 1,
             ]);
-            $usuarioGrupoId = (int)DB::getPdo()->lastInsertId();
+            $usuarioGrupoId = (int) DB::getPdo()->lastInsertId();
             DB::table('usuario_grupos_fazendas')->insert([
                 'usuario_id' => $usuarioGrupoId,
                 'grupo_id' => $grupoId,
             ]);
 
             $emailNovo = 'usuario-limite-grupo-'.uniqid().'@teste.local';
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->from('/usuarios/novo')
                 ->post('/usuarios', [
                     'nome' => 'Usuario excede limite por grupo',
@@ -5679,7 +5804,7 @@ KML;
                     'perfil' => 'visualizador',
                     'ativo' => 1,
                 ]);
-                $usuarioId = (int)DB::getPdo()->lastInsertId();
+                $usuarioId = (int) DB::getPdo()->lastInsertId();
                 DB::table('usuario_propriedades')->insert([
                     'usuario_id' => $usuarioId,
                     'propriedade_id' => $propertyId,
@@ -5688,7 +5813,7 @@ KML;
 
             $emailNovo = 'usuario-excede-limite-'.uniqid().'@teste.local';
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->from('/usuarios/novo')
                 ->post('/usuarios', [
                     'nome' => 'Usuario excede limite',
@@ -5774,7 +5899,7 @@ KML;
             $this->assertNotNull($propriedade->latitude);
             $this->assertNotNull($propriedade->longitude);
             $this->assertNotNull($propriedade->kml_arquivo);
-            $this->assertGreaterThan(0, (float)$propriedade->area_total);
+            $this->assertGreaterThan(0, (float) $propriedade->area_total);
 
             $this->assertDatabaseHas('talhoes', [
                 'propriedade_id' => $propriedade->id,
@@ -5802,7 +5927,7 @@ KML;
                 'cotacao_soja_proxima_busca' => '2026-07-09 05:00:00',
                 'cotacao_soja_status' => null,
             ]);
-            $propertyId = (int)DB::getPdo()->lastInsertId();
+            $propertyId = (int) DB::getPdo()->lastInsertId();
 
             $atualizou = app(CotacaoSojaService::class)->atualizarPropriedade([
                 'id' => $propertyId,
@@ -5853,7 +5978,7 @@ KML;
                 'pecuaria_ativa' => 0,
                 'ativo' => 1,
             ]);
-            $propriedadeId = (int)DB::getPdo()->lastInsertId();
+            $propriedadeId = (int) DB::getPdo()->lastInsertId();
 
             $this->withSession($this->loggedSession())
                 ->get('/propriedades/'.$propriedadeId.'/editar')
@@ -5915,7 +6040,7 @@ KML;
                 'pecuaria_ativa' => 0,
                 'ativo' => 1,
             ]);
-            $propriedadeId = (int)DB::getPdo()->lastInsertId();
+            $propriedadeId = (int) DB::getPdo()->lastInsertId();
 
             for ($i = 1; $i <= 4; $i++) {
                 DB::table('usuarios')->insert([
@@ -5925,7 +6050,7 @@ KML;
                     'perfil' => 'visualizador',
                     'ativo' => 1,
                 ]);
-                $usuarioId = (int)DB::getPdo()->lastInsertId();
+                $usuarioId = (int) DB::getPdo()->lastInsertId();
                 DB::table('usuario_propriedades')->insert([
                     'usuario_id' => $usuarioId,
                     'propriedade_id' => $propriedadeId,
@@ -5976,7 +6101,7 @@ KML;
                 'pecuaria_ativa' => 0,
                 'ativo' => 1,
             ]);
-            $propriedadeId = (int)DB::getPdo()->lastInsertId();
+            $propriedadeId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('usuarios')->insert([
                 'nome' => 'Aprovador propriedade Laravel',
@@ -5985,7 +6110,7 @@ KML;
                 'perfil' => 'gestor_financeiro',
                 'ativo' => 1,
             ]);
-            $aprovadorId = (int)DB::getPdo()->lastInsertId();
+            $aprovadorId = (int) DB::getPdo()->lastInsertId();
 
             $this->withSession($this->loggedSession())
                 ->get('/propriedades/'.$propriedadeId.'/editar')
@@ -6040,7 +6165,7 @@ KML;
             ->orderBy('id')
             ->value('id');
 
-        if (!$propriedadeId) {
+        if (! $propriedadeId) {
             $this->markTestSkipped('Sem propriedade Premium para criar grupo de fazendas.');
         }
 
@@ -6078,7 +6203,7 @@ KML;
                 'ativo' => 1,
                 'criado_em' => now(),
             ]);
-            $premiumId = (int)DB::getPdo()->lastInsertId();
+            $premiumId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('propriedades')->insert([
                 'nome' => 'Fazenda Basica Grupo Laravel',
@@ -6090,7 +6215,7 @@ KML;
                 'ativo' => 1,
                 'criado_em' => now(),
             ]);
-            $basicaId = (int)DB::getPdo()->lastInsertId();
+            $basicaId = (int) DB::getPdo()->lastInsertId();
 
             $this->withSession($this->loggedSession())
                 ->post('/propriedades/grupos', [
@@ -6122,7 +6247,7 @@ KML;
                 'ativo' => 1,
                 'criado_em' => now(),
             ]);
-            $propriedadeId = (int)DB::getPdo()->lastInsertId();
+            $propriedadeId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('usuarios')->insert([
                 'nome' => 'Aprovador sem vinculo Laravel',
@@ -6132,7 +6257,7 @@ KML;
                 'ativo' => 1,
                 'criado_em' => now(),
             ]);
-            $aprovadorId = (int)DB::getPdo()->lastInsertId();
+            $aprovadorId = (int) DB::getPdo()->lastInsertId();
 
             $this->withSession($this->loggedSession())
                 ->post('/propriedades/grupos', [
@@ -6172,11 +6297,11 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
             $nomePatrimonio = 'Patrimonio via entrada NF '.uniqid();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/fiscal/entrada-nf', [
                     'numero' => 'NF-ENT-PAT',
                     'serie' => '1',
@@ -6222,7 +6347,7 @@ KML;
                 ->where('nome', $nomePatrimonio)
                 ->value('id');
             $this->assertNotEmpty($patrimonioId);
-            $this->assertSame((int)$patrimonioId, (int)DB::table('nf_entradas')->where('id', $entrada->id)->value('patrimonio_id'));
+            $this->assertSame((int) $patrimonioId, (int) DB::table('nf_entradas')->where('id', $entrada->id)->value('patrimonio_id'));
         } finally {
             DB::rollBack();
         }
@@ -6233,7 +6358,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $userId = $this->userId();
             $this->assertGreaterThan(0, $propertyId);
             $this->assertGreaterThan(0, $userId);
@@ -6245,7 +6370,7 @@ KML;
                 'icone' => 'bi-receipt',
                 'ativo' => 1,
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
             $numero = 'NF-CONCLUIR-'.uniqid();
 
             DB::table('nf_entradas')->insert([
@@ -6266,7 +6391,7 @@ KML;
                 'financeiro_confirmado' => 0,
                 'usuario_id' => $userId,
             ]);
-            $entradaId = (int)DB::getPdo()->lastInsertId();
+            $entradaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('nf_entrada_itens')->insert([
                 'nf_entrada_id' => $entradaId,
@@ -6300,22 +6425,22 @@ KML;
                 ],
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/fiscal/entrada-nf/'.$entradaId)
                 ->assertStatus(200)
                 ->assertSee($numero)
                 ->assertSee('Concluir para financeiro');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/fiscal/entrada-nf/'.$entradaId.'/concluir')
                 ->assertRedirect('/fiscal/entrada-nf/'.$entradaId);
 
             $entrada = DB::table('nf_entradas')->where('id', $entradaId)->first();
             $this->assertSame('concluida', $entrada->status);
-            $this->assertSame(1, (int)$entrada->financeiro_confirmado);
+            $this->assertSame(1, (int) $entrada->financeiro_confirmado);
 
             $this->assertSame(2, DB::table('despesas')->where('nota_fiscal', $numero)->count());
-            $this->assertSame(300.0, (float)DB::table('despesas')->where('nota_fiscal', $numero)->sum('valor_total'));
+            $this->assertSame(300.0, (float) DB::table('despesas')->where('nota_fiscal', $numero)->sum('valor_total'));
             $this->assertSame(2, DB::table('nf_entrada_parcelas')->where('nf_entrada_id', $entradaId)->where('status', 'confirmada')->whereNotNull('despesa_id')->count());
             $this->assertDatabaseHas('logs_auditoria', [
                 'acao' => 'concluir_entrada_nf',
@@ -6333,7 +6458,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $userId = $this->userId();
             DB::table('categorias')->insert([
                 'nome' => 'Categoria item NF teste '.uniqid(),
@@ -6342,7 +6467,7 @@ KML;
                 'icone' => 'bi-box',
                 'ativo' => 1,
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('nf_entradas')->insert([
                 'propriedade_id' => $propertyId,
@@ -6361,9 +6486,9 @@ KML;
                 'financeiro_confirmado' => 0,
                 'usuario_id' => $userId,
             ]);
-            $entradaId = (int)DB::getPdo()->lastInsertId();
+            $entradaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/fiscal/entrada-nf/'.$entradaId.'/itens', [
                     'descricao_nf' => 'Produto novo pela entrada NF',
                     'descricao_generica' => 'Produto novo pela entrada NF',
@@ -6390,7 +6515,7 @@ KML;
                 'fiscal_validado' => 1,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/fiscal/entrada-nf/'.$entradaId.'/parcelas/gerar', [
                     'parcelas_qtd' => 3,
                     'primeiro_vencimento' => '2026-08-10',
@@ -6398,7 +6523,7 @@ KML;
                 ->assertRedirect('/fiscal/entrada-nf/'.$entradaId);
 
             $this->assertSame(3, DB::table('nf_entrada_parcelas')->where('nf_entrada_id', $entradaId)->count());
-            $this->assertSame(600.0, (float)DB::table('nf_entrada_parcelas')->where('nf_entrada_id', $entradaId)->sum('valor'));
+            $this->assertSame(600.0, (float) DB::table('nf_entrada_parcelas')->where('nf_entrada_id', $entradaId)->sum('valor'));
             $this->assertDatabaseHas('nf_entrada_parcelas', [
                 'nf_entrada_id' => $entradaId,
                 'parcela_numero' => 3,
@@ -6441,7 +6566,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('propriedades')
@@ -6459,7 +6584,7 @@ KML;
                 'usuario_id' => $this->userId(),
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/fiscal/certificados')
                 ->assertStatus(200)
                 ->assertSee('Certificados')
@@ -6476,10 +6601,10 @@ KML;
         Storage::fake('local');
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->from('/fiscal/certificados')
                 ->post('/fiscal/certificados', [
                     'nome_identificacao' => 'A1 incompleto Laravel',
@@ -6496,7 +6621,7 @@ KML;
                 ->where('propriedade_id', $propertyId)
                 ->count();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->from('/fiscal/certificados')
                 ->post('/fiscal/certificados', [
                     'nome_identificacao' => 'A1 invalido Laravel',
@@ -6531,7 +6656,7 @@ KML;
                 'principal' => 1,
             ]);
 
-            $certificadoId = (int)DB::table('certificados_digitais')
+            $certificadoId = (int) DB::table('certificados_digitais')
                 ->where('nome_identificacao', 'Certificado teste Laravel')
                 ->value('id');
             $this->assertGreaterThan(0, $certificadoId);
@@ -6543,7 +6668,7 @@ KML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/fiscal/certificados', [
                     'nome_identificacao' => 'Certificado vence hoje Laravel',
                     'tipo_certificado' => 'A3',
@@ -6570,9 +6695,9 @@ KML;
                 'status' => 'ativo',
                 'usuario_id' => $this->userId(),
             ]);
-            $secundarioId = (int)DB::getPdo()->lastInsertId();
+            $secundarioId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/fiscal/certificados/'.$secundarioId.'/principal')
                 ->assertRedirect('/fiscal/certificados');
 
@@ -6587,7 +6712,7 @@ KML;
                 'principal' => 0,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/fiscal/certificados/'.$secundarioId.'/desativar')
                 ->assertRedirect('/fiscal/certificados');
 
@@ -6613,7 +6738,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('certificados_digitais')->insert([
@@ -6626,7 +6751,7 @@ KML;
                 'status' => 'ativo',
                 'usuario_id' => $this->userId(),
             ]);
-            $principalId = (int)DB::getPdo()->lastInsertId();
+            $principalId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('certificados_digitais')->insert([
                 'propriedade_id' => $propertyId,
@@ -6638,13 +6763,13 @@ KML;
                 'status' => 'inativo',
                 'usuario_id' => $this->userId(),
             ]);
-            $inativoId = (int)DB::getPdo()->lastInsertId();
+            $inativoId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('propriedades')->insert([
                 'nome' => 'Fazenda certificado externa',
                 'ativo' => 1,
             ]);
-            $outraPropriedadeId = (int)DB::getPdo()->lastInsertId();
+            $outraPropriedadeId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('certificados_digitais')->insert([
                 'propriedade_id' => $outraPropriedadeId,
@@ -6656,13 +6781,13 @@ KML;
                 'status' => 'ativo',
                 'usuario_id' => $this->userId(),
             ]);
-            $externoId = (int)DB::getPdo()->lastInsertId();
+            $externoId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/fiscal/certificados/'.$externoId.'/principal')
                 ->assertNotFound();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/fiscal/certificados/'.$inativoId.'/principal')
                 ->assertNotFound();
 
@@ -6702,10 +6827,10 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->from('/fiscal/produtores')
                 ->post('/fiscal/produtores', [
                     'nome' => 'Produtor percentual invalido',
@@ -6715,7 +6840,7 @@ KML;
                 ->assertRedirect('/fiscal/produtores')
                 ->assertSessionHasErrors(['participacao_percentual']);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/fiscal/produtores', [
                     'nome' => 'Produtor teste Laravel',
                     'documento' => '12345678901',
@@ -6728,13 +6853,13 @@ KML;
                 'documento' => '12345678901',
             ]);
 
-            $produtorId = (int)DB::table('produtores')
+            $produtorId = (int) DB::table('produtores')
                 ->where('propriedade_id', $propertyId)
                 ->where('nome', 'Produtor teste Laravel')
                 ->value('id');
             $this->assertGreaterThan(0, $produtorId);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->put('/fiscal/produtores/'.$produtorId, [
                     'nome' => 'Produtor atualizado Laravel',
                     'documento' => '10987654321',
@@ -6749,7 +6874,7 @@ KML;
                 'ativo' => 1,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/fiscal/produtores/'.$produtorId.'/toggle')
                 ->assertRedirect('/fiscal/produtores');
 
@@ -6767,14 +6892,14 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('propriedades')->insert([
                 'nome' => 'Fazenda externa produtores Laravel',
                 'ativo' => 1,
             ]);
-            $externalPropertyId = (int)DB::getPdo()->lastInsertId();
+            $externalPropertyId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('produtores')->insert([
                 'propriedade_id' => $externalPropertyId,
@@ -6783,9 +6908,9 @@ KML;
                 'participacao_percentual' => 75,
                 'ativo' => 1,
             ]);
-            $externalProducerId = (int)DB::getPdo()->lastInsertId();
+            $externalProducerId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->put('/fiscal/produtores/'.$externalProducerId, [
                     'nome' => 'Produtor alterado indevidamente',
                     'documento' => '11122233344',
@@ -6801,7 +6926,7 @@ KML;
                 'ativo' => 1,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/fiscal/produtores/'.$externalProducerId.'/toggle')
                 ->assertNotFound();
 
@@ -6829,7 +6954,7 @@ KML;
         $arquivoPath = null;
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('propriedades')->insert([
@@ -6838,7 +6963,7 @@ KML;
                 'estado' => 'GO',
                 'ativo' => 1,
             ]);
-            $externalPropertyId = (int)DB::getPdo()->lastInsertId();
+            $externalPropertyId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safras')->insert([
                 'propriedade_id' => $externalPropertyId,
@@ -6847,9 +6972,9 @@ KML;
                 'data_inicio' => '2026-01-01',
                 'status' => 'planejamento',
             ]);
-            $externalSafraId = (int)DB::getPdo()->lastInsertId();
+            $externalSafraId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/fiscal/documentos', [
                     'tipo' => 'comprovante',
                     'titulo' => 'Documento teste Laravel',
@@ -6880,23 +7005,23 @@ KML;
             $arquivoPath = base_path('../uploads/comprovantes/'.$arquivoNome);
             $this->assertFileExists($arquivoPath);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/fiscal/documentos')
                 ->assertStatus(200)
                 ->assertSee('Abrir')
                 ->assertSee('/fiscal/documentos/');
 
-            $documentoId = (int)DB::table('documentos')
+            $documentoId = (int) DB::table('documentos')
                 ->where('propriedade_id', $propertyId)
                 ->where('titulo', 'Documento teste Laravel')
                 ->value('id');
             $this->assertGreaterThan(0, $documentoId);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/fiscal/documentos/'.$documentoId.'/arquivo')
                 ->assertStatus(200);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/fiscal/documentos/'.$documentoId.'/status', ['status' => 'conferido'])
                 ->assertRedirect('/fiscal/documentos');
 
@@ -6905,7 +7030,7 @@ KML;
                 'status' => 'conferido',
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/fiscal/documentos/'.$documentoId.'/status', ['status' => 'arquivado'])
                 ->assertRedirect('/fiscal/documentos');
 
@@ -6926,7 +7051,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('documentos')->insert([
@@ -6937,13 +7062,13 @@ KML;
                 'valor' => 10,
                 'status' => 'pendente',
             ]);
-            $documentoId = (int)DB::getPdo()->lastInsertId();
+            $documentoId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('propriedades')->insert([
                 'nome' => 'Fazenda documento conferir externa',
                 'ativo' => 1,
             ]);
-            $outraPropriedadeId = (int)DB::getPdo()->lastInsertId();
+            $outraPropriedadeId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('documentos')->insert([
                 'propriedade_id' => $outraPropriedadeId,
@@ -6952,15 +7077,15 @@ KML;
                 'data_documento' => '2026-07-09',
                 'status' => 'pendente',
             ]);
-            $documentoExternoId = (int)DB::getPdo()->lastInsertId();
+            $documentoExternoId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/fiscal/documentos')
                 ->assertStatus(200)
                 ->assertSee('Documento pendente conferir Laravel')
                 ->assertSee('/fiscal/documentos/'.$documentoId.'/conferir', false);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/fiscal/documentos/'.$documentoId.'/conferir')
                 ->assertRedirect('/fiscal/documentos');
 
@@ -6970,7 +7095,7 @@ KML;
                 'status' => 'conferido',
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/fiscal/documentos/'.$documentoExternoId.'/conferir')
                 ->assertRedirect('/fiscal/documentos');
 
@@ -7016,7 +7141,7 @@ KML;
                 'nome' => 'Fazenda relatorio rejeitada Laravel',
                 'ativo' => 1,
             ]);
-            $propertyId = (int)DB::getPdo()->lastInsertId();
+            $propertyId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('categorias')->insert([
                 'nome' => 'Categoria relatorio rejeitada Laravel',
@@ -7025,7 +7150,7 @@ KML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('receitas')->insert([
                 [
@@ -7089,7 +7214,7 @@ KML;
                 ],
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/relatorios/dre')
                 ->assertStatus(200)
                 ->assertSee('R$ 1.000,00')
@@ -7098,7 +7223,7 @@ KML;
                 ->assertDontSee('R$ 700,00')
                 ->assertDontSee('R$ 900,00');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/relatorios/fluxo-caixa')
                 ->assertStatus(200)
                 ->assertSee('R$ 1.000,00')
@@ -7120,7 +7245,7 @@ KML;
                 'nome' => 'Fazenda DRE gerencial Laravel',
                 'ativo' => 1,
             ]);
-            $propertyId = (int)DB::getPdo()->lastInsertId();
+            $propertyId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('categorias')->insert([
                 'nome' => 'Sementes',
@@ -7129,7 +7254,7 @@ KML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaCustoId = (int)DB::getPdo()->lastInsertId();
+            $categoriaCustoId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('categorias')->insert([
                 'nome' => 'Taxas e juros',
@@ -7138,7 +7263,7 @@ KML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaDespesaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaDespesaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('receitas')->insert([
                 'propriedade_id' => $propertyId,
@@ -7177,7 +7302,7 @@ KML;
                 ],
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/relatorios/dre')
                 ->assertStatus(200)
                 ->assertSee('Custos diretos')
@@ -7203,7 +7328,7 @@ KML;
                 'nome' => 'Fazenda DRE periodo Laravel',
                 'ativo' => 1,
             ]);
-            $propertyId = (int)DB::getPdo()->lastInsertId();
+            $propertyId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('categorias')->insert([
                 'nome' => 'Categoria DRE periodo Laravel',
@@ -7212,7 +7337,7 @@ KML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('receitas')->insert([
                 [
@@ -7262,7 +7387,7 @@ KML;
                 ],
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/relatorios/dre?data_inicio=2026-07-01&data_fim=2026-07-31')
                 ->assertStatus(200)
                 ->assertSee('R$ 1.200,00')
@@ -7284,7 +7409,7 @@ KML;
                 'nome' => 'Fazenda fluxo periodo Laravel',
                 'ativo' => 1,
             ]);
-            $propertyId = (int)DB::getPdo()->lastInsertId();
+            $propertyId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safras')->insert([
                 'propriedade_id' => $propertyId,
@@ -7294,7 +7419,7 @@ KML;
                 'data_fim' => '2026-12-31',
                 'status' => 'planejamento',
             ]);
-            $safraId = (int)DB::getPdo()->lastInsertId();
+            $safraId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('categorias')->insert([
                 'nome' => 'Categoria fluxo periodo Laravel',
@@ -7303,7 +7428,7 @@ KML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('receitas')->insert([
                 [
@@ -7374,7 +7499,7 @@ KML;
 
             $url = '/relatorios/fluxo-caixa?safra_id='.$safraId.'&data_inicio=2026-07-01&data_fim=2026-07-31';
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get($url)
                 ->assertStatus(200)
                 ->assertSee('Receitas previstas')
@@ -7398,7 +7523,7 @@ KML;
                 'nome' => 'Fazenda orcado realizado filtro Laravel',
                 'ativo' => 1,
             ]);
-            $propertyId = (int)DB::getPdo()->lastInsertId();
+            $propertyId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safras')->insert([
                 'propriedade_id' => $propertyId,
@@ -7408,7 +7533,7 @@ KML;
                 'data_fim' => '2026-12-31',
                 'status' => 'planejamento',
             ]);
-            $safraId = (int)DB::getPdo()->lastInsertId();
+            $safraId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('categorias')->insert([
                 'nome' => 'Categoria filtro orcado Laravel',
@@ -7417,7 +7542,7 @@ KML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('categorias')->insert([
                 'nome' => 'Categoria fora filtro orcado Laravel',
@@ -7426,7 +7551,7 @@ KML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaForaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaForaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('financeiro_projecoes')->insert([
                 [
@@ -7508,7 +7633,7 @@ KML;
                 .'&data_inicio=2026-07-01'
                 .'&data_fim=2026-07-31';
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get($url)
                 ->assertStatus(200)
                 ->assertSee('Categoria filtro orcado Laravel')
@@ -7541,7 +7666,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('categorias')->insert([
@@ -7551,7 +7676,7 @@ KML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaReceitaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaReceitaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('categorias')->insert([
                 'nome' => 'Categoria relatorio despesa Laravel',
@@ -7560,7 +7685,7 @@ KML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaDespesaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaDespesaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('receitas')->insert([
                 'propriedade_id' => $propertyId,
@@ -7587,7 +7712,7 @@ KML;
                 'usuario_id' => $this->userId(),
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/relatorios/categorias?tipo=receitas&categoria_id='.$categoriaReceitaId.'&data_inicio=2026-07-01&data_fim=2026-07-31')
                 ->assertStatus(200)
                 ->assertSee('Categoria relatorio receita Laravel')
@@ -7617,7 +7742,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('categorias')->insert([
@@ -7626,7 +7751,7 @@ KML;
                 'cor' => '#6c757d',
                 'icone' => 'circle',
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safras')->insert([
                 'propriedade_id' => $propertyId,
@@ -7639,7 +7764,7 @@ KML;
                 'preco_estimado' => 50,
                 'status' => 'em_andamento',
             ]);
-            $safraId = (int)DB::getPdo()->lastInsertId();
+            $safraId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('receitas')->insert([
                 'propriedade_id' => $propertyId,
@@ -7669,7 +7794,7 @@ KML;
                 'usuario_id' => $this->userId(),
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/relatorios/safra?safra_id='.$safraId)
                 ->assertStatus(200)
                 ->assertSee('Lucro/ha')
@@ -7686,7 +7811,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('categorias')->insert([
@@ -7695,7 +7820,7 @@ KML;
                 'cor' => '#6c757d',
                 'icone' => 'circle',
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safras')->insert([
                 'propriedade_id' => $propertyId,
@@ -7705,7 +7830,7 @@ KML;
                 'data_fim' => '2027-06-30',
                 'status' => 'em_andamento',
             ]);
-            $safraId = (int)DB::getPdo()->lastInsertId();
+            $safraId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('talhoes')->insert([
                 'propriedade_id' => $propertyId,
@@ -7715,7 +7840,7 @@ KML;
                 'area_excluida_ha' => 0,
                 'ativo' => 1,
             ]);
-            $talhaoId = (int)DB::getPdo()->lastInsertId();
+            $talhaoId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('despesas')->insert([
                 'propriedade_id' => $propertyId,
@@ -7732,7 +7857,7 @@ KML;
                 'usuario_id' => $this->userId(),
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/relatorios/talhao?safra_id='.$safraId)
                 ->assertStatus(200)
                 ->assertSee('chartTalhao')
@@ -7749,7 +7874,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('categorias')->insert([
@@ -7758,7 +7883,7 @@ KML;
                 'cor' => '#6c757d',
                 'icone' => 'circle',
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safras')->insert([
                 'propriedade_id' => $propertyId,
@@ -7772,7 +7897,7 @@ KML;
                 'preco_estimado' => 80,
                 'status' => 'em_andamento',
             ]);
-            $safraId = (int)DB::getPdo()->lastInsertId();
+            $safraId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('receitas')->insert([
                 'propriedade_id' => $propertyId,
@@ -7800,7 +7925,7 @@ KML;
                 'usuario_id' => $this->userId(),
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/relatorios/kpis?safra_id='.$safraId)
                 ->assertStatus(200)
                 ->assertSee('KPIs / ROI')
@@ -7853,7 +7978,7 @@ KML;
 
     public function test_audit_page_returns_a_successful_response(): void
     {
-        $this->withSession([...$this->loggedSession(), 'perfil' => 'gestor_propriedade'])
+        $this->withSession($this->loggedSession(profile: 'gestor_propriedade'))
             ->get('/auditoria')
             ->assertStatus(200)
             ->assertSee('Auditoria')
@@ -7862,7 +7987,7 @@ KML;
 
     public function test_audit_page_requires_authorized_profile(): void
     {
-        $this->withSession([...$this->loggedSession(), 'perfil' => 'visualizador'])
+        $this->withSession($this->loggedSession(profile: 'visualizador'))
             ->get('/auditoria')
             ->assertStatus(403);
     }
@@ -7872,7 +7997,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('logs_auditoria')->insert([
@@ -7886,7 +8011,7 @@ KML;
                 'criado_em' => now(),
             ]);
 
-            $response = $this->withSession([...$this->loggedSession(), 'perfil' => 'gestor_propriedade', 'propriedade_id' => $propertyId])
+            $response = $this->withSession($this->loggedSession(propertyId: $propertyId, profile: 'gestor_propriedade'))
                 ->get('/auditoria/exportar?busca=detalhe-exportacao-laravel')
                 ->assertStatus(200)
                 ->assertDownload();
@@ -7903,7 +8028,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('categorias')->insert([
@@ -7913,7 +8038,7 @@ KML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaInsumoId = (int)DB::getPdo()->lastInsertId();
+            $categoriaInsumoId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('categorias')->insert([
                 'nome' => 'Categoria auditoria servico',
@@ -7922,7 +8047,7 @@ KML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaServicoId = (int)DB::getPdo()->lastInsertId();
+            $categoriaServicoId = (int) DB::getPdo()->lastInsertId();
 
             foreach ([[$categoriaInsumoId, 'detalhe-auditoria-insumo'], [$categoriaServicoId, 'detalhe-auditoria-servico']] as [$categoriaId, $detalhe]) {
                 DB::table('despesas')->insert([
@@ -7936,7 +8061,7 @@ KML;
                     'status_aprovacao' => 'aprovada',
                     'usuario_id' => $this->userId(),
                 ]);
-                $despesaId = (int)DB::getPdo()->lastInsertId();
+                $despesaId = (int) DB::getPdo()->lastInsertId();
 
                 DB::table('logs_auditoria')->insert([
                     'usuario_id' => $this->userId(),
@@ -7952,13 +8077,13 @@ KML;
 
             $query = 'lancamento=despesas&tipo_despesa=insumo&inicio=2026-07-01&fim=2026-07-31';
 
-            $this->withSession([...$this->loggedSession(), 'perfil' => 'gestor_propriedade', 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId, profile: 'gestor_propriedade'))
                 ->get('/auditoria?'.$query)
                 ->assertStatus(200)
                 ->assertSee('detalhe-auditoria-insumo')
                 ->assertDontSee('detalhe-auditoria-servico');
 
-            $response = $this->withSession([...$this->loggedSession(), 'perfil' => 'gestor_propriedade', 'propriedade_id' => $propertyId])
+            $response = $this->withSession($this->loggedSession(propertyId: $propertyId, profile: 'gestor_propriedade'))
                 ->get('/auditoria/exportar?'.$query)
                 ->assertStatus(200)
                 ->assertDownload();
@@ -7988,7 +8113,7 @@ KML;
                 ->get('/orcamento/'.$projecaoId.'/editar')
                 ->assertStatus(200)
                 ->assertSee('Editar projeção');
-            }
+        }
     }
 
     public function test_budget_projection_ignores_external_crop_season(): void
@@ -7996,7 +8121,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('categorias')->insert([
@@ -8006,13 +8131,13 @@ KML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('propriedades')->insert([
                 'nome' => 'Propriedade orcamento externa',
                 'ativo' => 1,
             ]);
-            $outraPropriedadeId = (int)DB::getPdo()->lastInsertId();
+            $outraPropriedadeId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safras')->insert([
                 'propriedade_id' => $outraPropriedadeId,
@@ -8021,11 +8146,11 @@ KML;
                 'data_inicio' => '2026-07-01',
                 'status' => 'planejamento',
             ]);
-            $safraExternaId = (int)DB::getPdo()->lastInsertId();
+            $safraExternaId = (int) DB::getPdo()->lastInsertId();
 
             $observacao = 'Projecao com safra externa '.uniqid();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/orcamento', [
                     'tipo_lancamento' => 'despesa',
                     'tipo_safra' => 'principal',
@@ -8054,7 +8179,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('categorias')->insert([
@@ -8064,7 +8189,7 @@ KML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safras')->insert([
                 'propriedade_id' => $propertyId,
@@ -8073,11 +8198,11 @@ KML;
                 'data_inicio' => '2026-07-01',
                 'status' => 'planejamento',
             ]);
-            $safraId = (int)DB::getPdo()->lastInsertId();
+            $safraId = (int) DB::getPdo()->lastInsertId();
 
             $observacao = 'Recorrencia Laravel '.uniqid();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/orcamento/recorrente', [
                     'safra_id' => $safraId,
                     'tipo_safra' => 'principal',
@@ -8099,9 +8224,9 @@ KML;
                 ->get(['mes_referencia', 'valor_projetado', 'tipo_lancamento', 'recorrencia_grupo']);
 
             $this->assertCount(3, $rows);
-            $this->assertSame(['2026-07-01', '2026-08-01', '2026-09-01'], $rows->pluck('mes_referencia')->map(fn ($date) => (string)$date)->all());
-            $this->assertSame('2500.00', (string)$rows->first()->valor_projetado);
-            $this->assertSame('despesa', (string)$rows->first()->tipo_lancamento);
+            $this->assertSame(['2026-07-01', '2026-08-01', '2026-09-01'], $rows->pluck('mes_referencia')->map(fn ($date) => (string) $date)->all());
+            $this->assertSame('2500.00', (string) $rows->first()->valor_projetado);
+            $this->assertSame('despesa', (string) $rows->first()->tipo_lancamento);
             $this->assertCount(1, $rows->pluck('recorrencia_grupo')->unique());
         } finally {
             DB::rollBack();
@@ -8113,7 +8238,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('safras')->insert([
@@ -8123,9 +8248,9 @@ KML;
                 'data_inicio' => '2026-07-01',
                 'status' => 'planejamento',
             ]);
-            $safraId = (int)DB::getPdo()->lastInsertId();
+            $safraId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/orcamento/base-safra', [
                     'safra_id' => $safraId,
                     'area_plantada' => '123,45',
@@ -8139,11 +8264,11 @@ KML;
                 ->where('propriedade_id', $propertyId)
                 ->first(['area_plantada', 'producao_estimada', 'preco_estimado']);
 
-            $this->assertSame('123.45', (string)$safra->area_plantada);
-            $this->assertSame('67.89', (string)$safra->producao_estimada);
-            $this->assertSame('145.50', (string)$safra->preco_estimado);
+            $this->assertSame('123.45', (string) $safra->area_plantada);
+            $this->assertSame('67.89', (string) $safra->producao_estimada);
+            $this->assertSame('145.50', (string) $safra->preco_estimado);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/orcamento/base-safra', [
                     'safra_id' => $safraId,
                     'area_plantada' => '0',
@@ -8186,7 +8311,7 @@ KML;
                 'ativo' => 1,
             ]);
 
-            $categoriaId = (int)DB::table('categorias')->where('nome', $nome)->value('id');
+            $categoriaId = (int) DB::table('categorias')->where('nome', $nome)->value('id');
             DB::table('categorias')->where('id', $categoriaId)->update(['ativo' => 0]);
 
             $this->withSession($this->loggedSession())
@@ -8240,18 +8365,18 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('culturas')->insert([
                 'nome' => 'Cultura retroativa Laravel',
                 'unidade_producao' => 'sc',
             ]);
-            $culturaId = (int)DB::getPdo()->lastInsertId();
+            $culturaId = (int) DB::getPdo()->lastInsertId();
 
             $descricao = 'Safra retroativa Laravel '.uniqid();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/orcamento/safras-retroativas', [
                     'descricao' => $descricao,
                     'cultura_id' => $culturaId,
@@ -8271,16 +8396,16 @@ KML;
                 ->first();
 
             $this->assertNotNull($safra);
-            $this->assertSame($culturaId, (int)$safra->cultura_id);
-            $this->assertSame('primeira', (string)$safra->safra_referencia);
-            $this->assertSame('encerrada', (string)$safra->status);
-            $this->assertSame('2026-04-01', (string)$safra->data_inicio);
-            $this->assertSame('2026-06-30', (string)$safra->data_fim);
-            $this->assertSame('88.50', (string)$safra->area_plantada);
-            $this->assertSame('55.25', (string)$safra->producao_estimada);
-            $this->assertSame('4700.00', (string)$safra->producao_realizada);
-            $this->assertSame('130.75', (string)$safra->preco_estimado);
-            $this->assertSame('Safra retroativa cadastrada pelo planejamento da safra.', (string)$safra->observacoes);
+            $this->assertSame($culturaId, (int) $safra->cultura_id);
+            $this->assertSame('primeira', (string) $safra->safra_referencia);
+            $this->assertSame('encerrada', (string) $safra->status);
+            $this->assertSame('2026-04-01', (string) $safra->data_inicio);
+            $this->assertSame('2026-06-30', (string) $safra->data_fim);
+            $this->assertSame('88.50', (string) $safra->area_plantada);
+            $this->assertSame('55.25', (string) $safra->producao_estimada);
+            $this->assertSame('4700.00', (string) $safra->producao_realizada);
+            $this->assertSame('130.75', (string) $safra->preco_estimado);
+            $this->assertSame('Safra retroativa cadastrada pelo planejamento da safra.', (string) $safra->observacoes);
 
             $this->assertDatabaseHas('anos_agricolas', [
                 'propriedade_id' => $propertyId,
@@ -8299,10 +8424,10 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/orcamento/anos-agricolas', [
                     'ano_inicio' => 2028,
                     'observacoes' => 'Ano agricola criado pelo teste Laravel',
@@ -8318,7 +8443,7 @@ KML;
                 'observacoes' => 'Ano agricola criado pelo teste Laravel',
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/orcamento/anos-agricolas', [
                     'ano_inicio' => 2028,
                     'observacoes' => 'Ano agricola atualizado pelo teste Laravel',
@@ -8344,7 +8469,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('safras')->insert([
@@ -8354,7 +8479,7 @@ KML;
                 'data_inicio' => '2026-07-01',
                 'status' => 'planejamento',
             ]);
-            $safraId = (int)DB::getPdo()->lastInsertId();
+            $safraId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('talhoes')->insert([
                 'propriedade_id' => $propertyId,
@@ -8362,9 +8487,9 @@ KML;
                 'area' => 15,
                 'ativo' => 1,
             ]);
-            $talhaoId = (int)DB::getPdo()->lastInsertId();
+            $talhaoId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/orcamento/atividades-planejadas', [
                     'safra_id' => $safraId,
                     'talhao_id' => $talhaoId,
@@ -8407,7 +8532,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('safras')->insert([
@@ -8417,7 +8542,7 @@ KML;
                 'data_inicio' => '2026-07-01',
                 'status' => 'planejamento',
             ]);
-            $safraId = (int)DB::getPdo()->lastInsertId();
+            $safraId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('atividades_campo')->insert([
                 'propriedade_id' => $propertyId,
@@ -8428,7 +8553,7 @@ KML;
                 'descricao' => 'Atividade planejada para listar',
                 'custo_estimado' => 500,
             ]);
-            $atividadeId = (int)DB::getPdo()->lastInsertId();
+            $atividadeId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('atividades_campo')->insert([
                 'propriedade_id' => $propertyId,
@@ -8438,13 +8563,13 @@ KML;
                 'status' => 'concluida',
                 'descricao' => 'Atividade concluida preservada',
             ]);
-            $atividadeConcluidaId = (int)DB::getPdo()->lastInsertId();
+            $atividadeConcluidaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('propriedades')->insert([
                 'nome' => 'Propriedade atividade orcamento externa',
                 'ativo' => 1,
             ]);
-            $outraPropriedadeId = (int)DB::getPdo()->lastInsertId();
+            $outraPropriedadeId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('atividades_campo')->insert([
                 'propriedade_id' => $outraPropriedadeId,
@@ -8453,14 +8578,14 @@ KML;
                 'status' => 'planejada',
                 'descricao' => 'Atividade externa preservada',
             ]);
-            $atividadeExternaId = (int)DB::getPdo()->lastInsertId();
+            $atividadeExternaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/orcamento')
                 ->assertStatus(200)
                 ->assertSee('Atividade planejada para listar');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->delete('/orcamento/atividades-planejadas/'.$atividadeId)
                 ->assertRedirect('/orcamento');
 
@@ -8486,14 +8611,14 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('culturas')->insert([
                 'nome' => 'Cultura despesa planejada Laravel',
                 'unidade_producao' => 'sc',
             ]);
-            $culturaId = (int)DB::getPdo()->lastInsertId();
+            $culturaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('categorias')->insert([
                 'nome' => 'Categoria despesa planejada Laravel',
@@ -8502,7 +8627,7 @@ KML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safras')->insert([
                 'propriedade_id' => $propertyId,
@@ -8512,9 +8637,9 @@ KML;
                 'data_inicio' => '2026-07-01',
                 'status' => 'planejamento',
             ]);
-            $safraId = (int)DB::getPdo()->lastInsertId();
+            $safraId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/orcamento/despesas-planejadas', [
                     'safra_id' => $safraId,
                     'cultura_id' => $culturaId,
@@ -8547,7 +8672,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('categorias')->insert([
@@ -8557,7 +8682,7 @@ KML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaOrigemId = (int)DB::getPdo()->lastInsertId();
+            $categoriaOrigemId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('categorias')->insert([
                 'nome' => 'Categoria lote destino Laravel',
@@ -8566,7 +8691,7 @@ KML;
                 'icone' => 'bi-box',
                 'ativo' => 1,
             ]);
-            $categoriaDestinoId = (int)DB::getPdo()->lastInsertId();
+            $categoriaDestinoId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('categorias')->insert([
                 'categoria_pai_id' => $categoriaDestinoId,
@@ -8576,7 +8701,7 @@ KML;
                 'icone' => 'bi-box',
                 'ativo' => 1,
             ]);
-            $subcategoriaDestinoId = (int)DB::getPdo()->lastInsertId();
+            $subcategoriaDestinoId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safras')->insert([
                 'propriedade_id' => $propertyId,
@@ -8585,7 +8710,7 @@ KML;
                 'data_inicio' => '2026-07-01',
                 'status' => 'planejamento',
             ]);
-            $safraId = (int)DB::getPdo()->lastInsertId();
+            $safraId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('financeiro_projecoes')->insert([
                 'propriedade_id' => $propertyId,
@@ -8600,13 +8725,13 @@ KML;
                 'valor_projetado' => 100,
                 'observacoes' => 'Original lote 1',
             ]);
-            $projecaoId = (int)DB::getPdo()->lastInsertId();
+            $projecaoId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('propriedades')->insert([
                 'nome' => 'Propriedade lote externa',
                 'ativo' => 1,
             ]);
-            $outraPropriedadeId = (int)DB::getPdo()->lastInsertId();
+            $outraPropriedadeId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('financeiro_projecoes')->insert([
                 'propriedade_id' => $outraPropriedadeId,
@@ -8618,9 +8743,9 @@ KML;
                 'valor_projetado' => 999,
                 'observacoes' => 'Nao pode alterar',
             ]);
-            $projecaoExternaId = (int)DB::getPdo()->lastInsertId();
+            $projecaoExternaId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/orcamento/projecoes/lote', [
                     'projecao_id' => [$projecaoId, $projecaoExternaId, 0],
                     'categoria_id' => [$categoriaDestinoId, $categoriaDestinoId, $categoriaDestinoId],
@@ -8681,14 +8806,14 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('culturas')->insert([
                 'nome' => 'Cultura insumo planejado Laravel',
                 'unidade_producao' => 'sc',
             ]);
-            $culturaId = (int)DB::getPdo()->lastInsertId();
+            $culturaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('categorias')->insert([
                 'nome' => 'Categoria insumo planejado Laravel',
@@ -8697,7 +8822,7 @@ KML;
                 'icone' => 'bi-box',
                 'ativo' => 1,
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safras')->insert([
                 'propriedade_id' => $propertyId,
@@ -8707,9 +8832,9 @@ KML;
                 'data_inicio' => '2026-07-01',
                 'status' => 'planejamento',
             ]);
-            $safraId = (int)DB::getPdo()->lastInsertId();
+            $safraId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/orcamento/insumos-planejados', [
                     'safra_id' => $safraId,
                     'cultura_id' => $culturaId,
@@ -8747,7 +8872,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('categorias')->insert([
@@ -8757,7 +8882,7 @@ KML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safras')->insert([
                 'propriedade_id' => $propertyId,
@@ -8766,7 +8891,7 @@ KML;
                 'data_inicio' => '2025-07-01',
                 'status' => 'encerrada',
             ]);
-            $safraOrigemId = (int)DB::getPdo()->lastInsertId();
+            $safraOrigemId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safras')->insert([
                 'propriedade_id' => $propertyId,
@@ -8775,7 +8900,7 @@ KML;
                 'data_inicio' => '2026-07-01',
                 'status' => 'planejamento',
             ]);
-            $safraDestinoId = (int)DB::getPdo()->lastInsertId();
+            $safraDestinoId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('financeiro_projecoes')->insert([
                 'propriedade_id' => $propertyId,
@@ -8804,7 +8929,7 @@ KML;
                 'observacoes' => 'Destino antigo copia',
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/orcamento/copiar-safra-anterior', [
                     'safra_id' => $safraDestinoId,
                 ])
@@ -8823,11 +8948,11 @@ KML;
                 ->first();
 
             $this->assertNotNull($row);
-            $this->assertSame('2026-08-01', (string)$row->mes_referencia);
-            $this->assertSame('200.00', (string)$row->valor_projetado);
-            $this->assertSame('Safra destino copia Laravel', (string)$row->ano_safra);
-            $this->assertStringContainsString('Original copia', (string)$row->observacoes);
-            $this->assertStringContainsString('Copiado de Safra origem copia Laravel', (string)$row->observacoes);
+            $this->assertSame('2026-08-01', (string) $row->mes_referencia);
+            $this->assertSame('200.00', (string) $row->valor_projetado);
+            $this->assertSame('Safra destino copia Laravel', (string) $row->ano_safra);
+            $this->assertStringContainsString('Original copia', (string) $row->observacoes);
+            $this->assertStringContainsString('Copiado de Safra origem copia Laravel', (string) $row->observacoes);
         } finally {
             DB::rollBack();
         }
@@ -8847,7 +8972,7 @@ KML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('categorias')->insert([
@@ -8857,7 +8982,7 @@ KML;
                 'icone' => 'bi-tag',
                 'ativo' => 1,
             ]);
-            $categoriaId = (int)DB::getPdo()->lastInsertId();
+            $categoriaId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('safras')->insert([
                 'propriedade_id' => $propertyId,
@@ -8867,7 +8992,7 @@ KML;
                 'data_fim' => '2027-06-30',
                 'status' => 'planejamento',
             ]);
-            $safraId = (int)DB::getPdo()->lastInsertId();
+            $safraId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('financeiro_projecoes')->insert([
                 [
@@ -8914,7 +9039,7 @@ KML;
                 'status_aprovacao' => 'aprovada',
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/financeiro/planejamento?safra_planejamento='.$safraId)
                 ->assertStatus(200)
                 ->assertSee('R$ 550,00')
@@ -8957,7 +9082,7 @@ XML;
 
             $invoice = DB::table('fiscal_invoices')->where('access_key', $accessKey)->first();
             $this->assertNotNull($invoice);
-            $this->assertSame($invoiceId, (int)$invoice->id);
+            $this->assertSame($invoiceId, (int) $invoice->id);
             $this->assertSame('1234', $invoice->invoice_number);
             $item = DB::table('fiscal_invoice_items')->where('invoice_id', $invoice->id)->first();
             $this->assertNotNull($item);
@@ -8966,7 +9091,7 @@ XML;
                 'acao' => 'criar_nota_fiscal_xml',
                 'tabela' => 'fiscal_invoices',
                 'registro_id' => $invoiceId,
-                'propriedade_id' => (int)$invoice->propriedade_id,
+                'propriedade_id' => (int) $invoice->propriedade_id,
             ]);
         } finally {
             DB::rollBack();
@@ -8998,7 +9123,7 @@ XML;
             $file = UploadedFile::fake()->createWithContent('preview-nfe.xml', $xml);
             $propertyId = app(FarmContext::class)->propertyId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/fiscal/notas/importar', ['xml' => $file])
                 ->assertRedirect('/fiscal/notas/importar')
                 ->assertSessionHas('fiscal_invoice_preview');
@@ -9007,13 +9132,13 @@ XML;
                 'access_key' => $accessKey,
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId, 'fiscal_invoice_preview' => session('fiscal_invoice_preview')])
+            $this->withSession([...$this->loggedSession(propertyId: $propertyId), 'fiscal_invoice_preview' => session('fiscal_invoice_preview')])
                 ->get('/fiscal/notas/importar')
                 ->assertStatus(200)
                 ->assertSee('Conferencia da nota fiscal')
                 ->assertSee('Produto Preview XML');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId, 'fiscal_invoice_preview' => session('fiscal_invoice_preview')])
+            $this->withSession([...$this->loggedSession(propertyId: $propertyId), 'fiscal_invoice_preview' => session('fiscal_invoice_preview')])
                 ->post('/fiscal/notas/importar/confirmar')
                 ->assertRedirect();
 
@@ -9048,7 +9173,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('fiscal_invoices')->insert([
@@ -9069,9 +9194,9 @@ XML;
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-            $invoiceId = (int)DB::getPdo()->lastInsertId();
+            $invoiceId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/fiscal/notas')
                 ->assertStatus(200)
                 ->assertSee('Notas Fiscais')
@@ -9088,7 +9213,7 @@ XML;
         DB::beginTransaction();
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
             session(['propriedade_id' => $propertyId]);
 
@@ -9110,9 +9235,9 @@ XML;
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-            $invoiceId = (int)DB::getPdo()->lastInsertId();
+            $invoiceId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/fiscal/notas/'.$invoiceId.'/aprovar')
                 ->assertRedirect('/fiscal/notas');
 
@@ -9139,10 +9264,10 @@ XML;
         $xmlPath = storage_path('app/private/teste-detail.xml');
 
         try {
-            $propertyId = (int)DB::table('propriedades')->orderBy('id')->value('id');
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
             $this->assertGreaterThan(0, $propertyId);
             session(['propriedade_id' => $propertyId]);
-            if (!is_dir(dirname($xmlPath))) {
+            if (! is_dir(dirname($xmlPath))) {
                 mkdir(dirname($xmlPath), 0777, true);
             }
             file_put_contents($xmlPath, '<xml>teste</xml>');
@@ -9165,7 +9290,7 @@ XML;
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-            $invoiceId = (int)DB::getPdo()->lastInsertId();
+            $invoiceId = (int) DB::getPdo()->lastInsertId();
 
             DB::table('fiscal_invoice_items')->insert([
                 'invoice_id' => $invoiceId,
@@ -9179,7 +9304,7 @@ XML;
                 'updated_at' => now(),
             ]);
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/fiscal/notas/'.$invoiceId)
                 ->assertStatus(200)
                 ->assertSee('NF-LARAVEL-DETAIL')
@@ -9188,7 +9313,7 @@ XML;
                 ->assertSee('/fiscal/notas/'.$invoiceId.'/xml')
                 ->assertSee('Aprovar nota');
 
-            $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->get('/fiscal/notas/'.$invoiceId.'/xml')
                 ->assertStatus(200);
         } finally {
@@ -9203,12 +9328,12 @@ XML;
     {
         $propertyId = app(FarmContext::class)->propertyId();
 
-        $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+        $this->withSession($this->loggedSession(propertyId: $propertyId))
             ->get('/pages/ajax/chat_interno.php?action=peers')
             ->assertStatus(200)
             ->assertJson(['ok' => true]);
 
-        $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+        $this->withSession($this->loggedSession(propertyId: $propertyId))
             ->post('/pages/ajax/chat_interno.php?action=heartbeat')
             ->assertStatus(200)
             ->assertJson(['ok' => true]);
@@ -9218,12 +9343,12 @@ XML;
     {
         $propertyId = app(FarmContext::class)->propertyId();
 
-        $this->withSession([...$this->loggedSession(), 'propriedade_id' => $propertyId])
+        $this->withSession($this->loggedSession(propertyId: $propertyId))
             ->get('/pages/ajax/suporte_chat.php?action=client_boot')
             ->assertStatus(200)
             ->assertJson(['ok' => true]);
 
-        $this->withSession([...$this->loggedSession(), 'perfil' => 'gerencia_sistema', 'propriedade_id' => $propertyId])
+        $this->withSession($this->loggedSession(propertyId: $propertyId, profile: 'gerencia_sistema'))
             ->get('/pages/ajax/suporte_chat.php?action=admin_summary')
             ->assertStatus(200)
             ->assertJson(['ok' => true]);

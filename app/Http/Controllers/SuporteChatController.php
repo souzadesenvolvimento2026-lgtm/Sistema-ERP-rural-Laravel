@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Domain\Access\ProfileAccess;
 use App\Services\SuporteChatService;
 use App\Support\FarmContext;
 use Illuminate\Http\JsonResponse;
@@ -10,6 +11,8 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class SuporteChatController extends Controller
 {
+    public function __construct(private readonly ProfileAccess $access) {}
+
     public function atual(SuporteChatService $service): JsonResponse
     {
         return response()->json($service->conversaCliente($this->usuarioId(), $this->propriedadeId()));
@@ -53,7 +56,7 @@ class SuporteChatController extends Controller
 
     private function usuarioId(): int
     {
-        return (int)session('usuario_id');
+        return (int) session('usuario_id');
     }
 
     private function propriedadeId(): ?int
@@ -65,6 +68,6 @@ class SuporteChatController extends Controller
 
     private function podeAtenderSuporte(): bool
     {
-        return in_array((string)session('perfil'), ['administrador_sistema', 'gerencia_sistema', 'colaborador_sistema'], true);
+        return $this->access->canHandleSupport((string) session('perfil'));
     }
 }

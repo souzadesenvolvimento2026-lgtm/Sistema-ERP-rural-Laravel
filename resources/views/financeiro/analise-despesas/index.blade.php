@@ -212,19 +212,13 @@
                 </thead>
                 <tbody>
                     @forelse ($categoriasResumo as $categoria)
-                        @php
-                            $valor = (float)$categoria['value'];
-                            $valorHaCategoria = $area > 0 ? $valor / $area : 0;
-                            $scHaCategoria = ($valorHaCategoria > 0 && $precoMedio > 0) ? $valorHaCategoria / $precoMedio : 0;
-                            $pct = $total > 0 ? ($valor / $total) * 100 : 0;
-                        @endphp
                         <tr>
                             <td><span class="ff-cat-group-cell"><span class="ff-cat-dot" style="background:{{ $categoria['color'] }}"></span><strong>{{ $categoria['label'] }}</strong></span></td>
                             <td>{{ $categoria['count'] }}</td>
-                            <td>{{ $fmtMoney($valor) }}</td>
-                            <td>{{ $valorHaCategoria > 0 ? $fmtMoney($valorHaCategoria).'/ha' : '-' }}</td>
-                            <td>{{ $scHaCategoria > 0 ? number_format($scHaCategoria, 2, ',', '.') : '-' }}</td>
-                            <td>{{ number_format($pct, 1, ',', '.') }}%</td>
+                            <td>{{ $fmtMoney($categoria['value']) }}</td>
+                            <td>{{ $categoria['value_per_hectare'] > 0 ? $fmtMoney($categoria['value_per_hectare']).'/ha' : '-' }}</td>
+                            <td>{{ $categoria['sacks_per_hectare'] > 0 ? number_format($categoria['sacks_per_hectare'], 2, ',', '.') : '-' }}</td>
+                            <td>{{ number_format($categoria['share_percentage'], 1, ',', '.') }}%</td>
                         </tr>
                     @empty
                         <tr><td colspan="6" class="text-muted">Nenhum dado encontrado.</td></tr>
@@ -266,7 +260,7 @@ document.addEventListener('DOMContentLoaded', function () {
         metaEl.textContent = (locked ? 'Fixado - ' : '') + currency.format(total) + ' em ' + Number(cat.count || 0).toLocaleString('pt-BR') + ' lançamento(s)';
         listEl.innerHTML = (cat.subcategories || []).map(function (sub) {
             var value = Number(sub.value || 0);
-            var pct = total > 0 ? (value / total) * 100 : 0;
+            var pct = Number(sub.share_percentage || 0);
             return '<div class="ff-cat-sub-item">' +
                 '<div class="ff-cat-sub-top"><span>' + escapeHtml(sub.label) + '</span><strong>' + currency.format(value) + '</strong></div>' +
                 '<div class="ff-cat-sub-meta">' + Number(sub.count || 0).toLocaleString('pt-BR') + ' lançamento(s) - ' + pct.toFixed(1).replace('.', ',') + '% da categoria</div>' +

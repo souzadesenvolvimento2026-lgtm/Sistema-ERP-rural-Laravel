@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Domain\Finance\FinancialWorkflowRules;
 use App\Support\FarmFormat;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -11,6 +12,8 @@ use RuntimeException;
 
 class ReceitaFinanceiraService
 {
+    public function __construct(private readonly FinancialWorkflowRules $workflowRules) {}
+
     public function pagina(int $propertyId, Request $request): array
     {
         $this->importarCompradoresDeReceitas($propertyId);
@@ -26,11 +29,14 @@ class ReceitaFinanceiraService
             'safras' => DB::table('safras')->where('propriedade_id', $propertyId)->orderByDesc('data_inicio')->get(['id', 'descricao']),
             'compradores' => $this->listarCompradores($propertyId),
             'rows' => $rows,
+            'can_approve_batch' => $rows->contains(
+                fn (object $row): bool => $row->can_select_for_batch
+            ),
             'cards' => [
                 ['label' => 'Receitas', 'value' => FarmFormat::money($rows->sum('valor_raw')), 'tone' => 'success'],
                 ['label' => 'Recebido', 'value' => FarmFormat::money($rows->where('status_key', 'recebido')->sum('valor_raw')), 'tone' => 'success'],
                 ['label' => 'Pendente', 'value' => FarmFormat::money($rows->where('status_key', 'pendente')->sum('valor_raw')), 'tone' => 'warning'],
-                ['label' => 'Aguardando aprovacao', 'value' => (string)$rows->where('aprovacao_key', 'pendente')->count(), 'tone' => 'warning'],
+                ['label' => 'Aguardando aprovacao', 'value' => (string) $rows->where('aprovacao_key', 'pendente')->count(), 'tone' => 'warning'],
             ],
             'statusOptions' => [
                 '' => 'Todos',
@@ -50,12 +56,12 @@ class ReceitaFinanceiraService
     {
         $this->garantirEstruturaCompradores();
 
-        $nome = $this->normalizarComprador((string)($dados['nome'] ?? ''));
+        $nome = $this->normalizarComprador((string) ($dados['nome'] ?? ''));
         if ($nome === '') {
             throw new RuntimeException('Informe o nome do comprador.');
         }
 
-        $documento = trim((string)($dados['documento'] ?? '')) ?: null;
+        $documento = trim((string) ($dados['documento'] ?? '')) ?: null;
         $existente = DB::table('compradores')
             ->where('propriedade_id', $propertyId)
             ->where('nome', $nome)
@@ -69,7 +75,7 @@ class ReceitaFinanceiraService
                     'ativo' => 1,
                 ]);
 
-            return (int)$existente->id;
+            return (int) $existente->id;
         }
 
         DB::table('compradores')->insert([
@@ -79,7 +85,7 @@ class ReceitaFinanceiraService
             'ativo' => 1,
         ]);
 
-        return (int)DB::getPdo()->lastInsertId();
+        return (int) DB::getPdo()->lastInsertId();
     }
 
     public function listarCompradores(int $propertyId): Collection
@@ -97,13 +103,13 @@ class ReceitaFinanceiraService
             ->where('status', '!=', 'cancelado')
             ->first();
 
-        if (!$receita) {
+        if (! $receita) {
             throw new RuntimeException('Receita nao encontrada para edicao.');
         }
 
         $receita->tipo = 'receita';
         $receita->pessoa = $receita->comprador;
-        $receita->comprador_id = $this->compradorIdPorNome($propertyId, (string)($receita->comprador ?? ''));
+        $receita->comprador_id = $this->compradorIdPorNome($propertyId, (string) ($receita->comprador ?? ''));
         $receita->data_lancamento = $receita->data_venda;
         $receita->data_vencimento = $receita->data_recebimento;
         $receita->baixado = ($receita->status ?? '') === 'recebido' ? '1' : '0';
@@ -121,7 +127,7 @@ class ReceitaFinanceiraService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$receita) {
+            if (! $receita) {
                 throw new RuntimeException('Receita nao encontrada para edicao.');
             }
 
@@ -132,7 +138,7 @@ class ReceitaFinanceiraService
                 $valorTotal = $quantidade * $precoUnitario;
             }
 
-            $status = ((string)($dados['baixado'] ?? '0')) === '1' ? 'recebido' : 'pendente';
+            $status = ((string) ($dados['baixado'] ?? '0')) === '1' ? 'recebido' : 'pendente';
             $dataRecebimento = $status === 'recebido'
                 ? (($dados['data_vencimento'] ?? null) ?: ($dados['data_lancamento'] ?? now()->toDateString()))
                 : null;
@@ -150,10 +156,10 @@ class ReceitaFinanceiraService
                     'subcategoria_id' => $this->subcategoriaId($dados['subcategoria_id'] ?? null, $dados['categoria_id'] ?? null),
                     'conta_id' => $this->idDaPropriedade('contas', $dados['conta_id'] ?? null, $propertyId),
                     'produtor_id' => $this->idDaPropriedade('produtores', $dados['produtor_id'] ?? null, $propertyId),
-                    'descricao' => trim((string)$dados['descricao']),
+                    'descricao' => trim((string) $dados['descricao']),
                     'comprador' => $this->compradorNome($propertyId, $dados),
                     'quantidade' => $quantidade > 0 ? $quantidade : null,
-                    'unidade' => $quantidade > 0 ? (trim((string)($dados['unidade'] ?? '')) ?: 'sc') : '',
+                    'unidade' => $quantidade > 0 ? (trim((string) ($dados['unidade'] ?? '')) ?: 'sc') : '',
                     'preco_unitario' => $precoUnitario,
                     'valor_total' => $valorTotal,
                     'data_venda' => $dados['data_lancamento'],
@@ -163,7 +169,7 @@ class ReceitaFinanceiraService
                     'aprovado_por' => $userId,
                     'aprovado_em' => now(),
                     'motivo_reprovacao' => null,
-                    'observacoes' => trim((string)($dados['observacoes'] ?? '')) ?: null,
+                    'observacoes' => trim((string) ($dados['observacoes'] ?? '')) ?: null,
                 ]);
 
             $this->auditar($userId, 'editar_receita', 'receitas', $receitaId, $propertyId, 'Receita editada pelo Laravel');
@@ -172,7 +178,7 @@ class ReceitaFinanceiraService
 
     public function aprovar(int $propertyId, int $receitaId, ?int $userId): void
     {
-        if (!$this->podeAprovar($propertyId, $userId)) {
+        if (! $this->podeAprovar($propertyId, $userId)) {
             throw new RuntimeException('Seu usuario nao tem permissao para aprovar receitas desta propriedade.');
         }
 
@@ -184,15 +190,22 @@ class ReceitaFinanceiraService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$receita) {
+            if (! $receita) {
                 throw new RuntimeException('Receita nao encontrada para aprovacao.');
             }
 
-            if (($receita->status ?? '') === 'recebido' && (($receita->status_aprovacao ?? '') !== 'pendente')) {
-                throw new RuntimeException('Receita recebida nao pode ter a aprovacao alterada.');
+            $temSolicitacao = $this->temSolicitacaoExclusao($receita->observacoes ?? null);
+            $capabilities = $this->workflowRules->revenueCapabilities(
+                (string) ($receita->status ?? ''),
+                (string) ($receita->status_aprovacao ?? ''),
+                $temSolicitacao
+            );
+
+            if (! $capabilities['can_approve']) {
+                throw new RuntimeException('Esta receita nao esta pendente de aprovacao.');
             }
 
-            if ($this->temSolicitacaoExclusao($receita->observacoes ?? null)) {
+            if ($temSolicitacao) {
                 $observacoes = $this->limparSolicitacaoExclusao($receita->observacoes ?? null);
                 DB::table('receitas')
                     ->where('id', $receitaId)
@@ -207,6 +220,7 @@ class ReceitaFinanceiraService
                     ]);
 
                 $this->auditar($userId, 'aprovar_exclusao_receita', 'receitas', $receitaId, $propertyId, 'Exclusao de receita aprovada');
+
                 return;
             }
 
@@ -226,16 +240,16 @@ class ReceitaFinanceiraService
 
     public function aprovarLote(int $propertyId, array $receitaIds, ?int $userId): array
     {
-        if (!$this->podeAprovar($propertyId, $userId)) {
+        if (! $this->podeAprovar($propertyId, $userId)) {
             throw new RuntimeException('Seu usuario nao tem permissao para aprovar receitas desta propriedade.');
         }
 
         $receitaIds = array_values(array_unique(array_filter(
-            array_map(fn ($id) => (int)$id, $receitaIds),
+            array_map(fn ($id) => (int) $id, $receitaIds),
             fn ($id) => $id > 0
         )));
 
-        if (!$receitaIds) {
+        if (! $receitaIds) {
             throw new RuntimeException('Selecione ao menos uma receita para aprovar.');
         }
 
@@ -250,10 +264,20 @@ class ReceitaFinanceiraService
                     ->where('status', '!=', 'cancelado')
                     ->where('status_aprovacao', 'pendente')
                     ->lockForUpdate()
-                    ->first(['id', 'status']);
+                    ->first(['id', 'status', 'status_aprovacao', 'observacoes']);
 
-                if (!$receita || ($receita->status ?? '') === 'recebido') {
+                $temSolicitacao = $receita && $this->temSolicitacaoExclusao($receita->observacoes ?? null);
+                $capabilities = $receita
+                    ? $this->workflowRules->revenueCapabilities(
+                        (string) ($receita->status ?? ''),
+                        (string) ($receita->status_aprovacao ?? ''),
+                        $temSolicitacao
+                    )
+                    : null;
+
+                if (! ($capabilities['can_select_for_batch'] ?? false)) {
                     $ignoradas++;
+
                     continue;
                 }
 
@@ -277,7 +301,7 @@ class ReceitaFinanceiraService
 
     public function reprovar(int $propertyId, int $receitaId, ?int $userId, ?string $motivo): void
     {
-        if (!$this->podeAprovar($propertyId, $userId)) {
+        if (! $this->podeAprovar($propertyId, $userId)) {
             throw new RuntimeException('Seu usuario nao tem permissao para aprovar receitas desta propriedade.');
         }
 
@@ -289,15 +313,22 @@ class ReceitaFinanceiraService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$receita) {
+            if (! $receita) {
                 throw new RuntimeException('Receita nao encontrada para aprovacao.');
             }
 
-            if (($receita->status ?? '') === 'recebido' && (($receita->status_aprovacao ?? '') !== 'pendente')) {
-                throw new RuntimeException('Receita recebida nao pode ter a aprovacao alterada.');
+            $temSolicitacao = $this->temSolicitacaoExclusao($receita->observacoes ?? null);
+            $capabilities = $this->workflowRules->revenueCapabilities(
+                (string) ($receita->status ?? ''),
+                (string) ($receita->status_aprovacao ?? ''),
+                $temSolicitacao
+            );
+
+            if (! $capabilities['can_reject']) {
+                throw new RuntimeException('Esta receita nao esta pendente de aprovacao.');
             }
 
-            if ($this->temSolicitacaoExclusao($receita->observacoes ?? null)) {
+            if ($temSolicitacao) {
                 $observacoes = $this->limparSolicitacaoExclusao($receita->observacoes ?? null);
                 DB::table('receitas')
                     ->where('id', $receitaId)
@@ -311,11 +342,12 @@ class ReceitaFinanceiraService
                     ]);
 
                 $detalhes = 'Exclusao de receita reprovada';
-                if (trim((string)$motivo) !== '') {
-                    $detalhes .= ' | Motivo: '.trim((string)$motivo);
+                if (trim((string) $motivo) !== '') {
+                    $detalhes .= ' | Motivo: '.trim((string) $motivo);
                 }
 
                 $this->auditar($userId, 'reprovar_exclusao_receita', 'receitas', $receitaId, $propertyId, $detalhes);
+
                 return;
             }
 
@@ -326,12 +358,12 @@ class ReceitaFinanceiraService
                     'status_aprovacao' => 'reprovada',
                     'aprovado_por' => $userId,
                     'aprovado_em' => now(),
-                    'motivo_reprovacao' => trim((string)$motivo) ?: null,
+                    'motivo_reprovacao' => trim((string) $motivo) ?: null,
                 ]);
 
             $detalhes = 'Receita reprovada';
-            if (trim((string)$motivo) !== '') {
-                $detalhes .= ' | Motivo: '.trim((string)$motivo);
+            if (trim((string) $motivo) !== '') {
+                $detalhes .= ' | Motivo: '.trim((string) $motivo);
             }
 
             $this->auditar($userId, 'reprovar_receita', 'receitas', $receitaId, $propertyId, $detalhes);
@@ -348,15 +380,20 @@ class ReceitaFinanceiraService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$receita) {
+            if (! $receita) {
                 throw new RuntimeException('Receita nao encontrada para recebimento.');
             }
 
-            if (($receita->status_aprovacao ?? '') !== 'aprovada') {
-                throw new RuntimeException('Esta receita precisa ser aprovada antes do recebimento.');
+            $capabilities = $this->workflowRules->revenueCapabilities(
+                (string) ($receita->status ?? ''),
+                (string) ($receita->status_aprovacao ?? '')
+            );
+
+            if (! $capabilities['can_receive']) {
+                throw new RuntimeException('Esta receita nao esta disponivel para recebimento.');
             }
 
-            if ($contaId && !DB::table('contas')->where('id', $contaId)->where('propriedade_id', $propertyId)->exists()) {
+            if ($contaId && ! DB::table('contas')->where('id', $contaId)->where('propriedade_id', $propertyId)->exists()) {
                 $contaId = null;
             }
 
@@ -383,11 +420,11 @@ class ReceitaFinanceiraService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$receita) {
+            if (! $receita) {
                 throw new RuntimeException('Receita nao encontrada para exclusao.');
             }
 
-            if (!$this->podeAprovar($propertyId, $userId)) {
+            if (! $this->podeAprovar($propertyId, $userId)) {
                 if ($this->temSolicitacaoExclusao($receita->observacoes ?? null)) {
                     throw new RuntimeException('A exclusao desta receita ja foi solicitada ao gestor.');
                 }
@@ -401,6 +438,7 @@ class ReceitaFinanceiraService
                     ]);
 
                 $this->auditar($userId, 'solicitar_exclusao_receita', 'receitas', $receitaId, $propertyId, 'Exclusao de receita solicitada');
+
                 return;
             }
 
@@ -429,17 +467,17 @@ class ReceitaFinanceiraService
     private function filtros(int $propertyId, Request $request): array
     {
         $safraId = $request->integer('safra_id') ?: null;
-        if ($safraId && !DB::table('safras')->where('id', $safraId)->where('propriedade_id', $propertyId)->exists()) {
+        if ($safraId && ! DB::table('safras')->where('id', $safraId)->where('propriedade_id', $propertyId)->exists()) {
             $safraId = null;
         }
 
         return [
-            'status' => in_array($request->query('status'), ['pendente', 'recebido'], true) ? (string)$request->query('status') : '',
-            'aprovacao' => in_array($request->query('aprovacao'), ['pendente', 'aprovada', 'reprovada'], true) ? (string)$request->query('aprovacao') : '',
-            'date_from' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$request->query('date_from')) ? (string)$request->query('date_from') : '',
-            'date_to' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$request->query('date_to')) ? (string)$request->query('date_to') : '',
+            'status' => in_array($request->query('status'), ['pendente', 'recebido'], true) ? (string) $request->query('status') : '',
+            'aprovacao' => in_array($request->query('aprovacao'), ['pendente', 'aprovada', 'reprovada'], true) ? (string) $request->query('aprovacao') : '',
+            'date_from' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $request->query('date_from')) ? (string) $request->query('date_from') : '',
+            'date_to' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $request->query('date_to')) ? (string) $request->query('date_to') : '',
             'safra_id' => $safraId,
-            'search' => trim((string)$request->query('search', '')),
+            'search' => trim((string) $request->query('search', '')),
         ];
     }
 
@@ -467,12 +505,12 @@ class ReceitaFinanceiraService
             ->pluck('comprador');
 
         foreach ($nomes as $nome) {
-            $nomeNormalizado = $this->normalizarComprador((string)$nome);
+            $nomeNormalizado = $this->normalizarComprador((string) $nome);
             if ($nomeNormalizado === '') {
                 continue;
             }
 
-            if (!DB::table('compradores')->where('propriedade_id', $propertyId)->where('nome', $nomeNormalizado)->exists()) {
+            if (! DB::table('compradores')->where('propriedade_id', $propertyId)->where('nome', $nomeNormalizado)->exists()) {
                 DB::table('compradores')->insert([
                     'propriedade_id' => $propertyId,
                     'nome' => $nomeNormalizado,
@@ -501,7 +539,7 @@ class ReceitaFinanceiraService
 
     private function normalizarComprador(string $nome): string
     {
-        $nome = trim((string)preg_replace('/\s+/', ' ', $nome));
+        $nome = trim((string) preg_replace('/\s+/', ' ', $nome));
         if ($nome === '') {
             return '';
         }
@@ -578,6 +616,7 @@ class ReceitaFinanceiraService
                 'r.status',
                 'r.status_aprovacao',
                 'r.motivo_reprovacao',
+                'r.observacoes',
                 's.descricao as safra_nome',
                 'c.nome as categoria_nome',
                 'sc.nome as subcategoria_nome',
@@ -589,13 +628,15 @@ class ReceitaFinanceiraService
 
     private function normalizar($row): object
     {
-        $categoria = trim((string)($row->categoria_nome ?? ''));
-        if (!empty($row->subcategoria_nome)) {
+        $receiptStatus = (string) $row->status;
+        $approvalStatus = (string) ($row->status_aprovacao ?: 'aprovada');
+        $categoria = trim((string) ($row->categoria_nome ?? ''));
+        if (! empty($row->subcategoria_nome)) {
             $categoria .= ($categoria ? ' / ' : '').$row->subcategoria_nome;
         }
 
-        return (object)[
-            'id' => (int)$row->id,
+        return (object) [
+            'id' => (int) $row->id,
             'data_venda' => FarmFormat::date($row->data_venda),
             'descricao' => FarmFormat::value($row->descricao),
             'comprador' => FarmFormat::value($row->comprador),
@@ -603,26 +644,37 @@ class ReceitaFinanceiraService
             'produtor' => FarmFormat::value($row->produtor_nome),
             'quantidade' => $this->quantidade($row->quantidade, $row->unidade),
             'preco_unitario' => FarmFormat::money($row->preco_unitario),
-            'valor_raw' => (float)$row->valor_total,
+            'valor_raw' => (float) $row->valor_total,
             'valor' => FarmFormat::money($row->valor_total),
             'safra' => FarmFormat::value($row->safra_nome),
             'conta' => FarmFormat::value($row->conta_nome),
             'recebimento' => FarmFormat::date($row->data_recebimento),
-            'status_key' => (string)$row->status,
-            'status' => $this->labelStatus((string)$row->status),
-            'aprovacao_key' => (string)($row->status_aprovacao ?: 'aprovada'),
-            'aprovacao' => $this->labelAprovacao((string)($row->status_aprovacao ?: 'aprovada')),
+            'status_key' => $receiptStatus,
+            'status' => $this->labelStatus($receiptStatus),
+            'status_tone' => $receiptStatus === 'recebido' ? 'success' : 'warning',
+            'aprovacao_key' => $approvalStatus,
+            'aprovacao' => $this->labelAprovacao($approvalStatus),
+            'aprovacao_tone' => match ($approvalStatus) {
+                'aprovada' => 'success',
+                'reprovada' => 'danger',
+                default => 'warning',
+            },
             'motivo_reprovacao' => FarmFormat::value($row->motivo_reprovacao),
+            ...$this->workflowRules->revenueCapabilities(
+                $receiptStatus,
+                $approvalStatus,
+                $this->temSolicitacaoExclusao($row->observacoes ?? null)
+            ),
         ];
     }
 
     private function quantidade($quantidade, ?string $unidade): string
     {
-        if ($quantidade === null || (float)$quantidade == 0.0) {
+        if ($quantidade === null || (float) $quantidade == 0.0) {
             return '-';
         }
 
-        return FarmFormat::decimal($quantidade, 3).' '.trim((string)$unidade);
+        return FarmFormat::decimal($quantidade, 3).' '.trim((string) $unidade);
     }
 
     private function labelStatus(string $status): string
@@ -652,7 +704,7 @@ class ReceitaFinanceiraService
 
     private function compradorNome(int $propertyId, array $dados): ?string
     {
-        $compradorId = (int)($dados['comprador_id'] ?? 0);
+        $compradorId = (int) ($dados['comprador_id'] ?? 0);
         if ($compradorId > 0) {
             $nome = DB::table('compradores')
                 ->where('id', $compradorId)
@@ -661,16 +713,16 @@ class ReceitaFinanceiraService
                 ->value('nome');
 
             if ($nome) {
-                return (string)$nome;
+                return (string) $nome;
             }
         }
 
-        return trim((string)($dados['pessoa'] ?? '')) ?: null;
+        return trim((string) ($dados['pessoa'] ?? '')) ?: null;
     }
 
     private function idDaPropriedade(string $table, mixed $id, int $propertyId): ?int
     {
-        $id = (int)($id ?? 0);
+        $id = (int) ($id ?? 0);
         if ($id <= 0) {
             return null;
         }
@@ -683,7 +735,7 @@ class ReceitaFinanceiraService
 
     private function subcategoriaId(mixed $id, mixed $categoriaId): ?int
     {
-        $id = (int)($id ?? 0);
+        $id = (int) ($id ?? 0);
         if ($id <= 0) {
             return null;
         }
@@ -693,7 +745,7 @@ class ReceitaFinanceiraService
             ->where('ativo', 1)
             ->whereNotNull('categoria_pai_id');
 
-        $categoriaId = (int)($categoriaId ?? 0);
+        $categoriaId = (int) ($categoriaId ?? 0);
         if ($categoriaId > 0) {
             $query->where('categoria_pai_id', $categoriaId);
         }
@@ -708,33 +760,33 @@ class ReceitaFinanceiraService
 
     private function temSolicitacaoExclusao(?string $observacoes): bool
     {
-        return str_contains((string)$observacoes, $this->marcadorExclusao());
+        return str_contains((string) $observacoes, $this->marcadorExclusao());
     }
 
     private function adicionarSolicitacaoExclusao(?string $observacoes, ?int $userId): string
     {
         if ($this->temSolicitacaoExclusao($observacoes)) {
-            return (string)$observacoes;
+            return (string) $observacoes;
         }
 
-        $usuario = $userId ? (string)DB::table('usuarios')->where('id', $userId)->value('nome') : 'colaborador';
+        $usuario = $userId ? (string) DB::table('usuarios')->where('id', $userId)->value('nome') : 'colaborador';
         $linha = $this->marcadorExclusao().' Solicitado por '.($usuario ?: 'colaborador').' em '.now()->format('d/m/Y H:i');
-        $observacoes = trim((string)$observacoes);
+        $observacoes = trim((string) $observacoes);
 
         return $observacoes === '' ? $linha : $observacoes.PHP_EOL.$linha;
     }
 
     private function limparSolicitacaoExclusao(?string $observacoes): string
     {
-        $linhas = preg_split('/\r\n|\r|\n/', (string)$observacoes) ?: [];
-        $linhas = array_filter($linhas, fn ($linha) => !str_contains((string)$linha, $this->marcadorExclusao()));
+        $linhas = preg_split('/\r\n|\r|\n/', (string) $observacoes) ?: [];
+        $linhas = array_filter($linhas, fn ($linha) => ! str_contains((string) $linha, $this->marcadorExclusao()));
 
         return trim(implode(PHP_EOL, $linhas));
     }
 
     private function podeAprovar(int $propertyId, ?int $userId): bool
     {
-        if (!$propertyId || !$userId) {
+        if (! $propertyId || ! $userId) {
             return false;
         }
 
@@ -743,20 +795,20 @@ class ReceitaFinanceiraService
             ->where('ativo', 1)
             ->first(['id', 'perfil']);
 
-        if (!$usuario) {
+        if (! $usuario) {
             return false;
         }
 
-        $perfil = (string)$usuario->perfil;
+        $perfil = (string) $usuario->perfil;
         if (in_array($perfil, ['administrador_sistema', 'gerencia_sistema'], true)) {
             return true;
         }
 
-        if (!in_array($perfil, ['administrador', 'gestor_financeiro', 'gestor_propriedade', 'gestao', 'financeiro'], true)) {
+        if (! in_array($perfil, ['administrador', 'gestor_financeiro', 'gestor_propriedade', 'gestao', 'financeiro'], true)) {
             return false;
         }
 
-        if (!$this->usuarioAcessaPropriedade($propertyId, $userId, $perfil)) {
+        if (! $this->usuarioAcessaPropriedade($propertyId, $userId, $perfil)) {
             return false;
         }
 
@@ -798,13 +850,13 @@ class ReceitaFinanceiraService
 
     private function decimal(mixed $value): float
     {
-        $value = trim((string)$value);
+        $value = trim((string) $value);
         if (str_contains($value, ',')) {
             $value = str_replace('.', '', $value);
             $value = str_replace(',', '.', $value);
         }
 
-        return max(0.0, (float)$value);
+        return max(0.0, (float) $value);
     }
 
     private function auditar(?int $usuarioId, string $acao, string $tabela, int $registroId, int $propriedadeId, string $detalhes): void
@@ -820,8 +872,8 @@ class ReceitaFinanceiraService
                 'ip' => request()->ip(),
                 'criado_em' => now(),
             ]);
-        } catch (\Throwable) {
-            // Auditoria nao deve impedir a operacao financeira.
+        } catch (\Throwable $exception) {
+            report($exception);
         }
     }
 }

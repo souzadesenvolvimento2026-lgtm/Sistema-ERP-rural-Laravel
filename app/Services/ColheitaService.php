@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Domain\Production\HarvestFieldCapabilities;
 use App\Support\FarmFormat;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -9,6 +10,32 @@ use Illuminate\Support\Facades\DB;
 
 class ColheitaService
 {
+    public function __construct(private readonly HarvestFieldCapabilities $capabilities) {}
+
+    public function formData(int $propertyId): array
+    {
+        return [
+            'activeModule' => 'colheita',
+            'safras' => DB::table('safras')->where('propriedade_id', $propertyId)->orderByDesc('id')->get(['id', 'descricao', 'status']),
+            'talhoes' => DB::table('talhoes')->where('propriedade_id', $propertyId)->where('ativo', 1)->orderBy('nome')->get(['id', 'nome', 'area']),
+            'destinos' => $this->destinos(),
+        ];
+    }
+
+    public function validSafraId(mixed $safraId, int $propertyId): ?int
+    {
+        $safraId = (int) ($safraId ?: 0);
+
+        if ($safraId <= 0) {
+            return null;
+        }
+
+        return DB::table('safras')
+            ->where('id', $safraId)
+            ->where('propriedade_id', $propertyId)
+            ->exists() ? $safraId : null;
+    }
+
     public function pagina(int $propriedadeId, Request $request): array
     {
         $safras = DB::table('safras as s')
@@ -42,7 +69,7 @@ class ColheitaService
                 ['label' => 'Produção total', 'value' => FarmFormat::decimal($totais['kg'], 2).' kg', 'tone' => 'success'],
                 ['label' => 'Total em sacas', 'value' => FarmFormat::decimal($totais['sacas'], 2).' sc', 'tone' => 'success'],
                 ['label' => 'Produtividade', 'value' => FarmFormat::decimal($totais['produtividade'], 2).' sc/ha', 'tone' => 'warning'],
-                ['label' => 'Destinos', 'value' => (string)$totais['destinos'], 'tone' => 'success'],
+                ['label' => 'Destinos', 'value' => (string) $totais['destinos'], 'tone' => 'success'],
             ],
         ];
     }
@@ -50,12 +77,12 @@ class ColheitaService
     public function criar(array $dados, int $propriedadeId, ?int $usuarioId): int
     {
         $safraId = $this->safraIdValida($dados['safra_id'] ?? null, $propriedadeId);
-        if (!$safraId) {
+        if (! $safraId) {
             throw new \RuntimeException('Informe uma safra valida para esta propriedade.');
         }
 
         $talhaoId = $this->talhaoIdValido($dados['talhao_id'] ?? null, $propriedadeId);
-        if (!$talhaoId) {
+        if (! $talhaoId) {
             throw new \RuntimeException('Informe um talhão válido para esta propriedade.');
         }
 
@@ -93,7 +120,7 @@ class ColheitaService
             'usuario_id' => $usuarioId,
         ]);
 
-        $colheitaId = (int)DB::getPdo()->lastInsertId();
+        $colheitaId = (int) DB::getPdo()->lastInsertId();
         $ticket = trim($dados['ticket_numero'] ?? '') ?: '-';
         $this->auditar($usuarioId, 'salvar_colheita', 'colheita_talhoes', $colheitaId, $propriedadeId, 'Romaneio: '.$ticket);
 
@@ -117,12 +144,12 @@ class ColheitaService
         $this->buscar($id, $propriedadeId);
 
         $safraId = $this->safraIdValida($dados['safra_id'] ?? null, $propriedadeId);
-        if (!$safraId) {
+        if (! $safraId) {
             throw new \RuntimeException('Informe uma safra valida para esta propriedade.');
         }
 
         $talhaoId = $this->talhaoIdValido($dados['talhao_id'] ?? null, $propriedadeId);
-        if (!$talhaoId) {
+        if (! $talhaoId) {
             throw new \RuntimeException('Informe um talhao valido para esta propriedade.');
         }
 
@@ -179,23 +206,23 @@ class ColheitaService
 
     private function filtros(Request $request, Collection $safras, Collection $talhoes): array
     {
-        $safraId = $request->integer('safra_id') ?: (int)($safras->first()->id ?? 0);
-        if ($safraId && !$safras->contains('id', $safraId)) {
-            $safraId = (int)($safras->first()->id ?? 0);
+        $safraId = $request->integer('safra_id') ?: (int) ($safras->first()->id ?? 0);
+        if ($safraId && ! $safras->contains('id', $safraId)) {
+            $safraId = (int) ($safras->first()->id ?? 0);
         }
 
         $talhaoId = $request->integer('talhao_id') ?: null;
-        if ($talhaoId && !$talhoes->contains('id', $talhaoId)) {
+        if ($talhaoId && ! $talhoes->contains('id', $talhaoId)) {
             $talhaoId = null;
         }
 
         return [
             'safra_id' => $safraId ?: null,
             'talhao_id' => $talhaoId,
-            'date_from' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$request->query('date_from')) ? (string)$request->query('date_from') : '',
-            'date_to' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$request->query('date_to')) ? (string)$request->query('date_to') : '',
-            'destino' => trim((string)$request->query('destino', '')),
-            'search' => trim((string)$request->query('search', '')),
+            'date_from' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $request->query('date_from')) ? (string) $request->query('date_from') : '',
+            'date_to' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $request->query('date_to')) ? (string) $request->query('date_to') : '',
+            'destino' => trim((string) $request->query('destino', '')),
+            'search' => trim((string) $request->query('search', '')),
         ];
     }
 
@@ -272,20 +299,20 @@ class ColheitaService
 
     private function normalizar($row): object
     {
-        $pesoFinal = (float)($row->peso_final_kg ?: 0);
-        if ($pesoFinal <= 0 && (float)$row->peso_liquido_kg > 0) {
-            $pesoFinal = max(0, (float)$row->peso_liquido_kg - (float)$row->desconto_kg);
+        $pesoFinal = (float) ($row->peso_final_kg ?: 0);
+        if ($pesoFinal <= 0 && (float) $row->peso_liquido_kg > 0) {
+            $pesoFinal = max(0, (float) $row->peso_liquido_kg - (float) $row->desconto_kg);
         }
         if ($pesoFinal <= 0) {
-            $pesoFinal = (float)$row->sacas * 60;
+            $pesoFinal = (float) $row->sacas * 60;
         }
 
-        $sacas = $pesoFinal > 0 ? $pesoFinal / 60 : (float)$row->sacas;
-        $area = (float)($row->area_colhida ?: $row->talhao_area);
-        $produtividade = (float)($row->produtividade_sc_ha ?: ($area > 0 ? $sacas / $area : 0));
+        $sacas = $pesoFinal > 0 ? $pesoFinal / 60 : (float) $row->sacas;
+        $area = (float) ($row->area_colhida ?: $row->talhao_area);
+        $produtividade = (float) ($row->produtividade_sc_ha ?: ($area > 0 ? $sacas / $area : 0));
 
-        return (object)[
-            'id' => (int)$row->id,
+        return (object) [
+            'id' => (int) $row->id,
             'data' => FarmFormat::date($row->data_colheita),
             'ticket' => FarmFormat::value($row->ticket_numero),
             'safra' => FarmFormat::value($row->safra_nome),
@@ -293,8 +320,8 @@ class ColheitaService
             'talhao' => FarmFormat::value($row->talhao_nome),
             'motorista' => FarmFormat::value($row->motorista),
             'veiculo' => FarmFormat::value($row->veiculo_placa),
-            'destino_key' => (string)($row->destino_producao ?: 'sem_destino'),
-            'destino' => $this->destinoLabel((string)($row->destino_producao ?: 'sem_destino')),
+            'destino_key' => (string) ($row->destino_producao ?: 'sem_destino'),
+            'destino' => $this->destinoLabel((string) ($row->destino_producao ?: 'sem_destino')),
             'local_destino' => FarmFormat::value($row->local_destino),
             'peso_final_raw' => $pesoFinal,
             'peso_final' => FarmFormat::decimal($pesoFinal, 2).' kg',
@@ -317,8 +344,8 @@ class ColheitaService
             $areaPorTalhao[$row->talhao] = $row->area_raw;
         }
 
-        $kg = (float)$rows->sum('peso_final_raw');
-        $sacas = (float)$rows->sum('sacas_raw');
+        $kg = (float) $rows->sum('peso_final_raw');
+        $sacas = (float) $rows->sum('sacas_raw');
         $area = array_sum($areaPorTalhao);
 
         return [
@@ -349,14 +376,11 @@ class ColheitaService
     {
         $this->validarSafraTalhao($propriedadeId, $safraId, $talhaoId);
 
-        $temCarga = DB::table('colheita_talhoes')
-            ->where('propriedade_id', $propriedadeId)
-            ->where('safra_id', $safraId)
-            ->where('talhao_id', $talhaoId)
-            ->exists();
+        $state = $this->talhaoState($propriedadeId, $safraId, $talhaoId);
+        $capabilities = $this->capabilities->for($state['is_finalized'], $state['load_count']);
 
-        if (!$temCarga) {
-            throw new \RuntimeException('Lance pelo menos uma carga antes de finalizar o talhao.');
+        if (! $capabilities['can_finalize']) {
+            throw new \RuntimeException($capabilities['block_reason'] ?? 'Este talhao nao pode ser finalizado.');
         }
 
         DB::table('safra_talhoes')->upsert([
@@ -377,6 +401,11 @@ class ColheitaService
     {
         $this->validarSafraTalhao($propriedadeId, $safraId, $talhaoId);
 
+        $state = $this->talhaoState($propriedadeId, $safraId, $talhaoId);
+        if (! $this->capabilities->for($state['is_finalized'], $state['load_count'])['can_reopen']) {
+            throw new \RuntimeException('O talhao ainda nao esta finalizado nesta safra.');
+        }
+
         DB::table('safra_talhoes')
             ->where('propriedade_id', $propriedadeId)
             ->where('safra_id', $safraId)
@@ -392,7 +421,7 @@ class ColheitaService
 
     private function talhoesResumo(int $propriedadeId, ?int $safraId): Collection
     {
-        if (!$safraId) {
+        if (! $safraId) {
             return collect();
         }
 
@@ -415,22 +444,48 @@ class ColheitaService
             ]);
 
         return $rows->map(function ($row) {
-            $pesoFinal = (float)$row->peso_final;
+            $pesoFinal = (float) $row->peso_final;
             $sacas = $pesoFinal / 60;
-            $area = (float)$row->area;
+            $area = (float) $row->area;
+            $isFinalized = ! empty($row->colheita_finalizada_em);
+            $capabilities = $this->capabilities->for($isFinalized, (int) $row->cargas);
 
-            return (object)[
-                'id' => (int)$row->id,
+            return (object) [
+                'id' => (int) $row->id,
                 'nome' => FarmFormat::value($row->nome),
                 'area' => FarmFormat::decimal($area, 2).' ha',
-                'cargas' => (int)$row->cargas,
+                'cargas' => (int) $row->cargas,
                 'peso' => FarmFormat::decimal($pesoFinal, 2).' kg',
                 'sacas' => FarmFormat::decimal($sacas, 2).' sc',
                 'produtividade' => $area > 0 ? FarmFormat::decimal($sacas / $area, 2).' sc/ha' : '-',
-                'finalizado' => !empty($row->colheita_finalizada_em),
+                'finalizado' => $isFinalized,
                 'finalizado_em' => FarmFormat::date($row->colheita_finalizada_em),
+                ...$capabilities,
             ];
         });
+    }
+
+    /**
+     * @return array{is_finalized: bool, load_count: int}
+     */
+    private function talhaoState(int $propriedadeId, int $safraId, int $talhaoId): array
+    {
+        $finalizadoEm = DB::table('safra_talhoes')
+            ->where('propriedade_id', $propriedadeId)
+            ->where('safra_id', $safraId)
+            ->where('talhao_id', $talhaoId)
+            ->value('colheita_finalizada_em');
+
+        $loadCount = DB::table('colheita_talhoes')
+            ->where('propriedade_id', $propriedadeId)
+            ->where('safra_id', $safraId)
+            ->where('talhao_id', $talhaoId)
+            ->count();
+
+        return [
+            'is_finalized' => ! empty($finalizadoEm),
+            'load_count' => $loadCount,
+        ];
     }
 
     private function validarSafraTalhao(int $propriedadeId, int $safraId, int $talhaoId): void
@@ -438,7 +493,7 @@ class ColheitaService
         $safraOk = DB::table('safras')->where('id', $safraId)->where('propriedade_id', $propriedadeId)->exists();
         $talhaoOk = DB::table('talhoes')->where('id', $talhaoId)->where('propriedade_id', $propriedadeId)->where('ativo', 1)->exists();
 
-        if (!$safraOk || !$talhaoOk) {
+        if (! $safraOk || ! $talhaoOk) {
             throw new \RuntimeException('Informe safra e talhao validos para esta propriedade.');
         }
     }
@@ -455,26 +510,27 @@ class ColheitaService
                 DB::raw('SUM(st.colheita_finalizada_em IS NULL) as talhoes_pendentes'),
             ]);
 
-        if (!$status || (int)$status->total_talhoes <= 0) {
+        if (! $status || (int) $status->total_talhoes <= 0) {
             return;
         }
 
-        if ($status->status === 'em_andamento' && (int)$status->talhoes_pendentes === 0) {
+        if ($status->status === 'em_andamento' && (int) $status->talhoes_pendentes === 0) {
             DB::table('safras')->where('id', $safraId)->where('status', 'em_andamento')->update(['status' => 'colhida']);
-        } elseif ($status->status === 'colhida' && (int)$status->talhoes_pendentes > 0) {
+        } elseif ($status->status === 'colhida' && (int) $status->talhoes_pendentes > 0) {
             DB::table('safras')->where('id', $safraId)->where('status', 'colhida')->update(['status' => 'em_andamento']);
         }
     }
 
     private function decimal($value): float
     {
-        $value = str_replace(',', '.', trim((string)$value));
-        return max(0.0, (float)$value);
+        $value = str_replace(',', '.', trim((string) $value));
+
+        return max(0.0, (float) $value);
     }
 
     private function nullableDecimal($value): ?float
     {
-        if ($value === null || trim((string)$value) === '') {
+        if ($value === null || trim((string) $value) === '') {
             return null;
         }
 
@@ -483,7 +539,7 @@ class ColheitaService
 
     private function safraIdValida($safraId, int $propriedadeId): ?int
     {
-        $safraId = (int)($safraId ?: 0);
+        $safraId = (int) ($safraId ?: 0);
         if ($safraId <= 0) {
             return null;
         }
@@ -498,7 +554,7 @@ class ColheitaService
 
     private function talhaoIdValido($talhaoId, int $propriedadeId): ?int
     {
-        $talhaoId = (int)($talhaoId ?: 0);
+        $talhaoId = (int) ($talhaoId ?: 0);
         if ($talhaoId <= 0) {
             return null;
         }
@@ -525,8 +581,8 @@ class ColheitaService
                 'ip' => request()->ip(),
                 'criado_em' => now(),
             ]);
-        } catch (\Throwable) {
-            // Auditoria nao deve impedir a operacao de colheita.
+        } catch (\Throwable $exception) {
+            report($exception);
         }
     }
 }

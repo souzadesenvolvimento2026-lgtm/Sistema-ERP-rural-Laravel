@@ -18,29 +18,24 @@
             </thead>
             <tbody>
                 @forelse ($contratos as $contrato)
-                    @php
-                        $quantidade = (float)$contrato->quantidade;
-                        $entregue = (float)$contrato->entregue;
-                        $percentual = $quantidade > 0 ? min(100, ($entregue / $quantidade) * 100) : 0;
-                    @endphp
                     <tr>
                         <td>{{ \Illuminate\Support\Carbon::parse($contrato->data_contrato)->format('d/m/Y') }}</td>
                         <td><strong>{{ $contrato->numero }}</strong><br><span class="muted">{{ $contrato->safra_nome ?: '-' }}</span></td>
                         <td>{{ $tipos[$contrato->tipo] ?? $contrato->tipo }}</td>
                         <td>{{ $contrato->contraparte ?: '-' }}</td>
                         <td>{{ $contrato->produto ?: '-' }}</td>
-                        <td>{{ number_format($quantidade, 2, ',', '.') }} {{ $contrato->unidade }}</td>
+                        <td>{{ number_format($contrato->quantidade, 2, ',', '.') }} {{ $contrato->unidade }}</td>
                         <td>
-                            <strong>{{ number_format($entregue, 2, ',', '.') }} {{ $contrato->unidade }}</strong>
+                            <strong>{{ number_format($contrato->entregue, 2, ',', '.') }} {{ $contrato->unidade }}</strong>
                             <div class="progress-line">
-                                <span style="width: {{ $percentual }}%; background: {{ $percentual >= 100 ? '#35c49a' : '#f6c34a' }}"></span>
+                                <span style="width: {{ $contrato->percentual_entregue }}%; background: {{ $contrato->percentual_entregue >= 100 ? '#35c49a' : '#f6c34a' }}"></span>
                             </div>
-                            <span class="muted">{{ number_format($percentual, 1, ',', '.') }}%</span>
+                            <span class="muted">{{ number_format($contrato->percentual_entregue, 1, ',', '.') }}%</span>
                         </td>
                         <td>R$ {{ number_format($contrato->valor_total, 2, ',', '.') }}</td>
                         <td>{{ $contrato->status }}</td>
                         <td>
-                            @if (!in_array($contrato->status, ['entregue', 'cancelado'], true))
+                            @if ($contrato->permite_entrega)
                                 <button
                                     class="btn primary"
                                     type="button"

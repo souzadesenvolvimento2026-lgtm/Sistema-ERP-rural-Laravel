@@ -64,6 +64,8 @@ class ContaBancariaController extends Controller
         try {
             $service->registrarTransferencia($dados, $this->propriedadeId(), session('usuario_id'));
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return back()
                 ->withInput()
                 ->withErrors(['transferencia' => $exception->getMessage()]);

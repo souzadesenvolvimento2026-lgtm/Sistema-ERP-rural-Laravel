@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -33,7 +34,13 @@ class CertificadoDigitalService
                 'c.observacoes',
                 'c.criado_em',
                 'u.nome as usuario_nome',
-            ]);
+            ])
+            ->each(function ($certificado): void {
+                $certificado->validade_texto = $this->validadeTexto($certificado->validade_fim);
+                $certificado->status_tone = $certificado->status === 'inativo' ? 'danger' : 'success';
+                $certificado->can_make_primary = ! (bool) $certificado->principal && $certificado->status !== 'inativo';
+                $certificado->can_deactivate = $certificado->status !== 'inativo';
+            });
 
         $principal = $certificados->firstWhere('principal', 1);
 
@@ -57,18 +64,18 @@ class CertificadoDigitalService
     {
         $parsed = [];
         if (($dados['tipo_certificado'] ?? 'A1') === 'A1') {
-            if (!$arquivo) {
+            if (! $arquivo) {
                 throw new RuntimeException('Envie o arquivo do certificado A1 (.pfx ou .p12).');
             }
 
-            $parsed = $this->parsePfx($arquivo, (string)($dados['senha_certificado'] ?? ''));
+            $parsed = $this->parsePfx($arquivo, (string) ($dados['senha_certificado'] ?? ''));
         }
 
         $arquivoPath = $arquivo ? $arquivo->store('certificados', 'local') : null;
         $validadeFim = $parsed['validade_fim'] ?? (($dados['validade_fim'] ?? null) ?: null);
 
         return DB::transaction(function () use ($dados, $propriedadeId, $usuarioId, $parsed, $arquivoPath, $validadeFim) {
-            if (!empty($dados['principal'])) {
+            if (! empty($dados['principal'])) {
                 DB::table('certificados_digitais')->where('propriedade_id', $propriedadeId)->update(['principal' => 0]);
             }
 
@@ -78,20 +85,20 @@ class CertificadoDigitalService
                 'ambiente' => $dados['ambiente'] ?? 'homologacao',
                 'nome_identificacao' => trim($dados['nome_identificacao']),
                 'titular' => $parsed['titular'] ?? (trim($dados['titular'] ?? '') ?: null),
-                'cpf_cnpj' => preg_replace('/\D+/', '', (string)($dados['cpf_cnpj'] ?? '')) ?: null,
+                'cpf_cnpj' => preg_replace('/\D+/', '', (string) ($dados['cpf_cnpj'] ?? '')) ?: null,
                 'numero_serie' => $parsed['numero_serie'] ?? (trim($dados['numero_serie'] ?? '') ?: null),
                 'emissor' => $parsed['emissor'] ?? (trim($dados['emissor'] ?? '') ?: null),
                 'validade_inicio' => $parsed['validade_inicio'] ?? (($dados['validade_inicio'] ?? null) ?: null),
                 'validade_fim' => $validadeFim,
                 'arquivo_path' => $arquivoPath,
-                'senha_criptografada' => !empty($dados['senha_certificado']) ? Crypt::encryptString($dados['senha_certificado']) : null,
-                'principal' => !empty($dados['principal']) ? 1 : 0,
+                'senha_criptografada' => ! empty($dados['senha_certificado']) ? Crypt::encryptString($dados['senha_certificado']) : null,
+                'principal' => ! empty($dados['principal']) ? 1 : 0,
                 'status' => $this->statusValidade($validadeFim),
                 'observacoes' => trim($dados['observacoes'] ?? '') ?: null,
                 'usuario_id' => $usuarioId,
             ]);
 
-            $certificadoId = (int)DB::getPdo()->lastInsertId();
+            $certificadoId = (int) DB::getPdo()->lastInsertId();
             $this->auditar($usuarioId, 'vincular_certificado_digital', 'certificados_digitais', $certificadoId, $propriedadeId, 'Certificado digital vinculado');
 
             return $certificadoId;
@@ -135,11 +142,11 @@ class CertificadoDigitalService
 
     public function diasValidade($validadeFim): ?int
     {
-        if (!$validadeFim) {
+        if (! $validadeFim) {
             return null;
         }
 
-        return now()->startOfDay()->diffInDays(\Illuminate\Support\Carbon::parse($validadeFim)->startOfDay(), false);
+        return now()->startOfDay()->diffInDays(Carbon::parse($validadeFim)->startOfDay(), false);
     }
 
     public function validadeTexto($validadeFim): string
@@ -172,7 +179,7 @@ class CertificadoDigitalService
 
     private function statusValidade(?string $validadeFim): string
     {
-        return $validadeFim && \Illuminate\Support\Carbon::parse($validadeFim)->startOfDay()->lt(now()->startOfDay()) ? 'vencido' : 'ativo';
+        return $validadeFim && Carbon::parse($validadeFim)->startOfDay()->lt(now()->startOfDay()) ? 'vencido' : 'ativo';
     }
 
     private function parsePfx(UploadedFile $arquivo, string $senha): array
@@ -183,21 +190,21 @@ class CertificadoDigitalService
 
         $raw = file_get_contents($arquivo->getRealPath());
         $certs = [];
-        if (!$raw || !openssl_pkcs12_read($raw, $certs, $senha)) {
+        if (! $raw || ! openssl_pkcs12_read($raw, $certs, $senha)) {
             throw new RuntimeException('Não foi possível abrir o certificado. Confira se o arquivo e a senha estão corretos.');
         }
 
         $parsed = openssl_x509_parse($certs['cert'] ?? '');
-        if (!$parsed) {
+        if (! $parsed) {
             throw new RuntimeException('Certificado lido, mas não foi possível interpretar os dados X509.');
         }
 
         return [
             'titular' => $this->nomeCertificado($parsed['subject'] ?? []),
             'emissor' => $this->nomeCertificado($parsed['issuer'] ?? []),
-            'numero_serie' => (string)($parsed['serialNumberHex'] ?? $parsed['serialNumber'] ?? ''),
-            'validade_inicio' => !empty($parsed['validFrom_time_t']) ? date('Y-m-d H:i:s', (int)$parsed['validFrom_time_t']) : null,
-            'validade_fim' => !empty($parsed['validTo_time_t']) ? date('Y-m-d H:i:s', (int)$parsed['validTo_time_t']) : null,
+            'numero_serie' => (string) ($parsed['serialNumberHex'] ?? $parsed['serialNumber'] ?? ''),
+            'validade_inicio' => ! empty($parsed['validFrom_time_t']) ? date('Y-m-d H:i:s', (int) $parsed['validFrom_time_t']) : null,
+            'validade_fim' => ! empty($parsed['validTo_time_t']) ? date('Y-m-d H:i:s', (int) $parsed['validTo_time_t']) : null,
         ];
     }
 
@@ -230,8 +237,8 @@ class CertificadoDigitalService
                 'ip' => request()->ip(),
                 'criado_em' => now(),
             ]);
-        } catch (\Throwable) {
-            // Auditoria nao deve impedir a gestao do certificado.
+        } catch (\Throwable $exception) {
+            report($exception);
         }
     }
 }

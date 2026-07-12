@@ -23,13 +23,15 @@
                         <td>{{ $movimentacao->descricao }}</td>
                         <td><strong>R$ {{ number_format($movimentacao->valor, 2, ',', '.') }}</strong></td>
                         <td>{{ strtoupper($movimentacao->origem) }}</td>
-                        <td><span class="pill {{ $movimentacao->status === 'pendente' ? 'warning' : 'success' }}">{{ \App\Support\FarmFormat::statusLabel($movimentacao->status) }}</span></td>
+                        <td><span class="pill {{ $movimentacao->status_tone }}">{{ \App\Support\FarmFormat::statusLabel($movimentacao->status) }}</span></td>
                         <td>
-                            @if ($movimentacao->status === 'pendente')
+                            @if ($movimentacao->can_reconcile)
                                 <form method="POST" action="{{ route('financeiro.movimentacoes.conciliar', $movimentacao->id) }}" style="display: inline;">
                                     @csrf
                                     <button class="btn" type="submit">Conciliar</button>
                                 </form>
+                            @endif
+                            @if ($movimentacao->can_ignore)
                                 <form method="POST" action="{{ route('financeiro.movimentacoes.ignorar', $movimentacao->id) }}" style="display: inline;">
                                     @csrf
                                     <button class="btn" type="submit">Ignorar</button>

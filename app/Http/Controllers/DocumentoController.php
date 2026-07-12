@@ -7,6 +7,7 @@ use App\Support\FarmContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use RuntimeException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class DocumentoController extends Controller
@@ -44,7 +45,15 @@ class DocumentoController extends Controller
             'status' => ['required', 'in:pendente,conferido,arquivado'],
         ]);
 
-        $service->atualizarStatus($documento, $this->propriedadeId(), $dados['status']);
+        try {
+            $service->atualizarStatus($documento, $this->propriedadeId(), $dados['status']);
+        } catch (RuntimeException $exception) {
+            report($exception);
+
+            return redirect()
+                ->route('fiscal.documentos.index')
+                ->withErrors($exception->getMessage());
+        }
 
         return redirect()
             ->route('fiscal.documentos.index')
@@ -53,7 +62,15 @@ class DocumentoController extends Controller
 
     public function conferir(int $documento, DocumentoService $service): RedirectResponse
     {
-        $service->atualizarStatus($documento, $this->propriedadeId(), 'conferido');
+        try {
+            $service->atualizarStatus($documento, $this->propriedadeId(), 'conferido');
+        } catch (RuntimeException $exception) {
+            report($exception);
+
+            return redirect()
+                ->route('fiscal.documentos.index')
+                ->withErrors($exception->getMessage());
+        }
 
         return redirect()
             ->route('fiscal.documentos.index')

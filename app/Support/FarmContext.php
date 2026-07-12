@@ -11,7 +11,7 @@ class FarmContext
 
     public function property()
     {
-        $sessionPropertyId = (int)session('propriedade_id', 0);
+        $sessionPropertyId = (int) session('propriedade_id', 0);
         if ($sessionPropertyId > 0) {
             $property = DB::table('propriedades')
                 ->where('id', $sessionPropertyId)
@@ -19,9 +19,14 @@ class FarmContext
                 ->first();
 
             if ($property) {
-                $this->tickCotacao((int)$property->id);
+                $this->tickCotacao((int) $property->id);
+
                 return $property;
             }
+        }
+
+        if ((int) session('usuario_id', 0) > 0) {
+            return null;
         }
 
         $property = DB::table('propriedades')
@@ -32,7 +37,7 @@ class FarmContext
             ?? DB::table('propriedades')->where('ativo', 1)->orderBy('id')->first();
 
         if ($property) {
-            $this->tickCotacao((int)$property->id);
+            $this->tickCotacao((int) $property->id);
         }
 
         return $property;
@@ -41,9 +46,9 @@ class FarmContext
     public function propertyId(): int
     {
         $property = $this->property();
-        abort_if(!$property, 500, 'Nenhuma propriedade ativa encontrada.');
+        abort_if(! $property, 403, 'Nenhuma propriedade ativa autorizada na sessão.');
 
-        return (int)$property->id;
+        return (int) $property->id;
     }
 
     private function tickCotacao(int $propertyId): void

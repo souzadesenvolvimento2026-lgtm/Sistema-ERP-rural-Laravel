@@ -4,8 +4,8 @@ namespace App\Services;
 
 use App\Support\FarmFormat;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
@@ -13,13 +13,22 @@ use Throwable;
 
 class EntradaNfService
 {
+    public function formOptions(int $propertyId): array
+    {
+        return [
+            'categorias' => DB::table('categorias')->where('ativo', 1)->orderBy('nome')->get(['id', 'nome', 'tipo']),
+            'contas' => DB::table('contas')->where('propriedade_id', $propertyId)->where('ativo', 1)->orderBy('nome')->get(['id', 'nome']),
+            'safras' => DB::table('safras')->where('propriedade_id', $propertyId)->orderByDesc('id')->get(['id', 'descricao']),
+        ];
+    }
+
     public function pagina(int $propriedadeId, Request $request): array
     {
         $filtros = [
-            'status' => trim((string)$request->query('status', '')),
-            'fornecedor' => trim((string)$request->query('fornecedor', '')),
-            'date_from' => trim((string)$request->query('date_from', '')),
-            'date_to' => trim((string)$request->query('date_to', '')),
+            'status' => trim((string) $request->query('status', '')),
+            'fornecedor' => trim((string) $request->query('fornecedor', '')),
+            'date_from' => trim((string) $request->query('date_from', '')),
+            'date_to' => trim((string) $request->query('date_to', '')),
         ];
 
         $entradas = $this->entradas($propriedadeId, $filtros);
@@ -37,10 +46,10 @@ class EntradaNfService
                 'cancelada' => 'Cancelada',
             ],
             'cards' => [
-                ['label' => 'Entradas', 'value' => (string)$entradas->count(), 'tone' => 'success'],
-                ['label' => 'Rascunhos', 'value' => (string)$entradas->where('status_key', 'rascunho')->count(), 'tone' => 'warning'],
-                ['label' => 'Com financeiro', 'value' => (string)$entradas->where('parcelas', '>', 0)->count(), 'tone' => 'success'],
-                ['label' => 'Valor listado', 'value' => FarmFormat::money((float)$entradas->sum('valor_raw')), 'tone' => 'warning'],
+                ['label' => 'Entradas', 'value' => (string) $entradas->count(), 'tone' => 'success'],
+                ['label' => 'Rascunhos', 'value' => (string) $entradas->where('status_key', 'rascunho')->count(), 'tone' => 'warning'],
+                ['label' => 'Com financeiro', 'value' => (string) $entradas->where('parcelas', '>', 0)->count(), 'tone' => 'success'],
+                ['label' => 'Valor listado', 'value' => FarmFormat::money((float) $entradas->sum('valor_raw')), 'tone' => 'warning'],
             ],
         ];
     }
@@ -67,7 +76,7 @@ class EntradaNfService
                 'data_emissao' => $dados['data_emissao'],
                 'data_entrada' => $dados['data_entrada'],
                 'fornecedor' => trim($dados['fornecedor']),
-                'fornecedor_doc' => preg_replace('/\D+/', '', (string)($dados['fornecedor_doc'] ?? '')) ?: null,
+                'fornecedor_doc' => preg_replace('/\D+/', '', (string) ($dados['fornecedor_doc'] ?? '')) ?: null,
                 'valor_total' => $valorTotal,
                 'valor_produtos' => $valorProdutos,
                 'valor_frete' => $valorFrete,
@@ -85,15 +94,15 @@ class EntradaNfService
                 'observacoes_financeiras' => trim($dados['observacoes_financeiras'] ?? '') ?: null,
                 'status' => 'rascunho',
                 'usuario_id' => $usuarioId,
-                'classificar_patrimonio' => !empty($dados['classificar_patrimonio']) ? 1 : 0,
+                'classificar_patrimonio' => ! empty($dados['classificar_patrimonio']) ? 1 : 0,
                 'patrimonio_nome' => trim($dados['patrimonio_nome'] ?? '') ?: null,
                 'patrimonio_tipo' => $dados['patrimonio_tipo'] ?? null,
                 'patrimonio_tipo_outro' => trim($dados['patrimonio_tipo_outro'] ?? '') ?: null,
-                'patrimonio_controla_horimetro' => !empty($dados['patrimonio_controla_horimetro']) ? 1 : 0,
-                'patrimonio_controla_odometro' => !empty($dados['patrimonio_controla_odometro']) ? 1 : 0,
+                'patrimonio_controla_horimetro' => ! empty($dados['patrimonio_controla_horimetro']) ? 1 : 0,
+                'patrimonio_controla_odometro' => ! empty($dados['patrimonio_controla_odometro']) ? 1 : 0,
             ]));
 
-            $entradaId = (int)DB::getPdo()->lastInsertId();
+            $entradaId = (int) DB::getPdo()->lastInsertId();
             $this->sincronizarPatrimonio($entradaId, $dados, $propriedadeId);
             $this->criarItemInicial($entradaId, $dados);
             $this->criarParcelaInicial($entradaId, $dados, $valorFinanceiro);
@@ -146,12 +155,12 @@ class EntradaNfService
                 'c.nome as categoria_nome',
                 's.descricao as safra_nome',
             ])
-            ->map(fn ($item) => (object)[
+            ->map(fn ($item) => (object) [
                 'descricao' => FarmFormat::value($item->descricao_generica ?: $item->descricao_nf ?: $item->produto_nome),
                 'produto' => FarmFormat::value($item->produto_nome),
                 'categoria' => FarmFormat::value($item->categoria_nome),
                 'safra' => FarmFormat::value($item->safra_nome),
-                'quantidade' => number_format((float)$item->quantidade, 4, ',', '.'),
+                'quantidade' => number_format((float) $item->quantidade, 4, ',', '.'),
                 'unidade' => FarmFormat::value($item->unidade),
                 'valor_unitario' => FarmFormat::money($item->valor_unitario),
                 'valor_total' => FarmFormat::money($item->valor_total),
@@ -173,34 +182,34 @@ class EntradaNfService
                 'p.despesa_id',
                 'ct.nome as conta_nome',
             ])
-            ->map(fn ($parcela) => (object)[
-                'numero' => (int)$parcela->parcela_numero,
+            ->map(fn ($parcela) => (object) [
+                'numero' => (int) $parcela->parcela_numero,
                 'vencimento' => FarmFormat::date($parcela->data_vencimento),
                 'valor' => FarmFormat::money($parcela->valor),
-                'forma' => $this->formaLabel((string)$parcela->forma_pagamento),
+                'forma' => $this->formaLabel((string) $parcela->forma_pagamento),
                 'conta' => FarmFormat::value($parcela->conta_nome),
-                'status_key' => (string)$parcela->status,
-                'status' => $this->statusParcelaLabel((string)$parcela->status),
-                'despesa_id' => $parcela->despesa_id ? (int)$parcela->despesa_id : null,
+                'status_key' => (string) $parcela->status,
+                'status' => $this->statusParcelaLabel((string) $parcela->status),
+                'despesa_id' => $parcela->despesa_id ? (int) $parcela->despesa_id : null,
             ]);
 
-        $somaItens = (float)DB::table('nf_entrada_itens')
+        $somaItens = (float) DB::table('nf_entrada_itens')
             ->where('nf_entrada_id', $entradaId)
             ->sum('total_liquido');
-        $somaParcelas = (float)DB::table('nf_entrada_parcelas')
+        $somaParcelas = (float) DB::table('nf_entrada_parcelas')
             ->where('nf_entrada_id', $entradaId)
             ->where('status', '!=', 'cancelada')
             ->sum('valor');
 
-        $valorFinal = (float)$entrada->valor_financeiro_final;
+        $valorFinal = (float) $entrada->valor_financeiro_final;
 
         return [
             'activeModule' => 'fiscal',
             'title' => 'Entrada NF '.$this->numeroDocumento($entrada->numero, $entrada->serie),
-            'entrada' => (object)[
-                'id' => (int)$entrada->id,
+            'entrada' => (object) [
+                'id' => (int) $entrada->id,
                 'numero' => $this->numeroDocumento($entrada->numero, $entrada->serie),
-                'numero_raw' => (string)$entrada->numero,
+                'numero_raw' => (string) $entrada->numero,
                 'chave_acesso' => FarmFormat::value($entrada->chave_acesso),
                 'fornecedor' => FarmFormat::value($entrada->fornecedor),
                 'fornecedor_doc' => FarmFormat::value($entrada->fornecedor_doc),
@@ -213,9 +222,9 @@ class EntradaNfService
                 'valor_total' => FarmFormat::money($entrada->valor_total),
                 'valor_produtos' => FarmFormat::money($entrada->valor_produtos),
                 'valor_financeiro' => FarmFormat::money($entrada->valor_financeiro_final),
-                'status_key' => (string)$entrada->status,
-                'status' => $this->statusLabel((string)$entrada->status),
-                'financeiro_confirmado' => (bool)$entrada->financeiro_confirmado,
+                'status_key' => (string) $entrada->status,
+                'status' => $this->statusLabel((string) $entrada->status),
+                'financeiro_confirmado' => (bool) $entrada->financeiro_confirmado,
                 'observacoes_nota' => FarmFormat::value($entrada->observacoes_nota),
                 'observacoes_financeiras' => FarmFormat::value($entrada->observacoes_financeiras),
             ],
@@ -233,9 +242,9 @@ class EntradaNfService
                 ['label' => 'Valor financeiro', 'value' => FarmFormat::money($valorFinal), 'tone' => 'warning'],
                 ['label' => 'Soma itens', 'value' => FarmFormat::money($somaItens), 'tone' => abs($somaItens - $valorFinal) <= 0.10 ? 'success' : 'danger'],
                 ['label' => 'Soma parcelas', 'value' => FarmFormat::money($somaParcelas), 'tone' => abs($somaParcelas - $valorFinal) <= 0.10 ? 'success' : 'danger'],
-                ['label' => 'Parcelas', 'value' => (string)$parcelas->count(), 'tone' => 'success'],
+                ['label' => 'Parcelas', 'value' => (string) $parcelas->count(), 'tone' => 'success'],
             ],
-            'podeConcluir' => (string)$entrada->status !== 'concluida' && !(bool)$entrada->financeiro_confirmado,
+            'podeConcluir' => (string) $entrada->status !== 'concluida' && ! (bool) $entrada->financeiro_confirmado,
         ];
     }
 
@@ -244,7 +253,7 @@ class EntradaNfService
         DB::transaction(function () use ($propriedadeId, $entradaId, $dados): void {
             $entrada = $this->entradaEditavel($propriedadeId, $entradaId);
             $produto = null;
-            $produtoId = (int)($dados['produto_id'] ?? 0);
+            $produtoId = (int) ($dados['produto_id'] ?? 0);
 
             if ($produtoId > 0) {
                 $produto = DB::table('produtos')
@@ -253,17 +262,17 @@ class EntradaNfService
                     ->first();
             }
 
-            $descricaoNf = trim((string)($dados['descricao_nf'] ?? ''));
-            $descricaoGenerica = trim((string)($dados['descricao_generica'] ?? ''));
+            $descricaoNf = trim((string) ($dados['descricao_nf'] ?? ''));
+            $descricaoGenerica = trim((string) ($dados['descricao_generica'] ?? ''));
 
-            if (!$produto && $descricaoGenerica !== '') {
+            if (! $produto && $descricaoGenerica !== '') {
                 $produtoId = $this->criarProdutoPorItem($propriedadeId, $dados, $descricaoNf ?: $descricaoGenerica, $descricaoGenerica);
                 $produto = DB::table('produtos')->where('id', $produtoId)->first();
             }
 
             if ($produto) {
-                $descricaoGenerica = $descricaoGenerica ?: (string)$produto->descricao_generica;
-                $descricaoNf = $descricaoNf ?: (string)($produto->descricao_original_nf ?: $produto->descricao_generica);
+                $descricaoGenerica = $descricaoGenerica ?: (string) $produto->descricao_generica;
+                $descricaoNf = $descricaoNf ?: (string) ($produto->descricao_original_nf ?: $produto->descricao_generica);
             }
 
             if ($descricaoNf === '' || $descricaoGenerica === '') {
@@ -285,7 +294,7 @@ class EntradaNfService
                 $totalLiquido = max(0, $valorTotal - $desconto + $freteRateado + $valorIpi);
             }
 
-            $fiscal = (object)[
+            $fiscal = (object) [
                 'fiscal_validado' => 0,
                 'ncm' => $dados['ncm'] ?? ($produto->ncm ?? null),
                 'cst_icms' => $dados['cst_icms'] ?? ($produto->cst_icms ?? null),
@@ -298,11 +307,11 @@ class EntradaNfService
                 'produto_id' => $produtoId ?: null,
                 'descricao_nf' => $descricaoNf,
                 'descricao_generica' => $descricaoGenerica,
-                'descricao_detalhada' => trim((string)($dados['descricao_detalhada'] ?? '')) ?: null,
-                'descricao_interna' => trim((string)($dados['descricao_interna'] ?? '')) ?: null,
+                'descricao_detalhada' => trim((string) ($dados['descricao_detalhada'] ?? '')) ?: null,
+                'descricao_interna' => trim((string) ($dados['descricao_interna'] ?? '')) ?: null,
                 'descricao_uso' => $dados['descricao_uso'] ?? 'generica',
                 'quantidade' => $quantidade,
-                'unidade' => trim((string)($dados['unidade'] ?? '')) ?: ($produto->unidade_medida ?? 'un'),
+                'unidade' => trim((string) ($dados['unidade'] ?? '')) ?: ($produto->unidade_medida ?? 'un'),
                 'valor_unitario' => $valorUnitario,
                 'valor_total' => $valorTotal,
                 'desconto' => $desconto,
@@ -315,8 +324,8 @@ class EntradaNfService
                 'valor_cofins' => $this->money($dados['valor_cofins'] ?? 0),
                 'valor_ipi' => $valorIpi,
                 'total_liquido' => $totalLiquido,
-                'centro_custo' => trim((string)($dados['centro_custo'] ?? '')) ?: null,
-                'fazenda_unidade' => trim((string)($dados['fazenda_unidade'] ?? '')) ?: null,
+                'centro_custo' => trim((string) ($dados['centro_custo'] ?? '')) ?: null,
+                'fazenda_unidade' => trim((string) ($dados['fazenda_unidade'] ?? '')) ?: null,
                 'safra_id' => ($dados['safra_id'] ?? null) ?: $entrada->safra_id,
                 'categoria_id' => ($dados['categoria_id'] ?? null) ?: $entrada->categoria_id,
                 'fiscal_validado' => $this->itemFiscalOk($fiscal) ? 1 : 0,
@@ -330,7 +339,7 @@ class EntradaNfService
             $entrada = $this->entradaEditavel($propriedadeId, $entradaId);
             $quantidade = max(1, $quantidade);
             $primeiroVencimento = $primeiroVencimento ?: now()->toDateString();
-            $valorFinal = (float)$entrada->valor_financeiro_final;
+            $valorFinal = (float) $entrada->valor_financeiro_final;
             $valorParcela = round($valorFinal / $quantidade, 2);
 
             DB::table('nf_entrada_parcelas')
@@ -366,11 +375,11 @@ class EntradaNfService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$entrada) {
+            if (! $entrada) {
                 throw new RuntimeException('Entrada de NF nao encontrada.');
             }
 
-            if ((string)$entrada->status === 'concluida' || (bool)$entrada->financeiro_confirmado) {
+            if ((string) $entrada->status === 'concluida' || (bool) $entrada->financeiro_confirmado) {
                 throw new RuntimeException('Entrada de NF ja concluida.');
             }
 
@@ -411,7 +420,7 @@ class EntradaNfService
 
             $totalParcelas = $parcelas->count();
             foreach ($parcelas as $parcela) {
-                if (!empty($parcela->despesa_id)) {
+                if (! empty($parcela->despesa_id)) {
                     continue;
                 }
 
@@ -422,21 +431,21 @@ class EntradaNfService
                     'conta_id' => $parcela->conta_id ?: $entrada->conta_id,
                     'descricao' => 'NF '.$entrada->numero.' - '.$entrada->fornecedor,
                     'fornecedor' => $entrada->fornecedor,
-                    'valor_total' => (float)$parcela->valor,
+                    'valor_total' => (float) $parcela->valor,
                     'data_lancamento' => $entrada->data_entrada,
                     'data_vencimento' => $parcela->data_vencimento,
                     'status_pagamento' => 'pendente',
                     'status_aprovacao' => 'pendente',
                     'forma_pagamento' => $parcela->forma_pagamento,
                     'numero_parcelas' => $totalParcelas,
-                    'parcela_atual' => (int)$parcela->parcela_numero,
+                    'parcela_atual' => (int) $parcela->parcela_numero,
                     'nota_fiscal' => $entrada->numero,
                     'observacoes' => 'Gerado pela entrada de NF #'.$entradaId,
                     'usuario_id' => $usuarioId,
                     'criado_em' => now(),
                 ]));
 
-                $despesaId = (int)DB::getPdo()->lastInsertId();
+                $despesaId = (int) DB::getPdo()->lastInsertId();
                 DB::table('nf_entrada_parcelas')
                     ->where('id', $parcela->id)
                     ->where('nf_entrada_id', $entradaId)
@@ -497,20 +506,20 @@ class EntradaNfService
             ->orderByDesc('nf.id')
             ->limit(180)
             ->get()
-            ->map(fn ($entrada) => (object)[
-                'id' => (int)$entrada->id,
+            ->map(fn ($entrada) => (object) [
+                'id' => (int) $entrada->id,
                 'numero' => $this->numeroDocumento($entrada->numero, $entrada->serie),
                 'fornecedor' => FarmFormat::value($entrada->fornecedor),
                 'fornecedor_doc' => FarmFormat::value($entrada->fornecedor_doc),
                 'data_entrada' => FarmFormat::date($entrada->data_entrada),
-                'valor_raw' => (float)$entrada->valor_financeiro_final,
+                'valor_raw' => (float) $entrada->valor_financeiro_final,
                 'valor' => FarmFormat::money($entrada->valor_financeiro_final),
-                'status_key' => (string)$entrada->status,
-                'status' => $this->statusLabel((string)$entrada->status),
+                'status_key' => (string) $entrada->status,
+                'status' => $this->statusLabel((string) $entrada->status),
                 'categoria' => FarmFormat::value($entrada->categoria_nome),
                 'safra' => FarmFormat::value($entrada->safra_nome),
-                'itens' => (int)$entrada->itens,
-                'parcelas' => (int)$entrada->parcelas,
+                'itens' => (int) $entrada->itens,
+                'parcelas' => (int) $entrada->parcelas,
             ]);
     }
 
@@ -565,11 +574,11 @@ class EntradaNfService
             ->lockForUpdate()
             ->first();
 
-        if (!$entrada) {
+        if (! $entrada) {
             throw new RuntimeException('Entrada de NF nao encontrada.');
         }
 
-        if ((string)$entrada->status === 'concluida' || (bool)$entrada->financeiro_confirmado) {
+        if ((string) $entrada->status === 'concluida' || (bool) $entrada->financeiro_confirmado) {
             throw new RuntimeException('Entrada de NF ja concluida. Nao e possivel alterar itens ou parcelas.');
         }
 
@@ -580,24 +589,24 @@ class EntradaNfService
     {
         DB::table('produtos')->insert($this->filtrarColunas('produtos', [
             'propriedade_id' => $propriedadeId,
-            'codigo_interno' => trim((string)($dados['codigo_interno'] ?? '')) ?: null,
-            'codigo_fornecedor' => trim((string)($dados['codigo_fornecedor'] ?? '')) ?: null,
+            'codigo_interno' => trim((string) ($dados['codigo_interno'] ?? '')) ?: null,
+            'codigo_fornecedor' => trim((string) ($dados['codigo_fornecedor'] ?? '')) ?: null,
             'descricao_original_nf' => $descricaoNf,
             'descricao_generica' => $descricaoGenerica,
-            'descricao_detalhada' => trim((string)($dados['descricao_detalhada'] ?? '')) ?: null,
-            'descricao_interna' => trim((string)($dados['descricao_interna'] ?? '')) ?: null,
-            'unidade_medida' => trim((string)($dados['unidade'] ?? '')) ?: 'un',
+            'descricao_detalhada' => trim((string) ($dados['descricao_detalhada'] ?? '')) ?: null,
+            'descricao_interna' => trim((string) ($dados['descricao_interna'] ?? '')) ?: null,
+            'unidade_medida' => trim((string) ($dados['unidade'] ?? '')) ?: 'un',
             'categoria_id' => ($dados['categoria_id'] ?? null) ?: null,
-            'grupo' => trim((string)($dados['grupo'] ?? '')) ?: null,
-            'subgrupo' => trim((string)($dados['subgrupo'] ?? '')) ?: null,
-            'marca' => trim((string)($dados['marca'] ?? '')) ?: null,
+            'grupo' => trim((string) ($dados['grupo'] ?? '')) ?: null,
+            'subgrupo' => trim((string) ($dados['subgrupo'] ?? '')) ?: null,
+            'marca' => trim((string) ($dados['marca'] ?? '')) ?: null,
             'ativo' => 1,
-            'ncm' => trim((string)($dados['ncm'] ?? '')) ?: null,
-            'cest' => trim((string)($dados['cest'] ?? '')) ?: null,
-            'cfop_entrada' => trim((string)($dados['cfop_entrada'] ?? '')) ?: null,
-            'cst_icms' => trim((string)($dados['cst_icms'] ?? '')) ?: null,
-            'cst_pis' => trim((string)($dados['cst_pis'] ?? '')) ?: null,
-            'cst_cofins' => trim((string)($dados['cst_cofins'] ?? '')) ?: null,
+            'ncm' => trim((string) ($dados['ncm'] ?? '')) ?: null,
+            'cest' => trim((string) ($dados['cest'] ?? '')) ?: null,
+            'cfop_entrada' => trim((string) ($dados['cfop_entrada'] ?? '')) ?: null,
+            'cst_icms' => trim((string) ($dados['cst_icms'] ?? '')) ?: null,
+            'cst_pis' => trim((string) ($dados['cst_pis'] ?? '')) ?: null,
+            'cst_cofins' => trim((string) ($dados['cst_cofins'] ?? '')) ?: null,
             'aliquota_icms' => $this->decimal($dados['aliquota_icms'] ?? 0),
             'aliquota_pis' => $this->decimal($dados['aliquota_pis'] ?? 0),
             'aliquota_cofins' => $this->decimal($dados['aliquota_cofins'] ?? 0),
@@ -605,7 +614,7 @@ class EntradaNfService
             'criado_em' => now(),
         ]));
 
-        return (int)DB::getPdo()->lastInsertId();
+        return (int) DB::getPdo()->lastInsertId();
     }
 
     private function sincronizarPatrimonio(int $entradaId, array $dados, int $propriedadeId): void
@@ -620,7 +629,7 @@ class EntradaNfService
         }
 
         $tipo = $dados['patrimonio_tipo'] ?? 'outro';
-        if (!in_array($tipo, ['trator', 'colheitadeira', 'plantadeira', 'pulverizador', 'caminhao', 'implemento', 'outro'], true)) {
+        if (! in_array($tipo, ['trator', 'colheitadeira', 'plantadeira', 'pulverizador', 'caminhao', 'implemento', 'outro'], true)) {
             $tipo = 'outro';
         }
 
@@ -638,16 +647,16 @@ class EntradaNfService
             'valor_aquisicao' => $valorFinanceiro,
             'data_aquisicao' => $dados['data_entrada'],
             'fornecedor' => trim($dados['fornecedor']),
-            'fornecedor_doc' => preg_replace('/\D+/', '', (string)($dados['fornecedor_doc'] ?? '')) ?: null,
+            'fornecedor_doc' => preg_replace('/\D+/', '', (string) ($dados['fornecedor_doc'] ?? '')) ?: null,
             'nota_fiscal_numero' => trim($dados['numero']),
             'nota_fiscal_serie' => trim($dados['serie'] ?? '') ?: null,
-            'nota_fiscal_chave' => preg_replace('/\D+/', '', (string)($dados['chave_acesso'] ?? '')) ?: null,
+            'nota_fiscal_chave' => preg_replace('/\D+/', '', (string) ($dados['chave_acesso'] ?? '')) ?: null,
             'nf_entrada_id' => $entradaId,
-            'controla_horimetro' => !empty($dados['patrimonio_controla_horimetro']) ? 1 : 0,
-            'controla_odometro' => !empty($dados['patrimonio_controla_odometro']) ? 1 : 0,
+            'controla_horimetro' => ! empty($dados['patrimonio_controla_horimetro']) ? 1 : 0,
+            'controla_odometro' => ! empty($dados['patrimonio_controla_odometro']) ? 1 : 0,
             'ativo' => 1,
         ]));
-        $patrimonioId = (int)DB::getPdo()->lastInsertId();
+        $patrimonioId = (int) DB::getPdo()->lastInsertId();
 
         if (Schema::hasColumn('nf_entradas', 'patrimonio_id')) {
             DB::table('nf_entradas')
@@ -659,25 +668,26 @@ class EntradaNfService
 
     private function money($value): float
     {
-        $value = trim((string)$value);
+        $value = trim((string) $value);
         if (str_contains($value, ',')) {
             $value = str_replace('.', '', $value);
             $value = str_replace(',', '.', $value);
         }
 
-        return max(0.0, (float)$value);
+        return max(0.0, (float) $value);
     }
 
     private function decimal($value): float
     {
-        $value = str_replace(',', '.', trim((string)$value));
-        return max(0.0, (float)$value);
+        $value = str_replace(',', '.', trim((string) $value));
+
+        return max(0.0, (float) $value);
     }
 
     private function numeroDocumento(?string $numero, ?string $serie): string
     {
         $numero = FarmFormat::value($numero);
-        if (!$serie) {
+        if (! $serie) {
             return $numero;
         }
 
@@ -698,15 +708,15 @@ class EntradaNfService
         }
 
         foreach ($itens as $item) {
-            if (!$this->itemFiscalOk($item)) {
+            if (! $this->itemFiscalOk($item)) {
                 $descricao = $item->descricao_generica ?: $item->descricao_nf;
                 $erros[] = 'Produto "'.$descricao.'" sem NCM/CST ICMS/PIS/COFINS.';
             }
         }
 
-        $valorFinal = (float)$entrada->valor_financeiro_final;
-        $somaItens = (float)$itens->sum(fn ($item) => (float)$item->total_liquido);
-        $somaParcelas = (float)$parcelas->sum(fn ($parcela) => (float)$parcela->valor);
+        $valorFinal = (float) $entrada->valor_financeiro_final;
+        $somaItens = (float) $itens->sum(fn ($item) => (float) $item->total_liquido);
+        $somaParcelas = (float) $parcelas->sum(fn ($parcela) => (float) $parcela->valor);
 
         if (abs($somaItens - $valorFinal) > 0.10) {
             $erros[] = 'A soma liquida dos itens ('.FarmFormat::money($somaItens).') precisa bater com o valor financeiro final ('.FarmFormat::money($valorFinal).').';
@@ -725,14 +735,14 @@ class EntradaNfService
 
     private function itemFiscalOk(object $item): bool
     {
-        if (!empty($item->fiscal_validado)) {
+        if (! empty($item->fiscal_validado)) {
             return true;
         }
 
-        return trim((string)($item->ncm ?? '')) !== ''
-            && trim((string)($item->cst_icms ?? '')) !== ''
-            && trim((string)($item->cst_pis ?? '')) !== ''
-            && trim((string)($item->cst_cofins ?? '')) !== '';
+        return trim((string) ($item->ncm ?? '')) !== ''
+            && trim((string) ($item->cst_icms ?? '')) !== ''
+            && trim((string) ($item->cst_pis ?? '')) !== ''
+            && trim((string) ($item->cst_cofins ?? '')) !== '';
     }
 
     private function statusParcelaLabel(string $status): string
@@ -760,7 +770,7 @@ class EntradaNfService
     private function filtrarColunas(string $table, array $payload): array
     {
         return collect($payload)
-            ->filter(fn ($value, $column) => Schema::hasColumn($table, (string)$column))
+            ->filter(fn ($value, $column) => Schema::hasColumn($table, (string) $column))
             ->all();
     }
 
@@ -777,8 +787,8 @@ class EntradaNfService
                 'ip' => request()->ip(),
                 'criado_em' => now(),
             ]);
-        } catch (Throwable) {
-            // Auditoria nao deve impedir a operacao fiscal/financeira.
+        } catch (Throwable $exception) {
+            report($exception);
         }
     }
 }

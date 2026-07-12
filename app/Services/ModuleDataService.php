@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Domain\Finance\FinancialMetrics;
 use App\Support\FarmContext;
 use App\Support\FarmFormat;
 use App\Support\ModuleCatalog;
@@ -10,13 +11,15 @@ use Illuminate\Support\Facades\Schema;
 
 class ModuleDataService
 {
+    public function __construct(private readonly FinancialMetrics $metrics) {}
+
     public function dashboardData(): array
     {
         $propertyId = $this->propertyId();
         $property = $this->property();
         $safra = $this->activeSafra($propertyId);
         $safraId = $safra?->id;
-        $year = (int)date('Y');
+        $year = (int) date('Y');
 
         $totalDespesas = $this->sumDespesaSafra($propertyId, $safraId);
         $despesasPagas = $this->sumDespesaSafra($propertyId, $safraId, 'pago');
@@ -25,7 +28,7 @@ class ModuleDataService
         $receitasRecebidas = $this->sumReceitaSafra($propertyId, $safraId, 'recebido');
         $receitasAReceber = max(0, $totalReceitas - $receitasRecebidas);
 
-        $areaPlantada = (float)($safra?->area_plantada ?? 0);
+        $areaPlantada = (float) ($safra?->area_plantada ?? 0);
         if ($areaPlantada <= 0) {
             $areaPlantada = $this->sumPropertySafe('talhoes', 'area', $propertyId, 'ativo=1');
         }
@@ -34,7 +37,7 @@ class ModuleDataService
         $orcamento = $this->orcamentoResumo($propertyId, $safraId);
         $saldoSafra = $totalReceitas - $totalDespesas;
         $resultadoProjetado = $orcamento['receitaProjetada'] - $orcamento['despesaProjetada'];
-        $cotacaoSoja = (float)($property->cotacao_soja ?? 0);
+        $cotacaoSoja = (float) ($property->cotacao_soja ?? 0);
         $budgetRows = $this->budgetRows($propertyId, $safraId);
 
         return [
@@ -51,6 +54,7 @@ class ModuleDataService
             'totalReceitas' => $totalReceitas,
             'receitasRecebidas' => $receitasRecebidas,
             'receitasAReceber' => $receitasAReceber,
+            'saldoFinanceiro' => $receitasRecebidas - $despesasPagas,
             'saldoSafra' => $saldoSafra,
             'saldoContas' => $this->saldoContas($propertyId),
             'margem' => $totalReceitas > 0 ? ($saldoSafra / $totalReceitas) * 100 : 0,
@@ -86,12 +90,12 @@ class ModuleDataService
             'cards' => [
                 ['label' => 'Despesas pagas', 'value' => $this->money($despesasPagas), 'tone' => 'danger'],
                 ['label' => 'Receitas recebidas', 'value' => $this->money($receitasRecebidas), 'tone' => 'success'],
-                ['label' => 'Pedidos fiscais', 'value' => (string)$this->countProperty('fiscal_orders', $propertyId), 'tone' => 'success'],
-                ['label' => 'Patrimônios', 'value' => (string)$this->countProperty('maquinas', $propertyId), 'tone' => 'success'],
-                ['label' => 'Talhões', 'value' => (string)$this->countProperty('talhoes', $propertyId), 'tone' => 'success'],
-                ['label' => 'Produtos', 'value' => (string)$this->countProperty('produtos', $propertyId), 'tone' => 'success'],
-                ['label' => 'Notas de entrada', 'value' => (string)$this->countProperty('nf_entradas', $propertyId), 'tone' => 'success'],
-                ['label' => 'Colheitas', 'value' => (string)$this->countProperty('colheita_talhoes', $propertyId), 'tone' => 'success'],
+                ['label' => 'Pedidos fiscais', 'value' => (string) $this->countProperty('fiscal_orders', $propertyId), 'tone' => 'success'],
+                ['label' => 'Patrimônios', 'value' => (string) $this->countProperty('maquinas', $propertyId), 'tone' => 'success'],
+                ['label' => 'Talhões', 'value' => (string) $this->countProperty('talhoes', $propertyId), 'tone' => 'success'],
+                ['label' => 'Produtos', 'value' => (string) $this->countProperty('produtos', $propertyId), 'tone' => 'success'],
+                ['label' => 'Notas de entrada', 'value' => (string) $this->countProperty('nf_entradas', $propertyId), 'tone' => 'success'],
+                ['label' => 'Colheitas', 'value' => (string) $this->countProperty('colheita_talhoes', $propertyId), 'tone' => 'success'],
             ],
             'recentExpenses' => $this->recentExpenses($propertyId),
             'recentOrders' => $this->recentOrders($propertyId),
@@ -102,7 +106,7 @@ class ModuleDataService
     {
         $propertyId = $this->propertyId();
         $config = ModuleCatalog::config($module);
-        abort_if(!$config, 404);
+        abort_if(! $config, 404);
 
         if (($config['type'] ?? '') === 'financeiro') {
             return $this->financeiroData($propertyId, $config);
@@ -198,7 +202,7 @@ class ModuleDataService
 
     private function activeSafra(int $propertyId): ?object
     {
-        if (!Schema::hasTable('safras')) {
+        if (! Schema::hasTable('safras')) {
             return null;
         }
 
@@ -213,13 +217,13 @@ class ModuleDataService
 
     private function sumDespesaSafra(int $propertyId, ?int $safraId, ?string $pagamento = null): float
     {
-        if (!Schema::hasTable('despesas')) {
+        if (! $safraId || ! Schema::hasTable('despesas')) {
             return 0;
         }
 
-        return (float)DB::table('despesas')
+        return (float) DB::table('despesas')
             ->where('propriedade_id', $propertyId)
-            ->when($safraId, fn ($query) => $query->where('safra_id', $safraId))
+            ->where('safra_id', $safraId)
             ->when($pagamento, fn ($query, $status) => $query->where('status_pagamento', $status))
             ->where('status_pagamento', '!=', 'cancelado')
             ->where('status_aprovacao', 'aprovada')
@@ -228,13 +232,13 @@ class ModuleDataService
 
     private function sumReceitaSafra(int $propertyId, ?int $safraId, ?string $status = null): float
     {
-        if (!Schema::hasTable('receitas')) {
+        if (! $safraId || ! Schema::hasTable('receitas')) {
             return 0;
         }
 
-        return (float)DB::table('receitas')
+        return (float) DB::table('receitas')
             ->where('propriedade_id', $propertyId)
-            ->when($safraId, fn ($query) => $query->where('safra_id', $safraId))
+            ->where('safra_id', $safraId)
             ->when($status, fn ($query, $value) => $query->where('status', $value))
             ->where('status', '!=', 'cancelado')
             ->sum('valor_total');
@@ -242,7 +246,7 @@ class ModuleDataService
 
     private function colheitaResumo(int $propertyId, ?int $safraId): array
     {
-        if (!$safraId || !Schema::hasTable('colheita_talhoes')) {
+        if (! $safraId || ! Schema::hasTable('colheita_talhoes')) {
             return ['sacas' => 0, 'area' => 0];
         }
 
@@ -252,12 +256,12 @@ class ModuleDataService
             ->selectRaw('COALESCE(SUM(sacas),0) as sacas, COALESCE(SUM(area_colhida),0) as area')
             ->first();
 
-        return ['sacas' => (float)($row->sacas ?? 0), 'area' => (float)($row->area ?? 0)];
+        return ['sacas' => (float) ($row->sacas ?? 0), 'area' => (float) ($row->area ?? 0)];
     }
 
     private function orcamentoResumo(int $propertyId, ?int $safraId): array
     {
-        if (!$safraId || !Schema::hasTable('financeiro_projecoes')) {
+        if (! $safraId || ! Schema::hasTable('financeiro_projecoes')) {
             return ['receitaProjetada' => 0, 'despesaProjetada' => 0];
         }
 
@@ -268,13 +272,13 @@ class ModuleDataService
             ->groupBy('tipo_lancamento')
             ->pluck('total', 'tipo_lancamento');
 
-        $despesa = (float)($rows['despesa'] ?? 0);
+        $despesa = (float) ($rows['despesa'] ?? 0);
         if ($despesa <= 0 && Schema::hasTable('orcamentos')) {
-            $despesa = (float)DB::table('orcamentos')->where('safra_id', $safraId)->sum('valor_previsto');
+            $despesa = (float) DB::table('orcamentos')->where('safra_id', $safraId)->sum('valor_previsto');
         }
 
         return [
-            'receitaProjetada' => (float)($rows['receita'] ?? 0),
+            'receitaProjetada' => (float) ($rows['receita'] ?? 0),
             'despesaProjetada' => $despesa,
         ];
     }
@@ -303,7 +307,7 @@ class ModuleDataService
 
     private function budgetRows(int $propertyId, ?int $safraId)
     {
-        if (!$safraId || !Schema::hasTable('financeiro_projecoes') || !Schema::hasTable('categorias')) {
+        if (! $safraId || ! Schema::hasTable('financeiro_projecoes') || ! Schema::hasTable('categorias')) {
             return collect();
         }
 
@@ -319,7 +323,7 @@ class ModuleDataService
             ->get()
             ->map(function ($row) use ($propertyId, $safraId) {
                 $row->realizado = Schema::hasTable('despesas')
-                    ? (float)DB::table('despesas')
+                    ? (float) DB::table('despesas')
                         ->where('propriedade_id', $propertyId)
                         ->where('safra_id', $safraId)
                         ->where('categoria_id', $row->id)
@@ -327,10 +331,11 @@ class ModuleDataService
                         ->where('status_aprovacao', 'aprovada')
                         ->sum('valor_total')
                     : 0;
-                return $row;
+
+                return $this->withBudgetPerformance($row);
             });
 
-        if ($rows->isNotEmpty() || !Schema::hasTable('orcamentos')) {
+        if ($rows->isNotEmpty() || ! Schema::hasTable('orcamentos')) {
             return $rows;
         }
 
@@ -343,7 +348,7 @@ class ModuleDataService
             ->get()
             ->map(function ($row) use ($propertyId, $safraId) {
                 $row->realizado = Schema::hasTable('despesas')
-                    ? (float)DB::table('despesas')
+                    ? (float) DB::table('despesas')
                         ->where('propriedade_id', $propertyId)
                         ->where('safra_id', $safraId)
                         ->where('categoria_id', $row->id)
@@ -351,13 +356,27 @@ class ModuleDataService
                         ->where('status_aprovacao', 'aprovada')
                         ->sum('valor_total')
                     : 0;
-                return $row;
+
+                return $this->withBudgetPerformance($row);
             });
+    }
+
+    private function withBudgetPerformance(object $row): object
+    {
+        $performance = $this->metrics->budgetPerformance($row->valor_previsto, $row->realizado);
+        $row->valor_previsto = $performance['planned'];
+        $row->realizado = $performance['actual'];
+        $row->desvio = $performance['variance'];
+        $row->percentual_execucao = $performance['percentage'];
+        $row->progresso_execucao = $performance['progress'];
+        $row->desvio_classe = $performance['variance_tone'];
+
+        return $row;
     }
 
     private function talhoesResultado(int $propertyId, ?int $safraId)
     {
-        if (!$safraId || !Schema::hasTable('talhoes') || !Schema::hasTable('colheita_talhoes')) {
+        if (! $safraId || ! Schema::hasTable('talhoes') || ! Schema::hasTable('colheita_talhoes')) {
             return collect();
         }
 
@@ -376,7 +395,7 @@ class ModuleDataService
 
     private function proximasAtividades(int $propertyId, ?int $safraId)
     {
-        if (!$safraId || !Schema::hasTable('atividades_campo')) {
+        if (! $safraId || ! Schema::hasTable('atividades_campo')) {
             return collect();
         }
 
@@ -392,16 +411,20 @@ class ModuleDataService
 
     private function receitasPorComprador(int $propertyId, ?int $safraId)
     {
-        if (!$safraId || !Schema::hasTable('receitas')) {
+        if (! $safraId || ! Schema::hasTable('receitas')) {
             return collect();
         }
 
-        return DB::table('receitas')
+        $normalizedReceitas = DB::table('receitas')
             ->where('propriedade_id', $propertyId)
             ->where('safra_id', $safraId)
             ->where('status', '!=', 'cancelado')
-            ->selectRaw("COALESCE(NULLIF(TRIM(comprador),''),'Sem comprador') as nome, COALESCE(SUM(valor_total),0) as total")
-            ->groupByRaw("COALESCE(NULLIF(TRIM(comprador),''),'Sem comprador')")
+            ->selectRaw("COALESCE(NULLIF(TRIM(comprador), ''), 'Sem comprador') as comprador_normalizado, valor_total");
+
+        return DB::query()
+            ->fromSub($normalizedReceitas, 'receitas_normalizadas')
+            ->selectRaw('comprador_normalizado as nome, COALESCE(SUM(valor_total), 0) as total')
+            ->groupBy('comprador_normalizado')
             ->orderByDesc('total')
             ->limit(6)
             ->get();
@@ -409,7 +432,7 @@ class ModuleDataService
 
     private function contasSaldoRows(int $propertyId)
     {
-        if (!Schema::hasTable('contas')) {
+        if (! Schema::hasTable('contas')) {
             return collect();
         }
 
@@ -419,7 +442,8 @@ class ModuleDataService
             ->orderBy('nome')
             ->get()
             ->map(function ($conta) {
-                $conta->saldo_atual = $this->saldoConta((int)$conta->id, (float)($conta->saldo_inicial ?? 0));
+                $conta->saldo_atual = $this->saldoConta((int) $conta->id, (float) ($conta->saldo_inicial ?? 0));
+
                 return $conta;
             })
             ->sortByDesc('saldo_atual')
@@ -429,7 +453,7 @@ class ModuleDataService
 
     private function contratosResumo(int $propertyId, ?int $safraId): array
     {
-        if (!$safraId || !Schema::hasTable('contratos')) {
+        if (! $safraId || ! Schema::hasTable('contratos')) {
             return ['contratado' => 0, 'entregue' => 0];
         }
 
@@ -437,11 +461,11 @@ class ModuleDataService
             ->where('propriedade_id', $propertyId)
             ->where('safra_id', $safraId)
             ->get(['id', 'quantidade']);
-        $contratado = (float)$contratos->sum('quantidade');
+        $contratado = (float) $contratos->sum('quantidade');
         $entregue = 0;
 
         if (Schema::hasTable('contrato_entregas') && $contratos->isNotEmpty()) {
-            $entregue = (float)DB::table('contrato_entregas')
+            $entregue = (float) DB::table('contrato_entregas')
                 ->whereIn('contrato_id', $contratos->pluck('id')->all())
                 ->sum('quantidade');
         }
@@ -451,22 +475,23 @@ class ModuleDataService
 
     private function saldoContas(int $propertyId): float
     {
-        return (float)$this->contasSaldoRows($propertyId)->sum('saldo_atual');
+        return (float) $this->contasSaldoRows($propertyId)->sum('saldo_atual');
     }
 
     private function saldoConta(int $contaId, float $saldoInicial): float
     {
         $saldo = $saldoInicial;
         if (Schema::hasTable('receitas')) {
-            $saldo += (float)DB::table('receitas')->where('conta_id', $contaId)->where('status', 'recebido')->sum('valor_total');
+            $saldo += (float) DB::table('receitas')->where('conta_id', $contaId)->where('status', 'recebido')->sum('valor_total');
         }
         if (Schema::hasTable('despesas')) {
-            $saldo -= (float)DB::table('despesas')->where('conta_id', $contaId)->where('status_pagamento', 'pago')->where('status_aprovacao', 'aprovada')->sum('valor_total');
+            $saldo -= (float) DB::table('despesas')->where('conta_id', $contaId)->where('status_pagamento', 'pago')->where('status_aprovacao', 'aprovada')->sum('valor_total');
         }
         if (Schema::hasTable('transferencias')) {
-            $saldo -= (float)DB::table('transferencias')->where('conta_origem_id', $contaId)->sum('valor');
-            $saldo += (float)DB::table('transferencias')->where('conta_destino_id', $contaId)->sum('valor');
+            $saldo -= (float) DB::table('transferencias')->where('conta_origem_id', $contaId)->sum('valor');
+            $saldo += (float) DB::table('transferencias')->where('conta_destino_id', $contaId)->sum('valor');
         }
+
         return $saldo;
     }
 
@@ -474,7 +499,7 @@ class ModuleDataService
     {
         $alertas = [];
         foreach ($budgetRows as $row) {
-            if ((float)$row->valor_previsto > 0 && (float)$row->realizado > (float)$row->valor_previsto) {
+            if ((float) $row->valor_previsto > 0 && (float) $row->realizado > (float) $row->valor_previsto) {
                 $alertas[] = [
                     'icon' => 'bi-exclamation-triangle',
                     'title' => $row->nome.' estourou o orçamento',
@@ -495,7 +520,7 @@ class ModuleDataService
 
     private function recentExpenses(int $propertyId)
     {
-        if (!Schema::hasTable('despesas')) {
+        if (! Schema::hasTable('despesas')) {
             return collect();
         }
 
@@ -509,7 +534,7 @@ class ModuleDataService
 
     private function recentOrders(int $propertyId)
     {
-        if (!Schema::hasTable('fiscal_orders')) {
+        if (! Schema::hasTable('fiscal_orders')) {
             return collect();
         }
 
@@ -527,17 +552,17 @@ class ModuleDataService
             'financeiro' => [
                 ['label' => 'Despesas', 'value' => $this->money($this->sumProperty('despesas', 'valor_total', $propertyId, "status_pagamento!='cancelado'")), 'tone' => 'danger'],
                 ['label' => 'Receitas', 'value' => $this->money($this->sumProperty('receitas', 'valor_total', $propertyId, "status!='cancelado'")), 'tone' => 'success'],
-                ['label' => 'Pendentes', 'value' => (string)$this->countWhere('despesas', $propertyId, ['status_pagamento' => 'pendente']), 'tone' => 'warning'],
-                ['label' => 'Pagas', 'value' => (string)$this->countWhere('despesas', $propertyId, ['status_pagamento' => 'pago']), 'tone' => 'success'],
+                ['label' => 'Pendentes', 'value' => (string) $this->countWhere('despesas', $propertyId, ['status_pagamento' => 'pendente']), 'tone' => 'warning'],
+                ['label' => 'Pagas', 'value' => (string) $this->countWhere('despesas', $propertyId, ['status_pagamento' => 'pago']), 'tone' => 'success'],
             ],
             'fiscal' => [
-                ['label' => 'Entradas NF', 'value' => (string)$this->countProperty('nf_entradas', $propertyId), 'tone' => 'success'],
-                ['label' => 'Notas fiscais', 'value' => (string)$this->countProperty('notas_fiscais', $propertyId), 'tone' => 'success'],
-                ['label' => 'Pedidos', 'value' => (string)$this->countProperty('fiscal_orders', $propertyId), 'tone' => 'success'],
-                ['label' => 'Produtos fiscais', 'value' => (string)$this->countProperty('produtos', $propertyId), 'tone' => 'success'],
+                ['label' => 'Entradas NF', 'value' => (string) $this->countProperty('nf_entradas', $propertyId), 'tone' => 'success'],
+                ['label' => 'Notas fiscais', 'value' => (string) $this->countProperty('notas_fiscais', $propertyId), 'tone' => 'success'],
+                ['label' => 'Pedidos', 'value' => (string) $this->countProperty('fiscal_orders', $propertyId), 'tone' => 'success'],
+                ['label' => 'Produtos fiscais', 'value' => (string) $this->countProperty('produtos', $propertyId), 'tone' => 'success'],
             ],
             default => [
-                ['label' => 'Registros', 'value' => (string)$this->countProperty(ModuleCatalog::config($module)['table'], $propertyId, ModuleCatalog::config($module)['property_scoped'] ?? true), 'tone' => 'success'],
+                ['label' => 'Registros', 'value' => (string) $this->countProperty(ModuleCatalog::config($module)['table'], $propertyId, ModuleCatalog::config($module)['property_scoped'] ?? true), 'tone' => 'success'],
                 ['label' => 'Propriedade', 'value' => $this->property()->nome ?? 'Atual', 'tone' => 'success'],
                 ['label' => 'Status', 'value' => 'Migrado', 'tone' => 'success'],
                 ['label' => 'Base', 'value' => 'Laravel', 'tone' => 'success'],
@@ -557,7 +582,7 @@ class ModuleDataService
 
     private function countProperty(string $table, int $propertyId, bool $propertyScoped = true): int
     {
-        if (!Schema::hasTable($table)) {
+        if (! Schema::hasTable($table)) {
             return 0;
         }
 
@@ -565,12 +590,13 @@ class ModuleDataService
         if ($propertyScoped && Schema::hasColumn($table, 'propriedade_id')) {
             $query->where('propriedade_id', $propertyId);
         }
-        return (int)$query->count();
+
+        return (int) $query->count();
     }
 
     private function countWhere(string $table, int $propertyId, array $where): int
     {
-        if (!Schema::hasTable($table)) {
+        if (! Schema::hasTable($table)) {
             return 0;
         }
 
@@ -583,16 +609,17 @@ class ModuleDataService
                 $query->where($column, $value);
             }
         }
-        return (int)$query->count();
+
+        return (int) $query->count();
     }
 
     private function countMonth(string $table, int $propertyId, string $dateColumn): int
     {
-        if (!Schema::hasTable($table) || !Schema::hasColumn($table, $dateColumn)) {
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, $dateColumn)) {
             return 0;
         }
 
-        return (int)DB::table($table)
+        return (int) DB::table($table)
             ->where('propriedade_id', $propertyId)
             ->whereBetween($dateColumn, [date('Y-m-01'), date('Y-m-t')])
             ->count();
@@ -605,7 +632,7 @@ class ModuleDataService
 
     private function sumPropertySafe(string $table, string $column, int $propertyId, string $where = ''): float
     {
-        if (!Schema::hasTable($table) || !Schema::hasColumn($table, $column)) {
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, $column)) {
             return 0;
         }
 
@@ -616,12 +643,13 @@ class ModuleDataService
         if ($where !== '') {
             $query->whereRaw($where);
         }
-        return (float)$query->sum($column);
+
+        return (float) $query->sum($column);
     }
 
     private function sumPeriodo(string $table, string $column, string $dateColumn, int $propertyId, string $start, string $end, string $where = ''): float
     {
-        if (!Schema::hasTable($table) || !Schema::hasColumn($table, $column) || !Schema::hasColumn($table, $dateColumn)) {
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, $column) || ! Schema::hasColumn($table, $dateColumn)) {
             return 0;
         }
 
@@ -629,7 +657,8 @@ class ModuleDataService
         if ($where !== '') {
             $query->whereRaw($where);
         }
-        return (float)$query->sum($column);
+
+        return (float) $query->sum($column);
     }
 
     private function money(float $value): string

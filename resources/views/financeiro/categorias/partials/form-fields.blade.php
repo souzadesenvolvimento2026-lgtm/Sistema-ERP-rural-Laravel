@@ -2,10 +2,8 @@
     Categoria principal
     <select name="categoria_pai_id">
         <option value="">Esta é uma categoria principal</option>
-        @foreach ($principais as $principal)
-            @if (!$categoria || $principal->id !== $categoria->id)
-                <option value="{{ $principal->id }}" @selected(($categoria->categoria_pai_id ?? null) == $principal->id)>{{ $principal->nome }}</option>
-            @endif
+        @foreach ($parentOptions as $principal)
+            <option value="{{ $principal->id }}" @selected(($categoria->categoria_pai_id ?? null) == $principal->id)>{{ $principal->nome }}</option>
         @endforeach
     </select>
 </label>

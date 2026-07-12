@@ -2,16 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\FinanceiroFormDataService;
 use App\Services\ReceitaFinanceiraService;
 use App\Support\FarmContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use RuntimeException;
 
 class ReceitaFinanceiraController extends Controller
 {
+    public function __construct(private readonly FinanceiroFormDataService $formDataService) {}
+
     public function index(Request $request, ReceitaFinanceiraService $service): View
     {
         return view('financeiro.receitas.index', $service->pagina(app(FarmContext::class)->propertyId(), $request));
@@ -25,6 +27,8 @@ class ReceitaFinanceiraController extends Controller
                 'documento' => ['nullable', 'string', 'max:30'],
             ]));
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return back()->withInput()->withErrors($exception->getMessage());
         }
 
@@ -40,6 +44,8 @@ class ReceitaFinanceiraController extends Controller
         try {
             $lancamento = $service->receitaParaEdicao($propertyId, $receita);
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return redirect()->route('financeiro.receitas.index')->withErrors($exception->getMessage());
         }
 
@@ -57,6 +63,8 @@ class ReceitaFinanceiraController extends Controller
         try {
             $lancamento = $service->receitaParaEdicao($propertyId, $receita);
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return redirect()->route('financeiro.receitas.index')->withErrors($exception->getMessage());
         }
 
@@ -98,6 +106,8 @@ class ReceitaFinanceiraController extends Controller
         try {
             $service->atualizar(app(FarmContext::class)->propertyId(), $receita, $dados, session('usuario_id'));
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return back()->withInput()->withErrors($exception->getMessage());
         }
 
@@ -111,6 +121,8 @@ class ReceitaFinanceiraController extends Controller
         try {
             $service->aprovar(app(FarmContext::class)->propertyId(), $receita, session('usuario_id'));
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return back()->withErrors($exception->getMessage());
         }
 
@@ -128,6 +140,8 @@ class ReceitaFinanceiraController extends Controller
                 session('usuario_id')
             );
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return back()->withErrors($exception->getMessage());
         }
 
@@ -151,6 +165,8 @@ class ReceitaFinanceiraController extends Controller
                 $request->input('motivo_reprovacao')
             );
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return back()->withErrors($exception->getMessage());
         }
 
@@ -170,6 +186,8 @@ class ReceitaFinanceiraController extends Controller
                 session('usuario_id')
             );
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return back()->withErrors($exception->getMessage());
         }
 
@@ -183,6 +201,8 @@ class ReceitaFinanceiraController extends Controller
         try {
             $service->cancelar(app(FarmContext::class)->propertyId(), $receita, session('usuario_id'));
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return back()->withErrors($exception->getMessage());
         }
 
@@ -196,13 +216,7 @@ class ReceitaFinanceiraController extends Controller
         return [
             'activeModule' => 'financeiro',
             'tipoSelecionado' => 'receita',
-            'categorias' => DB::table('categorias')->where('ativo', 1)->whereNull('categoria_pai_id')->orderBy('nome')->get(['id', 'nome', 'tipo']),
-            'subcategorias' => DB::table('categorias')->where('ativo', 1)->whereNotNull('categoria_pai_id')->orderBy('nome')->get(['id', 'categoria_pai_id', 'nome', 'tipo']),
-            'contas' => DB::table('contas')->where('propriedade_id', $propertyId)->where('ativo', 1)->orderBy('nome')->get(['id', 'nome', 'banco']),
-            'compradores' => $service->listarCompradores($propertyId),
-            'safras' => DB::table('safras')->where('propriedade_id', $propertyId)->orderByDesc('data_inicio')->get(['id', 'descricao']),
-            'talhoes' => DB::table('talhoes')->where('propriedade_id', $propertyId)->where('ativo', 1)->orderBy('nome')->get(['id', 'nome']),
-            'produtores' => DB::table('produtores')->where('propriedade_id', $propertyId)->where('ativo', 1)->orderBy('nome')->get(['id', 'nome']),
+            ...$this->formDataService->options($propertyId, $service->listarCompradores($propertyId)),
         ];
     }
 }

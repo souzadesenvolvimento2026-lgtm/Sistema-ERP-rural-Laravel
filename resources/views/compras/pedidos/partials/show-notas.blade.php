@@ -1,7 +1,7 @@
 <section class="panel">
     <div class="panel-head">
         <h2>Notas fiscais vinculadas</h2>
-        <span class="badge">{{ $linkedInvoices->count() }} nota(s)</span>
+        <span class="badge">{{ $linkedInvoiceCount }} nota(s)</span>
     </div>
 
     <div class="table-wrap">
@@ -24,10 +24,10 @@
                         <td>{{ $nota->issue_date ? \Illuminate\Support\Carbon::parse($nota->issue_date)->format('d/m/Y') : '-' }}</td>
                         <td>{{ $nota->issuer_name ?: '-' }}<br><span class="muted">{{ $nota->issuer_cnpj ?: '-' }}</span></td>
                         <td><strong>R$ {{ number_format((float)$nota->total_value, 2, ',', '.') }}</strong></td>
-                        <td><span class="pill {{ $nota->status === 'aprovada' ? 'success' : 'warning' }}">{{ \App\Support\FarmFormat::statusLabel($nota->status) }}</span></td>
+                        <td><span class="pill {{ $nota->status_tone }}">{{ $nota->status_label }}</span></td>
                         <td>{{ $nota->match_status ?: '-' }}</td>
                         <td>
-                            @if (in_array($order->status, ['em_aberto', 'aguardando_aprovacao'], true))
+                            @if ($nota->can_unlink_invoice)
                                 <form method="post" action="{{ route('compras.pedidos.notas.unlink', ['pedido' => $order->id, 'nota' => $nota->id]) }}">
                                     @csrf
                                     @method('DELETE')
@@ -48,9 +48,9 @@
     @if ($invoiceComparison)
         <div class="stats" style="margin-top:14px">
             <div class="stat"><span>Itens conferidos</span><strong>{{ $invoiceComparison['match_count'] }}</strong></div>
-            <div class="stat"><span>Divergencias</span><strong>{{ count($invoiceComparison['divergences']) }}</strong></div>
-            <div class="stat"><span>Faltam na nota</span><strong>{{ count($invoiceComparison['missing_in_invoice']) }}</strong></div>
-            <div class="stat"><span>Sobram na nota</span><strong>{{ count($invoiceComparison['missing_in_order']) }}</strong></div>
+            <div class="stat"><span>Divergencias</span><strong>{{ $invoiceComparison['divergence_count'] }}</strong></div>
+            <div class="stat"><span>Faltam na nota</span><strong>{{ $invoiceComparison['missing_in_invoice_count'] }}</strong></div>
+            <div class="stat"><span>Sobram na nota</span><strong>{{ $invoiceComparison['missing_in_order_count'] }}</strong></div>
         </div>
 
         @if ($invoiceComparison['has_divergences'])
@@ -83,11 +83,7 @@
         @endif
     @endif
 
-    @if ($invoiceLinkPreview && (int)($invoiceLinkPreview['order_id'] ?? 0) === (int)$order->id)
-        @php
-            $previewInvoice = $invoiceLinkPreview['invoice'] ?? [];
-            $previewComparison = $invoiceLinkPreview['comparison'] ?? [];
-        @endphp
+    @if ($invoiceLinkPreview)
         <div class="panel-body" id="comparacao-nf">
             <h3>Conferencia da nota fiscal</h3>
             <p class="muted">
@@ -97,9 +93,9 @@
             </p>
             <div class="stats">
                 <div class="stat"><span>Itens conferidos</span><strong>{{ $previewComparison['match_count'] ?? 0 }}</strong></div>
-                <div class="stat"><span>Divergencias</span><strong>{{ count($previewComparison['divergences'] ?? []) }}</strong></div>
-                <div class="stat"><span>Faltam na nota</span><strong>{{ count($previewComparison['missing_in_invoice'] ?? []) }}</strong></div>
-                <div class="stat"><span>Sobram na nota</span><strong>{{ count($previewComparison['missing_in_order'] ?? []) }}</strong></div>
+                <div class="stat"><span>Divergencias</span><strong>{{ $previewComparison['divergence_count'] }}</strong></div>
+                <div class="stat"><span>Faltam na nota</span><strong>{{ $previewComparison['missing_in_invoice_count'] }}</strong></div>
+                <div class="stat"><span>Sobram na nota</span><strong>{{ $previewComparison['missing_in_order_count'] }}</strong></div>
             </div>
 
             @if (!empty($previewComparison['divergences']))
@@ -134,13 +130,13 @@
                 </form>
                 <form method="post" action="{{ route('compras.pedidos.notas.confirm', $order->id) }}">
                     @csrf
-                    <button class="btn primary" type="submit" @disabled((int)($previewComparison['match_count'] ?? 0) < 1)>Confirmar vinculo</button>
+                    <button class="btn primary" type="submit" @disabled(! $order->can_confirm_invoice_link)>Confirmar vinculo</button>
                 </form>
             </div>
         </div>
     @endif
 
-    @if (in_array($order->status, ['em_aberto', 'aguardando_aprovacao'], true))
+    @if ($order->can_link_invoice)
         <form method="post" action="{{ route('compras.pedidos.notas.link', $order->id) }}" class="form-grid" style="margin-top:14px">
             @csrf
             <label class="field wide">
@@ -157,7 +153,7 @@
                 </select>
             </label>
             <div class="actions full">
-                <button class="btn primary" type="submit" @disabled($availableInvoices->isEmpty())>Comparar nota</button>
+                <button class="btn primary" type="submit" @disabled(! $hasAvailableInvoices)>Comparar nota</button>
                 <a class="btn" href="{{ route('fiscal.notas.create') }}">Importar NF-e no fiscal</a>
             </div>
         </form>

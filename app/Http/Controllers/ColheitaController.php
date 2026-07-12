@@ -6,7 +6,6 @@ use App\Services\ColheitaService;
 use App\Support\FarmContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class ColheitaController extends Controller
@@ -20,12 +19,7 @@ class ColheitaController extends Controller
     {
         $propertyId = app(FarmContext::class)->propertyId();
 
-        return view('colheita.create', [
-            'activeModule' => 'colheita',
-            'safras' => DB::table('safras')->where('propriedade_id', $propertyId)->orderByDesc('id')->get(['id', 'descricao', 'status']),
-            'talhoes' => DB::table('talhoes')->where('propriedade_id', $propertyId)->where('ativo', 1)->orderBy('nome')->get(['id', 'nome', 'area']),
-            'destinos' => $service->destinos(),
-        ]);
+        return view('colheita.create', $service->formData($propertyId));
     }
 
     public function store(Request $request, ColheitaService $service): RedirectResponse
@@ -37,10 +31,12 @@ class ColheitaController extends Controller
         try {
             $service->criar($dados, $propriedadeId, session('usuario_id'));
         } catch (\RuntimeException $e) {
+            report($e);
+
             return back()->withInput()->with('error', $e->getMessage());
         }
 
-        $safraId = $this->safraValidaParaRedirect($dados['safra_id'] ?? null, $propriedadeId);
+        $safraId = $service->validSafraId($dados['safra_id'] ?? null, $propriedadeId);
 
         return redirect()
             ->route('colheita.index', $safraId ? ['safra_id' => $safraId] : [])
@@ -52,11 +48,8 @@ class ColheitaController extends Controller
         $propertyId = app(FarmContext::class)->propertyId();
 
         return view('colheita.edit', [
-            'activeModule' => 'colheita',
+            ...$service->formData($propertyId),
             'carga' => $service->buscar($colheita, $propertyId),
-            'safras' => DB::table('safras')->where('propriedade_id', $propertyId)->orderByDesc('id')->get(['id', 'descricao', 'status']),
-            'talhoes' => DB::table('talhoes')->where('propriedade_id', $propertyId)->where('ativo', 1)->orderBy('nome')->get(['id', 'nome', 'area']),
-            'destinos' => $service->destinos(),
         ]);
     }
 
@@ -68,12 +61,14 @@ class ColheitaController extends Controller
         try {
             $service->atualizar($colheita, $dados, $propriedadeId, session('usuario_id'));
         } catch (\RuntimeException $e) {
+            report($e);
+
             return back()->withInput()->with('error', $e->getMessage());
         }
 
         return redirect()
             ->route('colheita.index', [
-                'safra_id' => $this->safraValidaParaRedirect($dados['safra_id'] ?? null, $propriedadeId),
+                'safra_id' => $service->validSafraId($dados['safra_id'] ?? null, $propriedadeId),
                 'talhao_id' => $dados['talhao_id'] ?? null,
             ])
             ->with('success', 'Carga de colheita atualizada.');
@@ -96,11 +91,13 @@ class ColheitaController extends Controller
         try {
             $service->finalizarTalhao(
                 app(FarmContext::class)->propertyId(),
-                (int)$dados['safra_id'],
-                (int)$dados['talhao_id'],
+                (int) $dados['safra_id'],
+                (int) $dados['talhao_id'],
                 session('usuario_id')
             );
         } catch (\RuntimeException $e) {
+            report($e);
+
             return back()->with('error', $e->getMessage());
         }
 
@@ -119,32 +116,19 @@ class ColheitaController extends Controller
         try {
             $service->reabrirTalhao(
                 app(FarmContext::class)->propertyId(),
-                (int)$dados['safra_id'],
-                (int)$dados['talhao_id'],
+                (int) $dados['safra_id'],
+                (int) $dados['talhao_id'],
                 session('usuario_id')
             );
         } catch (\RuntimeException $e) {
+            report($e);
+
             return back()->with('error', $e->getMessage());
         }
 
         return redirect()
             ->route('colheita.index', ['safra_id' => $dados['safra_id'], 'talhao_id' => $dados['talhao_id']])
             ->with('success', 'Talhao reaberto para ajustes.');
-    }
-
-    private function safraValidaParaRedirect($safraId, int $propriedadeId): ?int
-    {
-        $safraId = (int)($safraId ?: 0);
-        if ($safraId <= 0) {
-            return null;
-        }
-
-        return DB::table('safras')
-            ->where('id', $safraId)
-            ->where('propriedade_id', $propriedadeId)
-            ->exists()
-            ? $safraId
-            : null;
     }
 
     private function validated(Request $request): array

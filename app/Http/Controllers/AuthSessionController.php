@@ -2,18 +2,23 @@
 
 namespace App\Http\Controllers;
 
-use App\Support\FarmContext;
+use App\Domain\Access\ProfileAccess;
+use App\Services\AuthenticationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class AuthSessionController extends Controller
 {
+    public function __construct(
+        private readonly ProfileAccess $access,
+        private readonly AuthenticationService $authentication,
+    ) {}
+
     public function create(): View|RedirectResponse
     {
         if (session('usuario_id')) {
-            return redirect()->route(in_array((string)session('perfil'), ['administrador_sistema', 'gerencia_sistema'], true) ? 'admin.index' : 'dashboard');
+            return redirect()->route($this->access->isSystemAdministrator((string) session('perfil')) ? 'admin.index' : 'dashboard');
         }
 
         return view('auth.login');
@@ -26,35 +31,36 @@ class AuthSessionController extends Controller
             'senha' => ['required', 'string'],
         ]);
 
-        $user = DB::table('usuarios')
-            ->where('email', trim($credentials['email']))
-            ->where('ativo', 1)
-            ->first();
+        $user = $this->authentication->authenticate($credentials['email'], $credentials['senha']);
 
-        if (!$user || !password_verify($credentials['senha'], $user->senha)) {
+        if (! $user) {
             return back()
                 ->withInput($request->only('email'))
                 ->withErrors(['email' => 'E-mail ou senha inválidos.']);
         }
 
+        $propertyId = $this->authentication->defaultPropertyId((int) $user->id, (string) $user->perfil);
+        if ($propertyId === null && ! $this->access->isSystemAdministrator((string) $user->perfil)) {
+            return back()
+                ->withInput($request->only('email'))
+                ->withErrors(['email' => 'Usuário sem propriedade ativa vinculada. Contate o administrador.']);
+        }
+
         $request->session()->regenerate();
         session([
-            'usuario_id' => (int)$user->id,
+            'usuario_id' => (int) $user->id,
             'usuario_nome' => $user->nome,
             'perfil' => $user->perfil,
-            'propriedade_id' => app(FarmContext::class)->propertyId(),
+            'propriedade_id' => $propertyId,
         ]);
 
-        DB::table('usuarios')
-            ->where('id', $user->id)
-            ->update([
-                'ultimo_acesso' => now(),
-                'sessao_atualizada_em' => now(),
-            ]);
+        $this->authentication->registerLogin(
+            (int) $user->id,
+            $propertyId,
+            (string) $request->ip(),
+        );
 
-        $this->audit('login', 'Login Laravel realizado', (int)$user->id);
-
-        $homeRoute = in_array((string)$user->perfil, ['administrador_sistema', 'gerencia_sistema'], true)
+        $homeRoute = $this->access->isSystemAdministrator((string) $user->perfil)
             ? route('admin.index')
             : route('dashboard');
 
@@ -63,32 +69,18 @@ class AuthSessionController extends Controller
 
     public function destroy(Request $request): RedirectResponse
     {
-        $userId = (int)session('usuario_id');
+        $userId = (int) session('usuario_id');
         if ($userId > 0) {
-            $this->audit('logout', 'Logout Laravel realizado', $userId);
+            $this->authentication->registerLogout(
+                $userId,
+                session('propriedade_id') ? (int) session('propriedade_id') : null,
+                (string) $request->ip(),
+            );
         }
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
         return redirect()->route('login');
-    }
-
-    private function audit(string $action, string $details, int $userId): void
-    {
-        try {
-            DB::table('logs_auditoria')->insert([
-                'usuario_id' => $userId,
-                'acao' => $action,
-                'tabela' => 'usuarios',
-                'registro_id' => $userId,
-                'propriedade_id' => session('propriedade_id'),
-                'detalhes' => $details,
-                'ip' => request()->ip(),
-                'criado_em' => now(),
-            ]);
-        } catch (\Throwable) {
-            // Auditoria nao deve impedir login ou logout.
-        }
     }
 }

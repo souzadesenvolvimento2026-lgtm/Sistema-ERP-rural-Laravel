@@ -21,11 +21,11 @@ class FinanceiroPainelService
         $transferencias = $this->transferencias($propriedadeId, $periodo);
         $lancamentos = $this->filtrarLancamentos($despesas, $receitas, $transferencias, $filtros);
 
-        $totalDespesas = (float)$despesas->sum('valor');
-        $totalReceitas = (float)$receitas->sum('valor');
+        $totalDespesas = (float) $despesas->sum('valor');
+        $totalReceitas = (float) $receitas->sum('valor');
         $saldoContas = $this->saldoContas($propriedadeId);
-        $aPagar = (float)$despesas->whereIn('status', ['pendente', 'vencido'])->sum('valor');
-        $aReceber = (float)$receitas->where('status', 'pendente')->sum('valor');
+        $aPagar = (float) $despesas->whereIn('status', ['pendente', 'vencido'])->sum('valor');
+        $aReceber = (float) $receitas->where('status', 'pendente')->sum('valor');
 
         return [
             'activeModule' => 'financeiro',
@@ -48,7 +48,7 @@ class FinanceiroPainelService
                 'aReceber' => $aReceber,
             ],
             'alertas' => [
-                ['label' => 'Despesas pendentes', 'value' => (string)$despesas->whereIn('status', ['pendente', 'vencido'])->count()],
+                ['label' => 'Despesas pendentes', 'value' => (string) $despesas->whereIn('status', ['pendente', 'vencido'])->count()],
                 ['label' => 'Agenda financeira', 'value' => FarmFormat::money($aPagar + $aReceber)],
                 ['label' => 'Saldos por conta', 'value' => FarmFormat::money($saldoContas)],
             ],
@@ -64,12 +64,12 @@ class FinanceiroPainelService
     {
         return [
             'tipo' => in_array($request->query('filtro'), ['despesas', 'receitas', 'transferencias', 'pagar', 'receber'], true)
-                ? (string)$request->query('filtro')
+                ? (string) $request->query('filtro')
                 : 'todos',
-            'mes' => preg_match('/^\d{4}-\d{2}$/', (string)$request->query('mes')) ? (string)$request->query('mes') : date('Y-m'),
+            'mes' => preg_match('/^\d{4}-\d{2}$/', (string) $request->query('mes')) ? (string) $request->query('mes') : date('Y-m'),
             'todos' => $request->boolean('todos'),
-            'data_inicio' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$request->query('data_inicio')) ? (string)$request->query('data_inicio') : null,
-            'data_fim' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$request->query('data_fim')) ? (string)$request->query('data_fim') : null,
+            'data_inicio' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $request->query('data_inicio')) ? (string) $request->query('data_inicio') : null,
+            'data_fim' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $request->query('data_fim')) ? (string) $request->query('data_fim') : null,
         ];
     }
 
@@ -96,7 +96,7 @@ class FinanceiroPainelService
 
     private function despesas(int $propriedadeId, array $periodo): Collection
     {
-        if (!Schema::hasTable('despesas')) {
+        if (! Schema::hasTable('despesas')) {
             return collect();
         }
 
@@ -125,7 +125,7 @@ class FinanceiroPainelService
 
     private function receitas(int $propriedadeId, array $periodo): Collection
     {
-        if (!Schema::hasTable('receitas')) {
+        if (! Schema::hasTable('receitas')) {
             return collect();
         }
 
@@ -154,7 +154,7 @@ class FinanceiroPainelService
 
     private function transferencias(int $propriedadeId, array $periodo): Collection
     {
-        if (!Schema::hasTable('transferencias')) {
+        if (! Schema::hasTable('transferencias')) {
             return collect();
         }
 
@@ -174,38 +174,50 @@ class FinanceiroPainelService
                 'destino.nome as conta_destino',
             ])
             ->map(function ($row) {
-                return (object)[
-                    'id' => (int)$row->id,
+                return (object) [
+                    'id' => (int) $row->id,
                     'tipo' => 'transferencia',
                     'tipo_label' => 'Transferência',
+                    'type_tone' => 'bg-info',
                     'descricao' => $row->descricao ?: 'Transferência bancária',
                     'pessoa' => trim(($row->conta_origem ?: '-').' → '.($row->conta_destino ?: '-')),
                     'safra_categoria' => '-',
                     'conta' => $row->conta_origem ?: '-',
-                    'valor' => (float)$row->valor,
+                    'valor' => (float) $row->valor,
                     'data' => $row->data,
                     'previsto' => $row->data,
                     'status' => 'transferido',
                     'status_aprovacao' => 'aprovada',
+                    'value_tone' => '',
+                    'status_tone' => 'success',
+                    'show_pending_approval' => false,
+                    'action_url' => route('financeiro.contas.index'),
                 ];
             });
     }
 
     private function normalizarLancamento(object $row, string $tipo): object
     {
-        return (object)[
-            'id' => (int)$row->id,
+        return (object) [
+            'id' => (int) $row->id,
             'tipo' => $tipo,
             'tipo_label' => $tipo === 'receita' ? 'Receita' : 'Despesa',
+            'type_tone' => $tipo === 'receita' ? 'bg-success' : 'bg-danger',
             'descricao' => FarmFormat::value($row->descricao),
             'pessoa' => FarmFormat::value($row->pessoa),
             'safra_categoria' => trim(FarmFormat::value($row->safra).' / '.FarmFormat::value($row->categoria), ' /'),
             'conta' => FarmFormat::value($row->conta),
-            'valor' => (float)$row->valor,
+            'valor' => (float) $row->valor,
             'data' => $row->data,
             'previsto' => $row->previsto,
-            'status' => (string)$row->status,
-            'status_aprovacao' => (string)($row->status_aprovacao ?? 'aprovada'),
+            'status' => (string) $row->status,
+            'status_aprovacao' => (string) ($row->status_aprovacao ?? 'aprovada'),
+            'value_tone' => $tipo === 'receita' ? 'text-success' : 'text-danger',
+            'status_tone' => in_array((string) $row->status, ['pago', 'recebido'], true) ? 'success' : 'warning',
+            'show_pending_approval' => (string) ($row->status_aprovacao ?? '') === 'pendente',
+            'action_url' => $tipo === 'receita'
+                ? route('financeiro.receitas.edit', $row->id)
+                : route('financeiro.despesas.edit', $row->id),
         ];
     }
 
@@ -221,18 +233,18 @@ class FinanceiroPainelService
         };
 
         return $rows
-            ->sortByDesc(fn ($row) => ($row->data ?: '').str_pad((string)$row->id, 8, '0', STR_PAD_LEFT))
+            ->sortByDesc(fn ($row) => ($row->data ?: '').str_pad((string) $row->id, 8, '0', STR_PAD_LEFT))
             ->values();
     }
 
     private function saldoContas(int $propriedadeId): float
     {
-        return (float)$this->contas($propriedadeId)->sum('saldo_numero');
+        return (float) $this->contas($propriedadeId)->sum('saldo_numero');
     }
 
     private function contas(int $propriedadeId): Collection
     {
-        if (!Schema::hasTable('contas')) {
+        if (! Schema::hasTable('contas')) {
             return collect();
         }
 
@@ -242,22 +254,22 @@ class FinanceiroPainelService
             ->orderBy('nome')
             ->get()
             ->map(function ($row) {
-                $saldo = (float)($row->saldo_inicial ?? 0);
+                $saldo = (float) ($row->saldo_inicial ?? 0);
                 if (Schema::hasTable('receitas')) {
-                    $saldo += (float)DB::table('receitas')->where('conta_id', $row->id)->where('status', 'recebido')->sum('valor_total');
+                    $saldo += (float) DB::table('receitas')->where('conta_id', $row->id)->where('status', 'recebido')->sum('valor_total');
                 }
                 if (Schema::hasTable('despesas')) {
-                    $saldo -= (float)DB::table('despesas')->where('conta_id', $row->id)->where('status_pagamento', 'pago')->sum('valor_total');
+                    $saldo -= (float) DB::table('despesas')->where('conta_id', $row->id)->where('status_pagamento', 'pago')->sum('valor_total');
                 }
                 if (Schema::hasTable('transferencias')) {
-                    $saldo -= (float)DB::table('transferencias')->where('conta_origem_id', $row->id)->sum('valor');
-                    $saldo += (float)DB::table('transferencias')->where('conta_destino_id', $row->id)->sum('valor');
+                    $saldo -= (float) DB::table('transferencias')->where('conta_origem_id', $row->id)->sum('valor');
+                    $saldo += (float) DB::table('transferencias')->where('conta_destino_id', $row->id)->sum('valor');
                 }
 
-                return (object)[
-                    'id' => (int)$row->id,
+                return (object) [
+                    'id' => (int) $row->id,
                     'nome' => FarmFormat::value($row->nome),
-                    'detalhe' => FarmFormat::value($row->banco ?: FarmFormat::statusLabel((string)$row->tipo)),
+                    'detalhe' => FarmFormat::value($row->banco ?: FarmFormat::statusLabel((string) $row->tipo)),
                     'saldo_numero' => $saldo,
                     'saldo' => FarmFormat::money($saldo),
                 ];
@@ -274,7 +286,7 @@ class FinanceiroPainelService
             ->sortBy('previsto')
             ->take(8)
             ->values()
-            ->map(fn ($row) => (object)[
+            ->map(fn ($row) => (object) [
                 'tipo' => $row->tipo,
                 'titulo' => $row->descricao,
                 'pessoa' => $row->pessoa,
@@ -285,7 +297,7 @@ class FinanceiroPainelService
 
     private function categorias(int $propriedadeId): Collection
     {
-        if (!Schema::hasTable('categorias') || !Schema::hasTable('despesas')) {
+        if (! Schema::hasTable('categorias') || ! Schema::hasTable('despesas')) {
             return collect();
         }
 
@@ -297,7 +309,7 @@ class FinanceiroPainelService
             ->orderByDesc(DB::raw('COALESCE(SUM(d.valor_total),0)'))
             ->limit(7)
             ->get(['c.nome', DB::raw('COALESCE(SUM(d.valor_total),0) AS total')])
-            ->map(fn ($row) => (object)[
+            ->map(fn ($row) => (object) [
                 'nome' => FarmFormat::value($row->nome),
                 'total' => FarmFormat::money($row->total),
             ]);

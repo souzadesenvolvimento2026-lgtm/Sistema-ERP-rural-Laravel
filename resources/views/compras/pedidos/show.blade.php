@@ -7,8 +7,10 @@
             <p class="subtitle">{{ $order->supplier_name }} · {{ \Illuminate\Support\Carbon::parse($order->issue_date)->format('d/m/Y') }}</p>
         </div>
         <div class="actions">
-            @if (in_array($order->status, ['em_aberto', 'aguardando_aprovacao'], true))
+            @if ($order->can_edit)
                 <a class="btn" href="{{ route('compras.pedidos.edit', $order->id) }}">Editar</a>
+            @endif
+            @if ($order->can_approve)
                 <form method="post" action="{{ route('compras.pedidos.approve', $order->id) }}">
                     @csrf
                     <input type="hidden" name="confirmar_aprovacao" value="1">

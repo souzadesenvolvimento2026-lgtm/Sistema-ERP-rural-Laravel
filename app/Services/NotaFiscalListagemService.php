@@ -23,10 +23,10 @@ class NotaFiscalListagemService
             'filtros' => $filtros,
             'rows' => $rows,
             'cards' => [
-                ['label' => 'Notas fiscais', 'value' => (string)$rows->count(), 'tone' => 'success'],
-                ['label' => 'Aguardando aprovacao', 'value' => (string)$rows->where('status_key', 'aguardando_aprovacao')->count(), 'tone' => 'warning'],
-                ['label' => 'Aprovadas', 'value' => (string)$rows->whereIn('status_key', ['aprovada', 'aprovado'])->count(), 'tone' => 'success'],
-                ['label' => 'Valor total', 'value' => FarmFormat::money((float)$rows->sum('total_raw')), 'tone' => 'warning'],
+                ['label' => 'Notas fiscais', 'value' => (string) $rows->count(), 'tone' => 'success'],
+                ['label' => 'Aguardando aprovacao', 'value' => (string) $rows->where('status_key', 'aguardando_aprovacao')->count(), 'tone' => 'warning'],
+                ['label' => 'Aprovadas', 'value' => (string) $rows->whereIn('status_key', ['aprovada', 'aprovado'])->count(), 'tone' => 'success'],
+                ['label' => 'Valor total', 'value' => FarmFormat::money((float) $rows->sum('total_raw')), 'tone' => 'warning'],
             ],
             'statusOptions' => [
                 'aguardando_aprovacao' => 'Aguardando aprovacao',
@@ -46,15 +46,15 @@ class NotaFiscalListagemService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$invoice) {
+            if (! $invoice) {
                 throw new RuntimeException('Nota fiscal nao encontrada.');
             }
 
-            if ((string)$invoice->status === 'aprovada') {
+            if ((string) $invoice->status === 'aprovada') {
                 throw new RuntimeException('Esta nota fiscal ja foi aprovada.');
             }
 
-            if ((string)$invoice->status !== 'aguardando_aprovacao') {
+            if ((string) $invoice->status !== 'aguardando_aprovacao') {
                 throw new RuntimeException('Esta nota fiscal nao esta aguardando aprovacao.');
             }
 
@@ -85,13 +85,13 @@ class NotaFiscalListagemService
             ->where('propriedade_id', $propertyId)
             ->first();
 
-        abort_if(!$nota, 404);
+        abort_if(! $nota, 404);
 
         $itens = DB::table('fiscal_invoice_items')
             ->where('invoice_id', $invoiceId)
             ->orderBy('id')
             ->get()
-            ->map(fn ($item) => (object)[
+            ->map(fn ($item) => (object) [
                 'product_code' => FarmFormat::value($item->product_code),
                 'description' => FarmFormat::value($item->description),
                 'unit' => FarmFormat::value($item->unit),
@@ -104,8 +104,8 @@ class NotaFiscalListagemService
             'activeModule' => 'fiscal',
             'title' => 'Nota Fiscal '.$this->documentNumber($nota->invoice_number, $nota->series),
             'subtitle' => 'Detalhe da nota fiscal importada no sistema.',
-            'nota' => (object)[
-                'id' => (int)$nota->id,
+            'nota' => (object) [
+                'id' => (int) $nota->id,
                 'access_key' => FarmFormat::value($nota->access_key),
                 'number' => $this->documentNumber($nota->invoice_number, $nota->series),
                 'invoice_number' => FarmFormat::value($nota->invoice_number),
@@ -116,17 +116,19 @@ class NotaFiscalListagemService
                 'recipient_name' => FarmFormat::value($nota->recipient_name),
                 'recipient_cnpj' => FarmFormat::value($nota->recipient_cnpj),
                 'total' => FarmFormat::money($nota->total_value),
-                'status_key' => (string)$nota->status,
-                'status' => $this->statusLabel((string)$nota->status),
+                'status_key' => (string) $nota->status,
+                'status' => $this->statusLabel((string) $nota->status),
+                'status_tone' => (string) $nota->status === 'aprovada' ? 'success' : '',
+                'can_approve' => (string) $nota->status === 'aguardando_aprovacao',
                 'item_count' => $itens->count(),
-                'tem_xml' => !empty($nota->xml_file_path),
+                'tem_xml' => ! empty($nota->xml_file_path),
             ],
             'itens' => $itens,
             'cards' => [
-                ['label' => 'Status', 'value' => $this->statusLabel((string)$nota->status), 'tone' => 'success'],
+                ['label' => 'Status', 'value' => $this->statusLabel((string) $nota->status), 'tone' => 'success'],
                 ['label' => 'Total', 'value' => FarmFormat::money($nota->total_value), 'tone' => 'warning'],
                 ['label' => 'Fornecedor', 'value' => FarmFormat::value($nota->issuer_name), 'tone' => 'success'],
-                ['label' => 'Itens', 'value' => (string)$itens->count(), 'tone' => 'warning'],
+                ['label' => 'Itens', 'value' => (string) $itens->count(), 'tone' => 'warning'],
             ],
         ];
     }
@@ -140,12 +142,12 @@ class NotaFiscalListagemService
 
         abort_unless($nota && $nota->xml_file_path, 404);
 
-        $relative = preg_replace('#^storage/app/private/#', '', (string)$nota->xml_file_path);
+        $relative = preg_replace('#^storage/app/private/#', '', (string) $nota->xml_file_path);
         $base = realpath(storage_path('app/private'));
         $path = realpath(storage_path('app/private/'.$relative));
         abort_unless($base && $path && str_starts_with($path, $base) && is_file($path), 404);
 
-        $nome = preg_replace('/[^a-zA-Z0-9_.-]/', '_', (string)($nota->invoice_number ?: $nota->access_key ?: 'nota'));
+        $nome = preg_replace('/[^a-zA-Z0-9_.-]/', '_', (string) ($nota->invoice_number ?: $nota->access_key ?: 'nota'));
 
         return response()->download($path, $nome.'.xml', [
             'Content-Type' => 'application/xml',
@@ -156,10 +158,10 @@ class NotaFiscalListagemService
     private function filtros(Request $request): array
     {
         return [
-            'status' => trim((string)$request->query('status', '')),
-            'date_from' => trim((string)$request->query('date_from', '')),
-            'date_to' => trim((string)$request->query('date_to', '')),
-            'supplier' => trim((string)$request->query('supplier', '')),
+            'status' => trim((string) $request->query('status', '')),
+            'date_from' => trim((string) $request->query('date_from', '')),
+            'date_to' => trim((string) $request->query('date_to', '')),
+            'supplier' => trim((string) $request->query('supplier', '')),
         ];
     }
 
@@ -206,19 +208,21 @@ class NotaFiscalListagemService
             ->orderByDesc('fi.id')
             ->limit(180)
             ->get()
-            ->map(fn ($nota) => (object)[
-                'id' => (int)$nota->id,
+            ->map(fn ($nota) => (object) [
+                'id' => (int) $nota->id,
                 'number' => $this->documentNumber($nota->invoice_number, $nota->series),
                 'issuer_name' => FarmFormat::value($nota->issuer_name),
                 'issuer_cnpj' => FarmFormat::value($nota->issuer_cnpj),
                 'issue_date' => FarmFormat::date($nota->issue_date),
-                'total_raw' => (float)$nota->total_value,
+                'total_raw' => (float) $nota->total_value,
                 'total' => FarmFormat::money($nota->total_value),
-                'status_key' => (string)$nota->status,
-                'status' => $this->statusLabel((string)$nota->status),
-                'item_count' => (int)$nota->item_count,
-                'linked_orders' => (int)$nota->linked_orders,
-                'tem_xml' => !empty($nota->xml_file_path),
+                'status_key' => (string) $nota->status,
+                'status' => $this->statusLabel((string) $nota->status),
+                'status_tone' => (string) $nota->status === 'aprovada' ? 'success' : '',
+                'can_approve' => (string) $nota->status === 'aguardando_aprovacao',
+                'item_count' => (int) $nota->item_count,
+                'linked_orders' => (int) $nota->linked_orders,
+                'tem_xml' => ! empty($nota->xml_file_path),
                 'consolidated_url' => route('fiscal.consolidado.index', ['supplier' => $nota->issuer_cnpj ?: $nota->issuer_name]),
             ]);
     }
@@ -226,7 +230,7 @@ class NotaFiscalListagemService
     private function documentNumber(?string $number, ?string $series): string
     {
         $number = FarmFormat::value($number);
-        if (!$series) {
+        if (! $series) {
             return $number;
         }
 
@@ -251,8 +255,8 @@ class NotaFiscalListagemService
                 'ip' => request()->ip(),
                 'criado_em' => now(),
             ]);
-        } catch (\Throwable) {
-            // Auditoria nao deve impedir a operacao fiscal.
+        } catch (\Throwable $exception) {
+            report($exception);
         }
     }
 }

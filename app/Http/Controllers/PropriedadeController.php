@@ -50,6 +50,8 @@ class PropriedadeController extends Controller
         try {
             $service->atualizar($propriedade, $dados, $request->file('kml_area'), session('usuario_id'));
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return back()
                 ->withInput()
                 ->withErrors($exception->getMessage());

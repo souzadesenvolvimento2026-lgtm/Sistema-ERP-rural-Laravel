@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Domain\Purchasing\PurchaseOrderCapabilities;
 use App\Support\FarmContext;
+use App\Support\FarmFormat;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -10,6 +12,8 @@ use RuntimeException;
 class CompraPedidoService
 {
     public array $units = ['Quilograma', 'Grama', 'Tonelada', 'Litro', 'Mililitro', 'Metros', 'Unidade'];
+
+    public function __construct(private readonly PurchaseOrderCapabilities $capabilities) {}
 
     public function propertyId(): int
     {
@@ -22,7 +26,8 @@ class CompraPedidoService
             ->orderByDesc('pedidos.issue_date')
             ->orderByDesc('pedidos.id')
             ->limit(50)
-            ->get();
+            ->get()
+            ->map(fn (object $order): object => $this->prepareOrder($order));
     }
 
     public function totals($pedidos): array
@@ -47,29 +52,29 @@ class CompraPedidoService
     public function createOrder(Request $request, int $propertyId): int
     {
         $items = $this->normalizeItems($request, $propertyId);
-        abort_if(!$items, 422, 'Informe pelo menos um item valido no pedido.');
+        abort_if(! $items, 422, 'Informe pelo menos um item valido no pedido.');
 
         return DB::transaction(function () use ($request, $propertyId, $items): int {
-            $orderNumber = trim((string)$request->input('order_number'));
+            $orderNumber = trim((string) $request->input('order_number'));
             if ($orderNumber === '') {
-                $orderNumber = 'PED-' . date('YmdHis');
+                $orderNumber = 'PED-'.date('YmdHis');
             }
 
             DB::table('fiscal_orders')->insert([
                 'propriedade_id' => $propertyId,
                 'order_number' => $orderNumber,
-                'supplier_name' => trim((string)$request->input('supplier_name')),
-                'supplier_cnpj' => preg_replace('/\D+/', '', (string)$request->input('supplier_cnpj')),
+                'supplier_name' => trim((string) $request->input('supplier_name')),
+                'supplier_cnpj' => preg_replace('/\D+/', '', (string) $request->input('supplier_cnpj')),
                 'order_type' => 'entrada',
                 'issue_date' => $request->input('issue_date'),
                 'total_value' => array_sum(array_column($items, 'total_value')),
                 'status' => 'em_aberto',
-                'notes' => trim((string)$request->input('notes')),
+                'notes' => trim((string) $request->input('notes')),
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
 
-            $orderId = (int)DB::getPdo()->lastInsertId();
+            $orderId = (int) DB::getPdo()->lastInsertId();
             foreach ($items as $item) {
                 DB::table('fiscal_order_items')->insert($item + [
                     'order_id' => $orderId,
@@ -85,7 +90,7 @@ class CompraPedidoService
     public function updateOrder(Request $request, int $propertyId, int $pedido): void
     {
         $items = $this->normalizeItems($request, $propertyId);
-        abort_if(!$items, 422, 'Informe pelo menos um item valido no pedido.');
+        abort_if(! $items, 422, 'Informe pelo menos um item valido no pedido.');
 
         DB::transaction(function () use ($request, $propertyId, $pedido, $items): void {
             $order = DB::table('fiscal_orders')
@@ -94,17 +99,17 @@ class CompraPedidoService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$order) {
+            if (! $order) {
                 throw new RuntimeException('Pedido fiscal nao encontrado.');
             }
 
-            if ($order->status === 'aprovado_baixado') {
-                throw new RuntimeException('Pedido aprovado nao pode ser alterado.');
+            if (! $this->capabilities->for($order->status)['can_edit']) {
+                throw new RuntimeException('Este pedido nao pode ser alterado no status atual.');
             }
 
-            $orderNumber = trim((string)$request->input('order_number'));
+            $orderNumber = trim((string) $request->input('order_number'));
             if ($orderNumber === '') {
-                $orderNumber = (string)$order->order_number;
+                $orderNumber = (string) $order->order_number;
             }
 
             DB::table('fiscal_orders')
@@ -112,11 +117,11 @@ class CompraPedidoService
                 ->where('propriedade_id', $propertyId)
                 ->update([
                     'order_number' => $orderNumber,
-                    'supplier_name' => trim((string)$request->input('supplier_name')),
-                    'supplier_cnpj' => preg_replace('/\D+/', '', (string)$request->input('supplier_cnpj')),
+                    'supplier_name' => trim((string) $request->input('supplier_name')),
+                    'supplier_cnpj' => preg_replace('/\D+/', '', (string) $request->input('supplier_cnpj')),
                     'issue_date' => $request->input('issue_date'),
                     'total_value' => array_sum(array_column($items, 'total_value')),
-                    'notes' => trim((string)$request->input('notes')),
+                    'notes' => trim((string) $request->input('notes')),
                     'updated_at' => now(),
                 ]);
 
@@ -133,7 +138,37 @@ class CompraPedidoService
 
     public function findOrder(int $propertyId, int $pedido)
     {
-        return $this->baseOrderQuery($propertyId)->where('pedidos.id', $pedido)->firstOrFail();
+        return $this->prepareOrder(
+            $this->baseOrderQuery($propertyId)->where('pedidos.id', $pedido)->firstOrFail(),
+        );
+    }
+
+    public function showData(int $propertyId, int $pedido, mixed $invoiceLinkPreview): array
+    {
+        $order = $this->findOrder($propertyId, $pedido);
+        $preview = $this->prepareInvoicePreview($pedido, $invoiceLinkPreview);
+        $previewMatchCount = (int) ($preview['comparison']['match_count'] ?? 0);
+        $order = $this->prepareOrder($order, $preview !== null, $previewMatchCount);
+        $linkedInvoices = $this->linkedInvoices($pedido)->map(function (object $invoice) use ($order): object {
+            $invoice->can_unlink_invoice = $order->can_unlink_invoice;
+
+            return $invoice;
+        });
+        $availableInvoices = $this->availableInvoices($propertyId, $pedido);
+
+        return [
+            'activeModule' => 'compras',
+            'order' => $order,
+            'items' => $this->orderItems($pedido),
+            'linkedInvoices' => $linkedInvoices,
+            'linkedInvoiceCount' => $linkedInvoices->count(),
+            'availableInvoices' => $availableInvoices,
+            'hasAvailableInvoices' => $availableInvoices->isNotEmpty(),
+            'invoiceComparison' => $this->invoiceComparison($pedido),
+            'invoiceLinkPreview' => $preview,
+            'previewInvoice' => $preview['invoice'] ?? [],
+            'previewComparison' => $preview['comparison'] ?? [],
+        ];
     }
 
     public function orderItems(int $pedido)
@@ -170,20 +205,26 @@ class CompraPedidoService
                 'vinculos.match_status',
                 'vinculos.match_summary',
                 'vinculos.linked_at',
-            ]);
+            ])
+            ->map(function (object $invoice): object {
+                $invoice->status_label = FarmFormat::statusLabel((string) $invoice->status);
+                $invoice->status_tone = $invoice->status === 'aprovada' ? 'success' : 'warning';
+
+                return $invoice;
+            });
     }
 
     public function invoiceComparison(int $pedido): ?array
     {
         $linked = DB::table('fiscal_order_invoices')->where('order_id', $pedido)->pluck('invoice_id')->all();
-        if (!$linked) {
+        if (! $linked) {
             return null;
         }
 
-        return $this->compareOrderInvoiceItems(
+        return $this->prepareComparison($this->compareOrderInvoiceItems(
             $this->orderItems($pedido)->all(),
             $this->invoiceItems($linked)->all()
-        );
+        ));
     }
 
     public function availableInvoices(int $propertyId, int $pedido)
@@ -226,12 +267,12 @@ class CompraPedidoService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$order) {
+            if (! $order) {
                 throw new RuntimeException('Pedido fiscal nao encontrado.');
             }
 
-            if ($order->status === 'aprovado_baixado') {
-                throw new RuntimeException('Pedido aprovado nao pode receber nova nota fiscal.');
+            if (! $this->capabilities->for($order->status)['can_link_invoice']) {
+                throw new RuntimeException('Este pedido nao pode receber nova nota fiscal no status atual.');
             }
 
             $invoice = DB::table('fiscal_invoices')
@@ -240,7 +281,7 @@ class CompraPedidoService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$invoice) {
+            if (! $invoice) {
                 throw new RuntimeException('Nota fiscal nao encontrada para esta propriedade.');
             }
 
@@ -248,7 +289,7 @@ class CompraPedidoService
                 ->where('invoice_id', $invoiceId)
                 ->value('order_id');
 
-            if ($linkedOrder && (int)$linkedOrder !== $pedido) {
+            if ($linkedOrder && (int) $linkedOrder !== $pedido) {
                 throw new RuntimeException('Esta nota fiscal ja esta vinculada a outro pedido.');
             }
 
@@ -278,12 +319,12 @@ class CompraPedidoService
             ->where('propriedade_id', $propertyId)
             ->first();
 
-        if (!$order) {
+        if (! $order) {
             throw new RuntimeException('Pedido fiscal nao encontrado.');
         }
 
-        if ($order->status === 'aprovado_baixado') {
-            throw new RuntimeException('Pedido aprovado nao pode receber nova nota fiscal.');
+        if (! $this->capabilities->for($order->status)['can_link_invoice']) {
+            throw new RuntimeException('Este pedido nao pode receber nova nota fiscal no status atual.');
         }
 
         $invoice = DB::table('fiscal_invoices')
@@ -291,7 +332,7 @@ class CompraPedidoService
             ->where('propriedade_id', $propertyId)
             ->first();
 
-        if (!$invoice) {
+        if (! $invoice) {
             throw new RuntimeException('Nota fiscal nao encontrada para esta propriedade.');
         }
 
@@ -299,7 +340,7 @@ class CompraPedidoService
             ->where('invoice_id', $invoiceId)
             ->value('order_id');
 
-        if ($linkedOrder && (int)$linkedOrder !== $pedido) {
+        if ($linkedOrder && (int) $linkedOrder !== $pedido) {
             throw new RuntimeException('Esta nota fiscal ja esta vinculada a outro pedido.');
         }
 
@@ -311,7 +352,7 @@ class CompraPedidoService
                 'series' => $invoice->series,
                 'issuer_name' => $invoice->issuer_name,
                 'issuer_cnpj' => $invoice->issuer_cnpj,
-                'total_value' => (float)$invoice->total_value,
+                'total_value' => (float) $invoice->total_value,
                 'issue_date' => $invoice->issue_date,
             ],
             'comparison' => $this->compareOrderInvoiceItems(
@@ -324,17 +365,36 @@ class CompraPedidoService
 
     public function confirmInvoicePreview(int $propertyId, int $pedido, array $preview, ?int $userId): void
     {
-        if ((int)($preview['order_id'] ?? 0) !== $pedido || empty($preview['invoice_id'])) {
+        if ((int) ($preview['order_id'] ?? 0) !== $pedido || empty($preview['invoice_id'])) {
             throw new RuntimeException('Nao ha comparacao de nota fiscal para confirmar.');
         }
 
-        $invoiceId = (int)$preview['invoice_id'];
+        $order = DB::table('fiscal_orders')
+            ->where('id', $pedido)
+            ->where('propriedade_id', $propertyId)
+            ->first(['id', 'status']);
+
+        if (! $order) {
+            throw new RuntimeException('Pedido fiscal nao encontrado.');
+        }
+
+        $invoiceId = (int) $preview['invoice_id'];
         $comparison = $this->compareOrderInvoiceItems(
             $this->orderItems($pedido)->all(),
             $this->invoiceItems([$invoiceId])->all()
         );
 
-        if ((int)($comparison['match_count'] ?? 0) < 1) {
+        $canConfirm = $this->capabilities->for(
+            (string) $order->status,
+            true,
+            (int) ($comparison['match_count'] ?? 0),
+        )['can_confirm_invoice_link'];
+
+        if (! $canConfirm) {
+            if (! $this->capabilities->for($order->status)['can_link_invoice']) {
+                throw new RuntimeException('Este pedido nao pode confirmar vinculo de nota fiscal no status atual.');
+            }
+
             throw new RuntimeException('Nao foi encontrado nenhum item compativel entre o pedido e a nota fiscal. Edite os itens do pedido ou remova esta nota antes de continuar.');
         }
 
@@ -350,12 +410,12 @@ class CompraPedidoService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$order) {
+            if (! $order) {
                 throw new RuntimeException('Pedido fiscal nao encontrado.');
             }
 
-            if ($order->status === 'aprovado_baixado') {
-                throw new RuntimeException('Pedido aprovado nao pode remover nota fiscal.');
+            if (! $this->capabilities->for($order->status)['can_unlink_invoice']) {
+                throw new RuntimeException('Este pedido nao pode remover nota fiscal no status atual.');
             }
 
             DB::table('fiscal_order_invoices')
@@ -400,6 +460,7 @@ class CompraPedidoService
 
             if ($bestIndex === null) {
                 $missingInInvoice[] = $this->itemLabel($order);
+
                 continue;
             }
 
@@ -422,7 +483,7 @@ class CompraPedidoService
 
         $missingInOrder = [];
         foreach ($invoiceItems as $index => $invoice) {
-            if (!isset($usedInvoices[$index])) {
+            if (! isset($usedInvoices[$index])) {
                 $missingInOrder[] = $this->itemLabel($invoice);
             }
         }
@@ -433,20 +494,20 @@ class CompraPedidoService
             'missing_in_invoice' => $missingInInvoice,
             'missing_in_order' => $missingInOrder,
             'match_count' => count($matches) + count($divergences),
-            'has_divergences' => (bool)($divergences || $missingInInvoice || $missingInOrder),
+            'has_divergences' => (bool) ($divergences || $missingInInvoice || $missingInOrder),
         ];
     }
 
     private function itemMatchReason(object $order, object $invoice): ?string
     {
-        $orderCode = strtolower(trim((string)($order->product_code ?? '')));
-        $invoiceCode = strtolower(trim((string)($invoice->product_code ?? '')));
+        $orderCode = strtolower(trim((string) ($order->product_code ?? '')));
+        $invoiceCode = strtolower(trim((string) ($invoice->product_code ?? '')));
         if ($orderCode !== '' && $invoiceCode !== '' && $orderCode === $invoiceCode) {
             return 'Codigo do produto igual';
         }
 
-        $orderDesc = $this->itemText((string)($order->description ?? ''));
-        $invoiceDesc = $this->itemText((string)($invoice->description ?? ''));
+        $orderDesc = $this->itemText((string) ($order->description ?? ''));
+        $invoiceDesc = $this->itemText((string) ($invoice->description ?? ''));
         if ($orderDesc !== '' && $invoiceDesc !== '') {
             if ($orderDesc === $invoiceDesc) {
                 return 'Descricao igual';
@@ -457,8 +518,8 @@ class CompraPedidoService
                 return 'Descricao semelhante';
             }
 
-            $orderUnit = strtolower(trim((string)($order->unit ?? '')));
-            $invoiceUnit = strtolower(trim((string)($invoice->unit ?? '')));
+            $orderUnit = strtolower(trim((string) ($order->unit ?? '')));
+            $invoiceUnit = strtolower(trim((string) ($invoice->unit ?? '')));
             if ($orderUnit !== '' && $invoiceUnit !== '' && $orderUnit === $invoiceUnit && (str_contains($orderDesc, $invoiceDesc) || str_contains($invoiceDesc, $orderDesc))) {
                 return 'Descricao e unidade compativeis';
             }
@@ -473,19 +534,19 @@ class CompraPedidoService
         if ($this->differentText($order->product_code ?? '', $invoice->product_code ?? '')) {
             $issues[] = 'Codigo do produto divergente';
         }
-        if (strcasecmp(trim((string)($order->unit ?? '')), trim((string)($invoice->unit ?? ''))) !== 0) {
+        if (strcasecmp(trim((string) ($order->unit ?? '')), trim((string) ($invoice->unit ?? ''))) !== 0) {
             $issues[] = 'Unidade de medida divergente';
         }
-        if ($this->valuesDiffer((float)($order->quantity ?? 0), (float)($invoice->quantity ?? 0), 0.0001)) {
+        if ($this->valuesDiffer((float) ($order->quantity ?? 0), (float) ($invoice->quantity ?? 0), 0.0001)) {
             $issues[] = 'Quantidade divergente';
         }
-        if ($this->valuesDiffer((float)($order->unit_value ?? 0), (float)($invoice->unit_value ?? 0), 0.01)) {
+        if ($this->valuesDiffer((float) ($order->unit_value ?? 0), (float) ($invoice->unit_value ?? 0), 0.01)) {
             $issues[] = 'Valor unitario divergente';
         }
-        if ($this->valuesDiffer((float)($order->total_value ?? 0), (float)($invoice->total_value ?? 0), 0.01)) {
+        if ($this->valuesDiffer((float) ($order->total_value ?? 0), (float) ($invoice->total_value ?? 0), 0.01)) {
             $issues[] = 'Valor total divergente';
         }
-        if (strcasecmp(trim((string)($order->description ?? '')), trim((string)($invoice->description ?? ''))) !== 0) {
+        if (strcasecmp(trim((string) ($order->description ?? '')), trim((string) ($invoice->description ?? ''))) !== 0) {
             $issues[] = 'Descricao divergente';
         }
 
@@ -506,12 +567,12 @@ class CompraPedidoService
     private function itemLabel(object $item): array
     {
         return [
-            'code' => (string)($item->product_code ?? ''),
-            'description' => (string)($item->description ?? ''),
-            'unit' => (string)($item->unit ?? ''),
-            'quantity' => (float)($item->quantity ?? 0),
-            'unit_value' => (float)($item->unit_value ?? 0),
-            'total_value' => (float)($item->total_value ?? 0),
+            'code' => (string) ($item->product_code ?? ''),
+            'description' => (string) ($item->description ?? ''),
+            'unit' => (string) ($item->unit ?? ''),
+            'quantity' => (float) ($item->quantity ?? 0),
+            'unit_value' => (float) ($item->unit_value ?? 0),
+            'total_value' => (float) ($item->total_value ?? 0),
         ];
     }
 
@@ -521,13 +582,13 @@ class CompraPedidoService
         $value = strtolower($value);
         $value = preg_replace('/[^a-z0-9]+/', ' ', $value);
 
-        return trim((string)$value);
+        return trim((string) $value);
     }
 
     private function differentText($a, $b): bool
     {
-        $a = trim((string)$a);
-        $b = trim((string)$b);
+        $a = trim((string) $a);
+        $b = trim((string) $b);
 
         return $a !== '' && $b !== '' && strcasecmp($a, $b) !== 0;
     }
@@ -537,9 +598,60 @@ class CompraPedidoService
         return abs($a - $b) > $tolerance;
     }
 
+    private function prepareOrder(
+        object $order,
+        bool $previewBelongsToOrder = false,
+        int $previewMatchCount = 0,
+    ): object {
+        foreach ($this->capabilities->for(
+            (string) $order->status,
+            $previewBelongsToOrder,
+            $previewMatchCount,
+        ) as $capability => $allowed) {
+            $order->{$capability} = $allowed;
+        }
+
+        $order->status_label = FarmFormat::statusLabel((string) $order->status);
+        $order->status_tone = in_array(
+            (string) $order->status,
+            ['aprovado', 'aprovado_baixado', 'baixado'],
+            true,
+        ) ? 'success' : 'warning';
+
+        return $order;
+    }
+
+    private function prepareInvoicePreview(int $pedido, mixed $preview): ?array
+    {
+        if (! is_array($preview) || (int) ($preview['order_id'] ?? 0) !== $pedido) {
+            return null;
+        }
+
+        $preview['invoice'] = is_array($preview['invoice'] ?? null) ? $preview['invoice'] : [];
+        $preview['comparison'] = $this->prepareComparison(
+            is_array($preview['comparison'] ?? null) ? $preview['comparison'] : [],
+        );
+
+        return $preview;
+    }
+
+    private function prepareComparison(array $comparison): array
+    {
+        $comparison['divergences'] = $comparison['divergences'] ?? [];
+        $comparison['missing_in_invoice'] = $comparison['missing_in_invoice'] ?? [];
+        $comparison['missing_in_order'] = $comparison['missing_in_order'] ?? [];
+        $comparison['match_count'] = (int) ($comparison['match_count'] ?? 0);
+        $comparison['divergence_count'] = count($comparison['divergences']);
+        $comparison['missing_in_invoice_count'] = count($comparison['missing_in_invoice']);
+        $comparison['missing_in_order_count'] = count($comparison['missing_in_order']);
+        $comparison['has_divergences'] = (bool) ($comparison['has_divergences'] ?? false);
+
+        return $comparison;
+    }
+
     public function approveOrder(int $propertyId, int $pedido, ?int $userId, bool $confirmed): void
     {
-        if (!$confirmed) {
+        if (! $confirmed) {
             throw new RuntimeException('Confirme explicitamente a aprovacao do pedido.');
         }
 
@@ -550,15 +662,11 @@ class CompraPedidoService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$order) {
+            if (! $order) {
                 throw new RuntimeException('Pedido fiscal nao encontrado.');
             }
 
-            if ($order->status === 'aprovado_baixado') {
-                throw new RuntimeException('Este pedido ja foi aprovado.');
-            }
-
-            if (!in_array((string)$order->status, ['em_aberto', 'aguardando_aprovacao'], true)) {
+            if (! $this->capabilities->for($order->status)['can_approve']) {
                 throw new RuntimeException('Este pedido nao esta em status pendente para aprovacao.');
             }
 
@@ -638,7 +746,7 @@ class CompraPedidoService
 
     private function createFinancialExpense(object $order, ?int $userId): int
     {
-        $existingId = (int)($order->financial_expense_id ?? 0);
+        $existingId = (int) ($order->financial_expense_id ?? 0);
         if ($existingId > 0 && DB::table('despesas')
             ->where('id', $existingId)
             ->where('propriedade_id', $order->propriedade_id)
@@ -647,8 +755,8 @@ class CompraPedidoService
             return $existingId;
         }
 
-        $marker = '[FISCAL_ORDER_ID:'.(int)$order->id.']';
-        $duplicateId = (int)DB::table('despesas')
+        $marker = '[FISCAL_ORDER_ID:'.(int) $order->id.']';
+        $duplicateId = (int) DB::table('despesas')
             ->where('propriedade_id', $order->propriedade_id)
             ->where('observacoes', 'like', '%'.$marker.'%')
             ->where('status_pagamento', '!=', 'cancelado')
@@ -659,14 +767,14 @@ class CompraPedidoService
         }
 
         DB::table('despesas')->insert([
-            'propriedade_id' => (int)$order->propriedade_id,
+            'propriedade_id' => (int) $order->propriedade_id,
             'categoria_id' => $this->financialCategoryId(),
-            'descricao' => substr('Pedido fiscal '.(string)$order->order_number, 0, 255),
-            'fornecedor' => substr((string)($order->supplier_name ?? ''), 0, 150),
+            'descricao' => substr('Pedido fiscal '.(string) $order->order_number, 0, 255),
+            'fornecedor' => substr((string) ($order->supplier_name ?? ''), 0, 150),
             'quantidade' => null,
             'unidade' => '',
             'valor_unitario' => null,
-            'valor_total' => (float)$order->total_value,
+            'valor_total' => (float) $order->total_value,
             'data_lancamento' => $order->issue_date ?: now()->toDateString(),
             'data_vencimento' => $order->issue_date ?: now()->toDateString(),
             'status_pagamento' => 'pendente',
@@ -676,20 +784,20 @@ class CompraPedidoService
             'forma_pagamento' => 'pix',
             'numero_parcelas' => 1,
             'parcela_atual' => 1,
-            'nota_fiscal' => $this->linkedInvoiceNumbers((int)$order->id),
+            'nota_fiscal' => $this->linkedInvoiceNumbers((int) $order->id),
             'observacoes' => trim($marker."\nLancamento financeiro gerado automaticamente pela aprovacao do pedido fiscal.".($order->notes ? "\n".$order->notes : '')),
             'usuario_id' => $userId,
         ]);
 
-        return (int)DB::getPdo()->lastInsertId();
+        return (int) DB::getPdo()->lastInsertId();
     }
 
     private function syncStock(object $order, $items, ?int $userId): int
     {
         $created = 0;
         foreach ($items as $item) {
-            $quantity = max(0.0, (float)$item->quantity - $this->patrimonioUsedQuantity($item));
-            if ((int)$item->id <= 0 || $quantity <= 0) {
+            $quantity = max(0.0, (float) $item->quantity - $this->patrimonioUsedQuantity($item));
+            if ((int) $item->id <= 0 || $quantity <= 0) {
                 continue;
             }
 
@@ -699,24 +807,25 @@ class CompraPedidoService
                 ->value('id');
 
             $payload = [
-                'propriedade_id' => (int)$order->propriedade_id,
+                'propriedade_id' => (int) $order->propriedade_id,
                 'produto_id' => $productId,
                 'origem_tipo' => 'pedido_fiscal',
-                'origem_id' => (int)$order->id,
-                'fiscal_order_id' => (int)$order->id,
-                'fiscal_order_item_id' => (int)$item->id,
+                'origem_id' => (int) $order->id,
+                'fiscal_order_id' => (int) $order->id,
+                'fiscal_order_item_id' => (int) $item->id,
                 'tipo' => 'entrada',
                 'quantidade' => $quantity,
-                'unidade' => trim((string)($item->unit ?? 'un')) ?: 'un',
-                'valor_unitario' => (float)$item->unit_value,
-                'valor_total' => round($quantity * (float)$item->unit_value, 2),
-                'data_movimento' => $order->approved_at ? date('Y-m-d', strtotime((string)$order->approved_at)) : ($order->issue_date ?: now()->toDateString()),
-                'observacoes' => 'Entrada automatica pelo pedido fiscal '.(string)$order->order_number,
+                'unidade' => trim((string) ($item->unit ?? 'un')) ?: 'un',
+                'valor_unitario' => (float) $item->unit_value,
+                'valor_total' => round($quantity * (float) $item->unit_value, 2),
+                'data_movimento' => $order->approved_at ? date('Y-m-d', strtotime((string) $order->approved_at)) : ($order->issue_date ?: now()->toDateString()),
+                'observacoes' => 'Entrada automatica pelo pedido fiscal '.(string) $order->order_number,
                 'usuario_id' => $userId,
             ];
 
             if ($existingId) {
                 DB::table('produto_estoque_movimentos')->where('id', $existingId)->update($payload);
+
                 continue;
             }
 
@@ -730,17 +839,17 @@ class CompraPedidoService
     private function syncPatrimonio(object $order, $items, ?int $userId): int
     {
         $created = 0;
-        $date = $order->approved_at ? date('Y-m-d', strtotime((string)$order->approved_at)) : ($order->issue_date ?: now()->toDateString());
-        $markerBase = '[FISCAL_ORDER_ID:'.(int)$order->id.']';
+        $date = $order->approved_at ? date('Y-m-d', strtotime((string) $order->approved_at)) : ($order->issue_date ?: now()->toDateString());
+        $markerBase = '[FISCAL_ORDER_ID:'.(int) $order->id.']';
 
         foreach ($items as $item) {
-            $patrimonioId = (int)($item->patrimonio_id ?? 0);
+            $patrimonioId = (int) ($item->patrimonio_id ?? 0);
             $usedQuantity = $this->patrimonioUsedQuantity($item);
-            if ($patrimonioId <= 0 || $usedQuantity <= 0 || (float)$item->unit_value < 0) {
+            if ($patrimonioId <= 0 || $usedQuantity <= 0 || (float) $item->unit_value < 0) {
                 continue;
             }
 
-            $marker = $markerBase.'[FISCAL_ORDER_ITEM_ID:'.(int)$item->id.']';
+            $marker = $markerBase.'[FISCAL_ORDER_ITEM_ID:'.(int) $item->id.']';
             $existingId = DB::table('maquina_lancamentos')
                 ->where('propriedade_id', $order->propriedade_id)
                 ->where('maquina_id', $patrimonioId)
@@ -748,22 +857,23 @@ class CompraPedidoService
                 ->value('id');
 
             $payload = [
-                'propriedade_id' => (int)$order->propriedade_id,
+                'propriedade_id' => (int) $order->propriedade_id,
                 'maquina_id' => $patrimonioId,
                 'tipo' => $this->patrimonioLaunchType($item),
                 'data_lancamento' => $date,
-                'descricao' => substr('Pedido fiscal '.(string)$order->order_number.' - '.(string)$item->description, 0, 180),
-                'fornecedor' => substr((string)($order->supplier_name ?? ''), 0, 150),
+                'descricao' => substr('Pedido fiscal '.(string) $order->order_number.' - '.(string) $item->description, 0, 180),
+                'fornecedor' => substr((string) ($order->supplier_name ?? ''), 0, 150),
                 'quantidade' => $usedQuantity,
-                'unidade' => trim((string)($item->unit ?? 'un')) ?: 'un',
-                'valor_unitario' => (float)$item->unit_value,
-                'valor_total' => round($usedQuantity * (float)$item->unit_value, 2),
+                'unidade' => trim((string) ($item->unit ?? 'un')) ?: 'un',
+                'valor_unitario' => (float) $item->unit_value,
+                'valor_total' => round($usedQuantity * (float) $item->unit_value, 2),
                 'observacoes' => trim($marker."\nLancamento gerado automaticamente pela aprovacao do pedido fiscal."),
                 'usuario_id' => $userId,
             ];
 
             if ($existingId) {
                 DB::table('maquina_lancamentos')->where('id', $existingId)->update($payload);
+
                 continue;
             }
 
@@ -787,7 +897,7 @@ class CompraPedidoService
     {
         $id = DB::table('categorias')->where('nome', 'Pedidos Fiscais')->value('id');
         if ($id) {
-            return (int)$id;
+            return (int) $id;
         }
 
         DB::table('categorias')->insert([
@@ -797,7 +907,7 @@ class CompraPedidoService
             'ativo' => 1,
         ]);
 
-        return (int)DB::getPdo()->lastInsertId();
+        return (int) DB::getPdo()->lastInsertId();
     }
 
     private function linkedInvoiceNumbers(int $orderId): ?string
@@ -817,11 +927,11 @@ class CompraPedidoService
 
     private function findOrCreateStockProduct(object $order, object $item): int
     {
-        $propertyId = (int)$order->propriedade_id;
-        $code = trim((string)($item->product_code ?? ''));
-        $description = trim((string)($item->description ?? ''));
-        $unit = trim((string)($item->unit ?? 'un')) ?: 'un';
-        $categoryId = !empty($item->categoria_id) ? (int)$item->categoria_id : null;
+        $propertyId = (int) $order->propriedade_id;
+        $code = trim((string) ($item->product_code ?? ''));
+        $description = trim((string) ($item->description ?? ''));
+        $unit = trim((string) ($item->unit ?? 'un')) ?: 'un';
+        $categoryId = ! empty($item->categoria_id) ? (int) $item->categoria_id : null;
 
         $query = DB::table('produtos')
             ->where('propriedade_id', $propertyId)
@@ -832,7 +942,7 @@ class CompraPedidoService
             ->orderBy('id');
 
         $products = $query->get(['id', 'categoria_id', 'unidade_medida']);
-        $found = $products->first(fn ($product) => strcasecmp(trim((string)$product->unidade_medida), $unit) === 0)
+        $found = $products->first(fn ($product) => strcasecmp(trim((string) $product->unidade_medida), $unit) === 0)
             ?: $products->first();
 
         if ($found) {
@@ -840,14 +950,14 @@ class CompraPedidoService
             if ($categoryId && empty($found->categoria_id)) {
                 $updates['categoria_id'] = $categoryId;
             }
-            if (strcasecmp(trim((string)$found->unidade_medida), $unit) !== 0) {
+            if (strcasecmp(trim((string) $found->unidade_medida), $unit) !== 0) {
                 $updates['unidade_medida'] = $unit;
             }
             if ($updates) {
                 DB::table('produtos')->where('id', $found->id)->update($updates);
             }
 
-            return (int)$found->id;
+            return (int) $found->id;
         }
 
         DB::table('produtos')->insert([
@@ -859,25 +969,25 @@ class CompraPedidoService
             'unidade_medida' => $unit,
             'categoria_id' => $categoryId,
             'ativo' => 1,
-            'informacoes_fiscais' => 'Criado automaticamente pela aprovacao do pedido fiscal '.(string)($order->order_number ?? ''),
+            'informacoes_fiscais' => 'Criado automaticamente pela aprovacao do pedido fiscal '.(string) ($order->order_number ?? ''),
         ]);
 
-        return (int)DB::getPdo()->lastInsertId();
+        return (int) DB::getPdo()->lastInsertId();
     }
 
     private function patrimonioUsedQuantity(object $item): float
     {
-        if ((int)($item->patrimonio_id ?? 0) <= 0) {
+        if ((int) ($item->patrimonio_id ?? 0) <= 0) {
             return 0.0;
         }
 
-        $quantity = max(0.0, (float)($item->quantity ?? 0));
-        $usage = (string)($item->patrimonio_uso ?? 'estoque');
+        $quantity = max(0.0, (float) ($item->quantity ?? 0));
+        $usage = (string) ($item->patrimonio_uso ?? 'estoque');
         if ($usage === 'total') {
             return $quantity;
         }
         if ($usage === 'parcial') {
-            return min($quantity, max(0.0, (float)($item->patrimonio_quantidade ?? 0)));
+            return min($quantity, max(0.0, (float) ($item->patrimonio_quantidade ?? 0)));
         }
 
         return 0.0;
@@ -885,7 +995,7 @@ class CompraPedidoService
 
     private function patrimonioLaunchType(object $item): string
     {
-        $text = strtolower(trim((string)($item->categoria_nome ?? '').' '.(string)($item->description ?? '')));
+        $text = strtolower(trim((string) ($item->categoria_nome ?? '').' '.(string) ($item->description ?? '')));
 
         if (str_contains($text, 'combust') || str_contains($text, 'diesel') || str_contains($text, 'gasolina')) {
             return 'abastecimento';
@@ -921,9 +1031,9 @@ class CompraPedidoService
         $items = [];
 
         for ($i = 0; $i < $count; $i++) {
-            $description = trim((string)($descriptions[$i] ?? ''));
-            $code = trim((string)($codes[$i] ?? ''));
-            $unit = trim((string)($units[$i] ?? ''));
+            $description = trim((string) ($descriptions[$i] ?? ''));
+            $code = trim((string) ($codes[$i] ?? ''));
+            $unit = trim((string) ($units[$i] ?? ''));
             $quantity = $this->decimal($quantities[$i] ?? '0');
             $unitValue = $this->money($unitValues[$i] ?? '0');
 
@@ -935,7 +1045,7 @@ class CompraPedidoService
 
             $assetId = $this->validAssetId($propertyId, $assets[$i] ?? null);
             [$assetUse, $assetQuantity] = $this->assetUsage(
-                (string)($assetUses[$i] ?? 'estoque'),
+                (string) ($assetUses[$i] ?? 'estoque'),
                 $assetId,
                 $quantity,
                 $this->decimal($assetQuantities[$i] ?? '0')
@@ -960,7 +1070,7 @@ class CompraPedidoService
 
     private function validCategoryId($categoryId): ?int
     {
-        $categoryId = (int)$categoryId;
+        $categoryId = (int) $categoryId;
         if ($categoryId <= 0) {
             return null;
         }
@@ -973,7 +1083,7 @@ class CompraPedidoService
 
     private function validAssetId(int $propertyId, $assetId): ?int
     {
-        $assetId = (int)$assetId;
+        $assetId = (int) $assetId;
         if ($assetId <= 0) {
             return null;
         }
@@ -986,7 +1096,7 @@ class CompraPedidoService
 
     private function assetUsage(string $usage, ?int $assetId, float $quantity, float $usedQuantity): array
     {
-        if (!$assetId) {
+        if (! $assetId) {
             return ['estoque', 0.0];
         }
 
@@ -1006,17 +1116,17 @@ class CompraPedidoService
 
     private function decimal($value): float
     {
-        return max(0.0, (float)str_replace(',', '.', trim((string)$value)));
+        return max(0.0, (float) str_replace(',', '.', trim((string) $value)));
     }
 
     private function money($value): float
     {
-        $value = trim((string)$value);
+        $value = trim((string) $value);
         if (str_contains($value, ',')) {
             $value = str_replace('.', '', $value);
             $value = str_replace(',', '.', $value);
         }
 
-        return max(0.0, (float)$value);
+        return max(0.0, (float) $value);
     }
 }

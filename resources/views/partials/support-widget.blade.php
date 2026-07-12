@@ -1,12 +1,3 @@
-@php
-    $loggedUserId = (int)session('usuario_id');
-    $profile = (string)session('perfil', '');
-    $canHandleSupport = in_array($profile, ['administrador_sistema', 'gerencia_sistema', 'colaborador_sistema'], true);
-    $canUseClientChat = $loggedUserId > 0 && !$canHandleSupport;
-    $suporteEndpoint = url('/pages/ajax/suporte_chat.php');
-    $chatInternoEndpoint = url('/pages/ajax/chat_interno.php');
-@endphp
-
 @if ($loggedUserId > 0 && $canHandleSupport)
 <div class="ff-support-widget ff-support-admin-widget" data-support-admin data-support-floating data-support-endpoint="{{ $suporteEndpoint }}" data-support-role="{{ $profile }}">
     <button type="button" class="ff-support-launch" data-support-admin-toggle title="Chat/Suporte">

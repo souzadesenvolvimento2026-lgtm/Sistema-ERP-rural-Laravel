@@ -6,7 +6,6 @@ use App\Services\SafraService;
 use App\Support\FarmContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use RuntimeException;
 
@@ -17,9 +16,9 @@ class SafraController extends Controller
         return view('safras.index', $service->pagina($this->propriedadeId(), $request));
     }
 
-    public function create(): View
+    public function create(SafraService $service): View
     {
-        return view('safras.create', $this->formData());
+        return view('safras.create', $service->formData($this->propriedadeId()));
     }
 
     public function store(Request $request, SafraService $service): RedirectResponse
@@ -34,7 +33,7 @@ class SafraController extends Controller
     public function edit(int $safra, SafraService $service): View
     {
         return view('safras.edit', [
-            ...$this->formData(),
+            ...$service->formData($this->propriedadeId()),
             'safra' => $service->buscar($safra, $this->propriedadeId()),
         ]);
     }
@@ -54,7 +53,15 @@ class SafraController extends Controller
             'status' => ['required', 'in:planejamento,em_andamento,colhida,encerrada'],
         ]);
 
-        $service->atualizarStatus($safra, $this->propriedadeId(), $dados['status'], session('usuario_id'));
+        try {
+            $service->atualizarStatus($safra, $this->propriedadeId(), $dados['status'], session('usuario_id'));
+        } catch (RuntimeException $exception) {
+            report($exception);
+
+            return redirect()
+                ->route('safras.index', ['status' => 'todas'])
+                ->withErrors($exception->getMessage());
+        }
 
         return redirect()
             ->route('safras.index', ['status' => 'todas'])
@@ -70,12 +77,14 @@ class SafraController extends Controller
         try {
             $service->excluirDefinitivo($safra, $this->propriedadeId(), session('usuario_id'), $dados['senha_exclusao']);
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return redirect()
                 ->route('safras.index', ['status' => 'todas'])
                 ->withErrors($exception->getMessage());
         }
 
-        if ((int)session('safra_id') === $safra) {
+        if ((int) session('safra_id') === $safra) {
             session()->forget('safra_id');
         }
 
@@ -100,21 +109,6 @@ class SafraController extends Controller
             'talhoes' => ['nullable', 'array'],
             'talhoes.*' => ['integer'],
         ]);
-    }
-
-    private function formData(): array
-    {
-        $propertyId = $this->propriedadeId();
-
-        return [
-            'activeModule' => 'safras',
-            'culturas' => DB::table('culturas')->orderBy('nome')->get(['id', 'nome']),
-            'talhoes' => DB::table('talhoes')
-                ->where('propriedade_id', $propertyId)
-                ->where('ativo', 1)
-                ->orderBy('nome')
-                ->get(['id', 'nome', 'area']),
-        ];
     }
 
     private function propriedadeId(): int

@@ -6,10 +6,13 @@ use App\Services\TalhaoService;
 use App\Support\FarmContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
+use Throwable;
 
 class TalhaoController extends Controller
 {
@@ -30,7 +33,7 @@ class TalhaoController extends Controller
 
     public function exportarTalhao(int $talhao, Request $request, TalhaoService $service): Response|BinaryFileResponse
     {
-        return $service->exportarTalhao($talhao, $this->propriedadeId(), (string)$request->query('formato', 'kml'));
+        return $service->exportarTalhao($talhao, $this->propriedadeId(), (string) $request->query('formato', 'kml'));
     }
 
     public function create(): View
@@ -71,6 +74,8 @@ class TalhaoController extends Controller
         try {
             $service->alternarAtivo($talhao, $this->propriedadeId(), session('usuario_id'));
         } catch (RuntimeException $e) {
+            report($e);
+
             return redirect()
                 ->route('talhoes.index', ['status' => 'todos'])
                 ->with('error', $e->getMessage());
@@ -92,9 +97,9 @@ class TalhaoController extends Controller
 
         $total = $service->unificar(
             $this->propriedadeId(),
-            (int)$dados['talhao_destino_id'],
+            (int) $dados['talhao_destino_id'],
             $dados['talhoes_origem'],
-            (bool)($dados['somar_area'] ?? false),
+            (bool) ($dados['somar_area'] ?? false),
             session('usuario_id')
         );
 
@@ -118,6 +123,8 @@ class TalhaoController extends Controller
                 session('usuario_id')
             );
         } catch (RuntimeException $e) {
+            report($e);
+
             return redirect()
                 ->route('talhoes.index', ['status' => 'todos'])
                 ->with('error', $e->getMessage());
@@ -137,8 +144,8 @@ class TalhaoController extends Controller
             'coordenadas_json' => ['required', 'string'],
         ]);
 
-        if (!empty($dados['talhao_id'])) {
-            $service->atualizarPoligono((int)$dados['talhao_id'], $dados, $this->propriedadeId(), session('usuario_id'));
+        if (! empty($dados['talhao_id'])) {
+            $service->atualizarPoligono((int) $dados['talhao_id'], $dados, $this->propriedadeId(), session('usuario_id'));
 
             return redirect()
                 ->route('talhoes.mapa')
@@ -162,8 +169,12 @@ class TalhaoController extends Controller
 
         try {
             $service->atualizarDadosMapa($talhao, $this->propriedadeId(), $dados, session('usuario_id'));
-        } catch (\Throwable $e) {
-            return redirect()->route('talhoes.mapa')->withErrors($e->getMessage());
+        } catch (ValidationException|HttpExceptionInterface $exception) {
+            throw $exception;
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return redirect()->route('talhoes.mapa')->withErrors($exception->getMessage());
         }
 
         return redirect()->route('talhoes.mapa')->with('success', 'Dados do talhao atualizados pelo mapa.');
@@ -177,8 +188,12 @@ class TalhaoController extends Controller
 
         try {
             $service->salvarExclusao($talhao, $this->propriedadeId(), $dados['exclusao_json'], session('usuario_id'));
-        } catch (\Throwable $e) {
-            return redirect()->route('talhoes.mapa')->withErrors($e->getMessage());
+        } catch (ValidationException|HttpExceptionInterface $exception) {
+            throw $exception;
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return redirect()->route('talhoes.mapa')->withErrors($exception->getMessage());
         }
 
         return redirect()->route('talhoes.mapa')->with('success', 'Area excluida salva e talhao recalculado.');
@@ -188,8 +203,12 @@ class TalhaoController extends Controller
     {
         try {
             $service->limparExclusoes($talhao, $this->propriedadeId(), session('usuario_id'));
-        } catch (\Throwable $e) {
-            return redirect()->route('talhoes.mapa')->withErrors($e->getMessage());
+        } catch (ValidationException|HttpExceptionInterface $exception) {
+            throw $exception;
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return redirect()->route('talhoes.mapa')->withErrors($exception->getMessage());
         }
 
         return redirect()->route('talhoes.mapa')->with('success', 'Areas excluidas removidas do talhao.');
@@ -205,8 +224,12 @@ class TalhaoController extends Controller
 
         try {
             $service->salvarPivo($talhao, $this->propriedadeId(), $dados, session('usuario_id'));
-        } catch (\Throwable $e) {
-            return redirect()->route('talhoes.mapa')->withErrors($e->getMessage());
+        } catch (ValidationException|HttpExceptionInterface $exception) {
+            throw $exception;
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return redirect()->route('talhoes.mapa')->withErrors($exception->getMessage());
         }
 
         return redirect()->route('talhoes.mapa')->with('success', 'Pivo salvo no talhao.');
@@ -223,7 +246,9 @@ class TalhaoController extends Controller
 
         try {
             $service->criarPivoComoTalhao($this->propriedadeId(), $dados, session('usuario_id'));
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
+            report($e);
+
             return redirect()->route('talhoes.mapa')->withErrors($e->getMessage());
         }
 
@@ -234,8 +259,12 @@ class TalhaoController extends Controller
     {
         try {
             $service->removerPivo($talhao, $this->propriedadeId(), session('usuario_id'));
-        } catch (\Throwable $e) {
-            return redirect()->route('talhoes.mapa')->withErrors($e->getMessage());
+        } catch (ValidationException|HttpExceptionInterface $exception) {
+            throw $exception;
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return redirect()->route('talhoes.mapa')->withErrors($exception->getMessage());
         }
 
         return redirect()->route('talhoes.mapa')->with('success', 'Pivo removido do talhao.');

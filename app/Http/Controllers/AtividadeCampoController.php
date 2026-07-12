@@ -6,7 +6,6 @@ use App\Services\AtividadeCampoService;
 use App\Support\FarmContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class AtividadeCampoController extends Controller
@@ -40,7 +39,7 @@ class AtividadeCampoController extends Controller
 
         $propriedadeId = app(FarmContext::class)->propertyId();
         $service->criar($dados, $propriedadeId, session('usuario_id'));
-        $safraId = $this->safraValidaParaRedirect($dados['safra_id'] ?? null, $propriedadeId);
+        $safraId = $service->validSafraId($dados['safra_id'] ?? null, $propriedadeId);
 
         return redirect()
             ->route('talhoes.atividades.index', $safraId ? ['safra_id' => $safraId] : [])
@@ -58,20 +57,5 @@ class AtividadeCampoController extends Controller
         return redirect()
             ->route('talhoes.atividades.index')
             ->with('success', 'Status atualizado.');
-    }
-
-    private function safraValidaParaRedirect($safraId, int $propriedadeId): ?int
-    {
-        $safraId = (int)($safraId ?: 0);
-        if ($safraId <= 0) {
-            return null;
-        }
-
-        return DB::table('safras')
-            ->where('id', $safraId)
-            ->where('propriedade_id', $propriedadeId)
-            ->exists()
-            ? $safraId
-            : null;
     }
 }

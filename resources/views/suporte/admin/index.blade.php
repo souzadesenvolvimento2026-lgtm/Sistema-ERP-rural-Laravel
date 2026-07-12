@@ -3,11 +3,6 @@
     'topbarLabel' => 'Chat de Dúvidas',
 ])
 
-@php
-    $suporteEndpoint = url('/pages/ajax/suporte_chat.php');
-    $profile = (string)session('perfil', '');
-@endphp
-
 @section('content')
     <section class="ff-command ff-support-hero">
         <div>

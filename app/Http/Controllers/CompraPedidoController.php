@@ -6,15 +6,12 @@ use App\Services\CompraPedidoService;
 use App\Services\NotaFiscalXmlService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use RuntimeException;
 
 class CompraPedidoController extends Controller
 {
-    public function __construct(private CompraPedidoService $pedidos)
-    {
-    }
+    public function __construct(private CompraPedidoService $pedidos) {}
 
     public function index(): View
     {
@@ -56,17 +53,11 @@ class CompraPedidoController extends Controller
 
     public function show(int $pedido): View
     {
-        $propertyId = $this->pedidos->propertyId();
-
-        return view('compras.pedidos.show', [
-            'activeModule' => 'compras',
-            'order' => $this->pedidos->findOrder($propertyId, $pedido),
-            'items' => $this->pedidos->orderItems($pedido),
-            'linkedInvoices' => $this->pedidos->linkedInvoices($pedido),
-            'availableInvoices' => $this->pedidos->availableInvoices($propertyId, $pedido),
-            'invoiceComparison' => $this->pedidos->invoiceComparison($pedido),
-            'invoiceLinkPreview' => session('fiscal_order_invoice_preview'),
-        ]);
+        return view('compras.pedidos.show', $this->pedidos->showData(
+            $this->pedidos->propertyId(),
+            $pedido,
+            session('fiscal_order_invoice_preview'),
+        ));
     }
 
     public function edit(int $pedido): View
@@ -95,6 +86,8 @@ class CompraPedidoController extends Controller
         try {
             $this->pedidos->updateOrder($request, $this->pedidos->propertyId(), $pedido);
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return back()->withInput()->withErrors($exception->getMessage());
         }
 
@@ -113,6 +106,8 @@ class CompraPedidoController extends Controller
                 $request->boolean('confirmar_aprovacao')
             );
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return back()->withErrors($exception->getMessage());
         }
 
@@ -135,6 +130,8 @@ class CompraPedidoController extends Controller
             );
             session(['fiscal_order_invoice_preview' => $preview]);
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return back()->withErrors($exception->getMessage());
         }
 
@@ -152,7 +149,7 @@ class CompraPedidoController extends Controller
         try {
             $propertyId = $this->pedidos->propertyId();
             $previewXml = $xmlService->preview($dados['xml'], true);
-            $invoiceId = (int)($previewXml['existing_invoice_id'] ?? 0);
+            $invoiceId = (int) ($previewXml['existing_invoice_id'] ?? 0);
 
             if ($invoiceId <= 0) {
                 $invoiceId = $xmlService->confirmarPreview($previewXml, $propertyId, session('usuario_id'));
@@ -161,6 +158,8 @@ class CompraPedidoController extends Controller
             $preview = $this->pedidos->invoiceLinkPreview($propertyId, $pedido, $invoiceId);
             session(['fiscal_order_invoice_preview' => $preview]);
         } catch (\Throwable $exception) {
+            report($exception);
+
             return back()->withErrors($exception->getMessage());
         }
 
@@ -182,6 +181,8 @@ class CompraPedidoController extends Controller
             );
             session()->forget('fiscal_order_invoice_preview');
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return back()->withErrors($exception->getMessage());
         }
 
@@ -204,6 +205,8 @@ class CompraPedidoController extends Controller
         try {
             $this->pedidos->unlinkInvoice($this->pedidos->propertyId(), $pedido, $nota);
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return back()->withErrors($exception->getMessage());
         }
 

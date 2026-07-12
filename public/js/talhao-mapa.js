@@ -11,10 +11,11 @@ window.initTalhaoMapa = function initTalhaoMapa(config) {
         zoomDelta: 0.5,
         wheelPxPerZoomLevel: 90,
     }).setView(config.centro, 14);
-    const drawnItems = new L.FeatureGroup();
+    const draftItems = new L.FeatureGroup();
     const talhaoLayers = new Map();
     const labelsLayer = L.layerGroup();
     const bounds = L.latLngBounds();
+    const talhoes = config.talhoes || [];
 
     const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: MAP_MAX_ZOOM,
@@ -33,9 +34,8 @@ window.initTalhaoMapa = function initTalhaoMapa(config) {
     });
 
     labelsLayer.addTo(map);
-    map.addLayer(drawnItems);
-
-    renderTalhoes(map, config.talhoes || [], talhaoLayers, labelsLayer, bounds);
+    map.addLayer(draftItems);
+    renderTalhoes(map, talhoes, talhaoLayers, labelsLayer, bounds);
 
     L.control.layers(
         { Satélite: satellite, Ruas: roads },
@@ -44,19 +44,17 @@ window.initTalhaoMapa = function initTalhaoMapa(config) {
     ).addTo(map);
 
     map.on('zoomend', () => {
-        if (map.getZoom() > MAP_MAX_ZOOM) {
-            map.setZoom(MAP_MAX_ZOOM);
-        }
+        if (map.getZoom() > MAP_MAX_ZOOM) map.setZoom(MAP_MAX_ZOOM);
     });
 
     if (bounds.isValid()) {
         map.fitBounds(bounds.pad(0.18), { maxZoom: MAP_MAX_ZOOM });
     }
 
-    configureDraw(map, drawnItems, config.talhoes || []);
-    bindPolygonTargetSelector(config.talhoes || []);
+    const mapTools = configureDraw(map, draftItems, talhoes, talhaoLayers);
+    bindPolygonTargetSelector(talhoes);
     bindMapActionForms();
-    bindMapList(map, talhaoLayers);
+    bindMapList(map, talhaoLayers, mapTools.selectTalhao);
 
     setTimeout(() => map.invalidateSize(), 120);
 };
@@ -70,48 +68,36 @@ function translateLeafletDraw() {
     L.drawLocal.draw.toolbar.finish.text = 'Finalizar';
     L.drawLocal.draw.toolbar.undo.title = 'Remover último ponto';
     L.drawLocal.draw.toolbar.undo.text = 'Remover último ponto';
-    L.drawLocal.draw.toolbar.buttons.polygon = 'Desenhar polígono';
+    L.drawLocal.draw.toolbar.buttons.polygon = 'Desenhar novo talhão';
     L.drawLocal.draw.handlers.polygon.tooltip.start = 'Clique para iniciar o polígono.';
     L.drawLocal.draw.handlers.polygon.tooltip.cont = 'Clique para continuar o polígono.';
     L.drawLocal.draw.handlers.polygon.tooltip.end = 'Clique no primeiro ponto para finalizar.';
     L.drawLocal.draw.handlers.polyline.error = '<strong>Erro:</strong> as linhas não podem se cruzar.';
-
-    L.drawLocal.edit.toolbar.actions.save.title = 'Salvar alterações';
-    L.drawLocal.edit.toolbar.actions.save.text = 'Salvar';
-    L.drawLocal.edit.toolbar.actions.cancel.title = 'Cancelar edição';
-    L.drawLocal.edit.toolbar.actions.cancel.text = 'Cancelar';
-    L.drawLocal.edit.toolbar.actions.clearAll.title = 'Remover todos';
-    L.drawLocal.edit.toolbar.actions.clearAll.text = 'Remover todos';
-    L.drawLocal.edit.toolbar.buttons.edit = 'Editar desenho';
-    L.drawLocal.edit.toolbar.buttons.editDisabled = 'Nenhuma área para editar';
-    L.drawLocal.edit.toolbar.buttons.remove = 'Excluir desenho';
-    L.drawLocal.edit.toolbar.buttons.removeDisabled = 'Nenhuma área para excluir';
-    L.drawLocal.edit.handlers.edit.tooltip.text = 'Arraste os pontos para editar.';
-    L.drawLocal.edit.handlers.edit.tooltip.subtext = 'Clique em cancelar para desfazer.';
-    L.drawLocal.edit.handlers.remove.tooltip.text = 'Clique em uma área para excluir.';
 }
 
 function renderTalhoes(map, talhoes, talhaoLayers, labelsLayer, bounds) {
     const colorByType = { polygon: '#74c69d', line: '#ffd166', point: '#2d9d5c', manual: '#2d9d5c' };
 
     talhoes.forEach((talhao) => {
+        let layer = null;
+
         if (talhao.points && talhao.points.length >= 3) {
             const outer = talhao.points.map((point) => [point.lat, point.lng]);
             const holes = (talhao.exclusoes || [])
                 .filter((ring) => Array.isArray(ring) && ring.length >= 3)
                 .map((ring) => ring.map((point) => [point.lat, point.lng]));
             const polygonColor = colorByType.polygon;
-            const polygon = L.polygon([outer, ...holes], {
+            const baseStyle = {
                 color: polygonColor,
                 weight: 2,
                 opacity: 0.95,
                 fillColor: '#2d9d5c',
                 fillOpacity: 0.28,
-            }).addTo(map);
-
-            polygon.bindPopup(popupHtml(talhao));
-            talhaoLayers.set(String(talhao.id), polygon);
-            polygon.getBounds().isValid() && bounds.extend(polygon.getBounds());
+            };
+            layer = L.polygon([outer, ...holes], baseStyle).addTo(map);
+            layer.ffBaseStyle = baseStyle;
+            layer.bindPopup(popupHtml(talhao));
+            layer.getBounds().isValid() && bounds.extend(layer.getBounds());
 
             holes.forEach((ring) => {
                 L.polygon(ring, {
@@ -124,7 +110,7 @@ function renderTalhoes(map, talhoes, talhaoLayers, labelsLayer, bounds) {
                 }).addTo(map);
             });
 
-            const labelPoint = polygon.getBounds().getCenter();
+            const labelPoint = layer.getBounds().getCenter();
             L.marker(labelPoint, {
                 opacity: 0,
                 interactive: false,
@@ -135,21 +121,22 @@ function renderTalhoes(map, talhoes, talhaoLayers, labelsLayer, bounds) {
                 className: 'ff-talhao-map-label',
                 opacity: 1,
             }).addTo(labelsLayer);
-            return;
-        }
-
-        if (talhao.lat && talhao.lng) {
-            const marker = L.circleMarker([talhao.lat, talhao.lng], {
+        } else if (talhao.lat && talhao.lng) {
+            const baseStyle = {
                 radius: 8,
                 color: '#ffffff',
                 fillColor: colorByType.point,
                 fillOpacity: 0.95,
                 weight: 2,
-            }).addTo(map).bindPopup(popupHtml(talhao));
-
-            talhaoLayers.set(String(talhao.id), marker);
-            bounds.extend(marker.getLatLng());
+            };
+            layer = L.circleMarker([talhao.lat, talhao.lng], baseStyle)
+                .addTo(map)
+                .bindPopup(popupHtml(talhao));
+            layer.ffBaseStyle = baseStyle;
+            bounds.extend(layer.getLatLng());
         }
+
+        if (layer) talhaoLayers.set(String(talhao.id), layer);
 
         if (talhao.pivo_ativo && talhao.pivo_lat && talhao.pivo_lng && talhao.pivo_raio_m) {
             L.circle([talhao.pivo_lat, talhao.pivo_lng], {
@@ -163,13 +150,20 @@ function renderTalhoes(map, talhoes, talhaoLayers, labelsLayer, bounds) {
     });
 }
 
-function configureDraw(map, drawnItems, talhoes) {
+function configureDraw(map, draftItems, talhoes, talhaoLayers) {
+    const talhoesById = new Map(talhoes.map((talhao) => [String(talhao.id), talhao]));
+    let selectedTalhao = null;
+    let selectedLayer = null;
+    let editableLayer = null;
     let drawMode = 'talhao';
     let exclusionTalhaoId = null;
-    let polygonDrawHandler = null;
-    let exclusionDrawHandler = null;
+    let activeDrawHandler = null;
+    let activeDrawing = false;
+    let hasDraft = false;
+    let isEditing = false;
+
     const drawControl = new L.Control.Draw({
-        edit: { featureGroup: drawnItems },
+        edit: false,
         draw: {
             polygon: {
                 allowIntersection: false,
@@ -183,84 +177,406 @@ function configureDraw(map, drawnItems, talhoes) {
             marker: false,
         },
     });
-
     map.addControl(drawControl);
-    if (L.Draw && L.Draw.Polygon) {
-        polygonDrawHandler = new L.Draw.Polygon(map, {
+
+    const defaultPolygonHandler = drawControl._toolbars?.draw?._modes?.polygon?.handler || null;
+    const polygonDrawHandler = L.Draw && L.Draw.Polygon
+        ? new L.Draw.Polygon(map, {
             allowIntersection: false,
             showArea: true,
             shapeOptions: { color: '#05a784', fillColor: '#23885f', fillOpacity: 0.28 },
-        });
-        exclusionDrawHandler = new L.Draw.Polygon(map, {
+        })
+        : null;
+    const exclusionDrawHandler = L.Draw && L.Draw.Polygon
+        ? new L.Draw.Polygon(map, {
             allowIntersection: false,
             showArea: true,
             shapeOptions: { color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.18, dashArray: '6 5' },
+        })
+        : null;
+
+    const selectionStatus = createSelectionStatusControl(map);
+    const contextToolbar = createMapContextToolbar(map, {
+        edit: startEdit,
+        exclusion: () => startDraw('exclusao'),
+        save: saveEdit,
+        revert: () => revertCurrent(true),
+    });
+
+    const defaultPolygonButton = document.querySelector('#talhaoMap .leaflet-draw-draw-polygon');
+    if (defaultPolygonButton) {
+        defaultPolygonButton.classList.add('ff-leaflet-draw-polygon');
+        defaultPolygonButton.innerHTML = '<i class="bi bi-bounding-box" aria-hidden="true"></i>';
+        defaultPolygonButton.setAttribute('aria-label', 'Desenhar novo talhão');
+        defaultPolygonButton.addEventListener('click', (event) => {
+            if (!discardPendingChanges()) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                return;
+            }
+
+            drawMode = 'talhao';
+            exclusionTalhaoId = null;
+            activeDrawHandler = defaultPolygonHandler;
+        }, true);
+    }
+
+    talhaoLayers.forEach((layer, talhaoId) => {
+        layer.on('click', () => selectTalhao(talhaoId, { openPopup: false }));
+    });
+
+    function selectTalhao(talhaoId, options = {}) {
+        const id = String(talhaoId || '');
+        const talhao = talhoesById.get(id);
+        const layer = talhaoLayers.get(id) || null;
+        if (!talhao) return false;
+
+        if (selectedTalhao && String(selectedTalhao.id) !== id && !discardPendingChanges()) {
+            return false;
+        }
+
+        if (selectedLayer && selectedLayer !== layer) {
+            applySelectedStyle(selectedLayer, false);
+        }
+
+        selectedTalhao = talhao;
+        selectedLayer = layer;
+        if (selectedLayer) applySelectedStyle(selectedLayer, true);
+        markSelectedListItem(id);
+        synchronizeMapForms(id);
+        const hasPolygon = Array.isArray(selectedTalhao.points) && selectedTalhao.points.length >= 3;
+        const selectionMessage = !hasPolygon && !(selectedTalhao.block_reason || selectedTalhao.map_mutation_block_reason)
+            ? 'Este talhão ainda não possui polígono. Use Desenhar novo talhão para georreferenciá-lo.'
+            : null;
+        selectionStatus.update(selectedTalhao, selectionMessage);
+        syncToolbar();
+
+        if (options.openPopup !== false) layer?.openPopup?.();
+        return true;
+    }
+
+    function startDraw(mode) {
+        if (mode === 'exclusao') {
+            if (!selectedTalhao) {
+                alert('Selecione um talhão no mapa ou na lista antes de adicionar uma área excluída.');
+                return;
+            }
+
+            if (!selectedTalhao.can_add_exclusion) {
+                alert(selectedTalhao.map_mutation_block_reason || selectedTalhao.block_reason || 'Este talhão não pode receber alterações no momento.');
+                return;
+            }
+        }
+
+        if (!discardPendingChanges()) return;
+
+        drawMode = mode;
+        exclusionTalhaoId = mode === 'exclusao' ? String(selectedTalhao.id) : null;
+        activeDrawHandler = mode === 'exclusao' ? exclusionDrawHandler : polygonDrawHandler;
+
+        if (activeDrawHandler) {
+            activeDrawHandler.enable();
+            return;
+        }
+
+        defaultPolygonButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }
+
+    function startEdit() {
+        if (!selectedTalhao || !selectedLayer || !selectedTalhao.can_edit_geometry) return;
+        if (!Array.isArray(selectedTalhao.points) || selectedTalhao.points.length < 3) return;
+        if (!discardPendingChanges()) return;
+
+        const snapshot = selectedTalhao.points.map((point) => ({
+            lat: Number(point.lat),
+            lng: Number(point.lng),
+        }));
+        editableLayer = L.polygon(
+            snapshot.map((point) => [point.lat, point.lng]),
+            {
+                color: '#00d4aa',
+                weight: 3,
+                opacity: 1,
+                fillColor: '#00a77e',
+                fillOpacity: 0.24,
+                dashArray: '6 4',
+            },
+        ).addTo(map);
+        editableLayer.bringToFront?.();
+        editableLayer.editing?.enable();
+        dimSelectedLayer(selectedLayer);
+        isEditing = true;
+        selectionStatus.update(selectedTalhao, 'Arraste os pontos e confirme no ícone verde. Use Reverter para cancelar.');
+        syncToolbar();
+    }
+
+    function saveEdit() {
+        if (!isEditing || !editableLayer || !selectedTalhao) return;
+
+        const points = layerPoints(editableLayer);
+        if (points.length < 3) {
+            alert('O polígono precisa ter pelo menos três pontos.');
+            return;
+        }
+
+        const form = document.querySelector('[data-polygon-form]');
+        const select = document.getElementById('polygonTalhaoId');
+        const coordinates = document.getElementById('polygonCoordinates');
+        const name = document.getElementById('polygonName');
+        const description = document.getElementById('polygonDescription');
+        if (!form || !select || !coordinates || !name) {
+            alert('Não foi possível preparar a atualização do talhão.');
+            return;
+        }
+
+        if (!confirm(`Salvar os ajustes no polígono do ${selectedTalhao.nome}?`)) return;
+
+        select.value = String(selectedTalhao.id);
+        name.value = selectedTalhao.nome || '';
+        if (description) description.value = selectedTalhao.descricao || '';
+        coordinates.value = JSON.stringify(points);
+        editableLayer.editing?.disable();
+
+        if (typeof form.requestSubmit === 'function') {
+            form.requestSubmit();
+        } else {
+            form.submit();
+        }
+    }
+
+    function revertCurrent(showFeedback) {
+        activeDrawHandler?.disable?.();
+        defaultPolygonHandler?.disable?.();
+        activeDrawHandler = null;
+        activeDrawing = false;
+
+        if (editableLayer) {
+            editableLayer.editing?.disable();
+            map.removeLayer(editableLayer);
+            editableLayer = null;
+        }
+
+        isEditing = false;
+        draftItems.clearLayers();
+        hasDraft = false;
+        drawMode = 'talhao';
+        exclusionTalhaoId = null;
+        clearDraftForms();
+
+        if (selectedLayer) applySelectedStyle(selectedLayer, true);
+        selectionStatus.update(
+            selectedTalhao,
+            showFeedback && selectedTalhao ? 'Ajustes não salvos revertidos.' : null,
+        );
+        syncToolbar();
+    }
+
+    function discardPendingChanges() {
+        if (!hasPendingChanges()) return true;
+        if (!confirm('Existem ajustes ainda não salvos. Deseja revertê-los?')) return false;
+
+        revertCurrent(false);
+        return true;
+    }
+
+    function hasPendingChanges() {
+        return isEditing || activeDrawing || hasDraft;
+    }
+
+    function syncToolbar() {
+        const hasPolygon = Boolean(selectedTalhao?.points?.length >= 3);
+        const canEdit = hasPolygon && selectedTalhao?.can_edit_geometry === true;
+        const canExclude = hasPolygon && selectedTalhao?.can_add_exclusion === true;
+        const busy = isEditing || activeDrawing || hasDraft;
+
+        contextToolbar.update({
+            edit: !busy && canEdit,
+            exclusion: !busy && canExclude,
+            save: isEditing,
+            revert: busy,
         });
     }
 
-    const startDraw = (mode, talhaoId = null) => {
-        drawMode = mode;
-        exclusionTalhaoId = talhaoId;
-        if (mode === 'exclusao' && !exclusionTalhaoId) {
-            exclusionTalhaoId = selectedExclusionTalhaoId();
-        }
-
-        if (mode === 'exclusao' && !exclusionTalhaoId) {
-            alert('Selecione o talhão que receberá a área excluída.');
-            document.querySelector('[data-exclusion-form]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            return;
-        }
-
-        const handler = mode === 'exclusao' ? exclusionDrawHandler : polygonDrawHandler;
-        if (handler) {
-            handler.enable();
-            return;
-        }
-
-        document.querySelector('.leaflet-draw-draw-polygon')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    };
-
-    document.querySelector('.leaflet-draw-draw-polygon')?.addEventListener('click', () => {
-        drawMode = 'talhao';
-        exclusionTalhaoId = null;
+    map.on(L.Draw.Event.DRAWSTART, () => {
+        activeDrawing = true;
+        syncToolbar();
     });
 
-    document.getElementById('btnDrawTalhaoTop')?.addEventListener('click', () => {
-        startDraw('talhao');
-    });
-
-    document.getElementById('btnDrawExclusionTop')?.addEventListener('click', () => {
-        startDraw('exclusao');
-    });
-
-    document.querySelectorAll('[data-map-draw-exclusion]').forEach((button) => {
-        button.addEventListener('click', () => startDraw('exclusao', button.dataset.mapDrawExclusion));
-    });
-
-    document.getElementById('btnDrawPivoTop')?.addEventListener('click', () => {
-        const panel = document.querySelector('[data-pivo-panel]') || document.querySelector('#polygonFormPanel')?.nextElementSibling;
-        panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    map.on(L.Draw.Event.DRAWSTOP, () => {
+        activeDrawing = false;
+        activeDrawHandler = null;
+        syncToolbar();
     });
 
     map.on(L.Draw.Event.CREATED, (event) => {
-        handlePolygonCreated(event, drawnItems, {
+        draftItems.clearLayers();
+        draftItems.addLayer(event.layer);
+        hasDraft = true;
+        handlePolygonCreated(event, {
             mode: drawMode,
             talhaoId: exclusionTalhaoId,
             talhoes,
         });
         drawMode = 'talhao';
         exclusionTalhaoId = null;
+        syncToolbar();
     });
+
+    document.getElementById('btnDrawTalhaoTop')?.addEventListener('click', () => startDraw('talhao'));
+    document.getElementById('btnDrawPivoTop')?.addEventListener('click', () => {
+        const panel = document.querySelector('[data-pivo-panel]') || document.querySelector('#polygonFormPanel')?.nextElementSibling;
+        panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    return { selectTalhao };
+}
+
+function createMapContextToolbar(map, callbacks) {
+    const tools = {};
+    let container = null;
+    const ContextToolbar = L.Control.extend({
+        options: { position: 'topleft' },
+        onAdd() {
+            container = L.DomUtil.create('div', 'leaflet-bar ff-map-context-toolbar');
+            container.setAttribute('aria-label', 'Ferramentas do talhão selecionado');
+            tools.edit = createMapTool(container, 'edit', 'Editar polígono', 'bi-pencil-square', callbacks.edit);
+            tools.exclusion = createMapTool(container, 'exclusion', 'Adicionar área excluída', 'bi-scissors', callbacks.exclusion);
+            tools.save = createMapTool(container, 'save', 'Salvar ajustes', 'bi-check-lg', callbacks.save);
+            tools.revert = createMapTool(container, 'revert', 'Reverter ajustes não salvos', 'bi-arrow-counterclockwise', callbacks.revert);
+            L.DomEvent.disableClickPropagation(container);
+            L.DomEvent.disableScrollPropagation(container);
+            return container;
+        },
+    });
+    new ContextToolbar().addTo(map);
+
+    return {
+        update(state) {
+            let visibleTools = 0;
+            Object.entries(tools).forEach(([name, tool]) => {
+                const visible = state[name] === true;
+                tool.hidden = !visible;
+                tool.setAttribute('aria-hidden', visible ? 'false' : 'true');
+                if (visible) visibleTools += 1;
+            });
+            container?.classList.toggle('is-visible', visibleTools > 0);
+            container?.setAttribute('aria-hidden', visibleTools > 0 ? 'false' : 'true');
+        },
+    };
+}
+
+function createMapTool(container, name, label, icon, callback) {
+    const tool = L.DomUtil.create('a', `ff-map-tool ff-map-tool-${name}`, container);
+    tool.href = '#';
+    tool.dataset.mapTool = name;
+    tool.title = label;
+    tool.setAttribute('role', 'button');
+    tool.setAttribute('aria-label', label);
+    tool.innerHTML = `<i class="bi ${icon}" aria-hidden="true"></i>`;
+    tool.hidden = true;
+    L.DomEvent.on(tool, 'click', (event) => {
+        L.DomEvent.preventDefault(event);
+        L.DomEvent.stopPropagation(event);
+        callback();
+    });
+    return tool;
+}
+
+function createSelectionStatusControl(map) {
+    let container = null;
+    const SelectionStatus = L.Control.extend({
+        options: { position: 'bottomleft' },
+        onAdd() {
+            container = L.DomUtil.create('div', 'ff-map-selection-status');
+            container.setAttribute('aria-live', 'polite');
+            container.hidden = true;
+            L.DomEvent.disableClickPropagation(container);
+            return container;
+        },
+    });
+    new SelectionStatus().addTo(map);
+
+    return {
+        update(talhao, message = null) {
+            if (!container) return;
+            if (!talhao) {
+                container.hidden = true;
+                container.textContent = '';
+                return;
+            }
+
+            const blockedReason = talhao.map_mutation_block_reason || talhao.block_reason || '';
+            const detail = message || blockedReason || 'Talhão selecionado. Escolha uma ferramenta no mapa.';
+            container.classList.toggle('is-blocked', Boolean(blockedReason && !message));
+            container.innerHTML = `<strong>${escapeHtml(talhao.nome || 'Talhão')}</strong><span>${escapeHtml(detail)}</span>`;
+            container.hidden = false;
+        },
+    };
+}
+
+function applySelectedStyle(layer, selected) {
+    if (!layer?.setStyle) return;
+    const baseStyle = layer.ffBaseStyle || {};
+    layer.setStyle(selected
+        ? { ...baseStyle, color: '#00d4aa', weight: Math.max(3, Number(baseStyle.weight || 2) + 1), fillOpacity: 0.38 }
+        : baseStyle);
+    if (selected) layer.bringToFront?.();
+}
+
+function dimSelectedLayer(layer) {
+    if (!layer?.setStyle) return;
+    layer.setStyle({ ...(layer.ffBaseStyle || {}), opacity: 0.28, fillOpacity: 0.08 });
+}
+
+function markSelectedListItem(talhaoId) {
+    document.querySelectorAll('[data-map-list-talhao]').forEach((item) => {
+        const selected = String(item.dataset.mapListTalhao) === String(talhaoId);
+        item.classList.toggle('is-selected', selected);
+        item.setAttribute('aria-current', selected ? 'true' : 'false');
+    });
+}
+
+function synchronizeMapForms(talhaoId) {
+    const select = document.querySelector('[data-exclusion-form] [data-map-talhao-select]');
+    if (!select || !Array.from(select.options).some((option) => String(option.value) === String(talhaoId))) return;
+    select.value = String(talhaoId);
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function clearDraftForms() {
+    const coordinates = document.getElementById('polygonCoordinates');
+    const polygonTarget = document.getElementById('polygonTalhaoId');
+    const polygonPanel = document.getElementById('polygonFormPanel');
+    const polygonName = document.getElementById('polygonName');
+    const polygonDescription = document.getElementById('polygonDescription');
+    const exclusionJson = document.querySelector('[data-exclusion-json]');
+    if (coordinates) coordinates.value = '';
+    if (polygonTarget) polygonTarget.value = '';
+    if (polygonName) polygonName.value = '';
+    if (polygonDescription) polygonDescription.value = '';
+    if (polygonPanel) polygonPanel.style.display = 'none';
+    if (exclusionJson) exclusionJson.value = '';
+}
+
+function layerPoints(layer) {
+    const latLngs = layer?.getLatLngs?.();
+    const ring = Array.isArray(latLngs?.[0]) ? latLngs[0] : [];
+    return ring.map((point) => ({
+        lat: Number(point.lat.toFixed(7)),
+        lng: Number(point.lng.toFixed(7)),
+    }));
 }
 
 function bindPolygonTargetSelector(talhoes) {
     const select = document.getElementById('polygonTalhaoId');
     const nameInput = document.getElementById('polygonName');
+    const descriptionInput = document.getElementById('polygonDescription');
     if (!select || !nameInput) return;
 
     select.addEventListener('change', () => {
         const selected = talhoes.find((talhao) => String(talhao.id) === String(select.value));
         nameInput.value = selected ? selected.nome : '';
+        if (descriptionInput) descriptionInput.value = selected ? selected.descricao || '' : '';
     });
 }
 
@@ -298,12 +614,13 @@ function bindMapActionForms() {
     });
 }
 
-function bindMapList(map, talhaoLayers) {
+function bindMapList(map, talhaoLayers, selectTalhao) {
     const MAP_MAX_ZOOM = 17;
     document.querySelectorAll('[data-map-focus-talhao]').forEach((button) => {
         button.addEventListener('click', () => {
-            const layer = talhaoLayers.get(String(button.dataset.mapFocusTalhao));
-            if (!layer) return;
+            const talhaoId = String(button.dataset.mapFocusTalhao);
+            const layer = talhaoLayers.get(talhaoId);
+            if (!layer || !selectTalhao(talhaoId)) return;
 
             if (typeof layer.getBounds === 'function') {
                 map.fitBounds(layer.getBounds().pad(0.35), { maxZoom: MAP_MAX_ZOOM });
@@ -316,9 +633,12 @@ function bindMapList(map, talhaoLayers) {
 
     document.querySelectorAll('[data-map-edit-talhao]').forEach((button) => {
         button.addEventListener('click', () => {
-            const select = document.querySelector('[data-map-talhao-select]');
+            const talhaoId = String(button.dataset.mapEditTalhao);
+            if (!selectTalhao(talhaoId, { openPopup: false })) return;
+
+            const select = document.querySelector('[data-map-details-form] [data-map-talhao-select]');
             if (select) {
-                select.value = button.dataset.mapEditTalhao;
+                select.value = talhaoId;
                 select.dispatchEvent(new Event('change', { bubbles: true }));
             }
             document.querySelector('.ff-map-hidden-forms')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -326,14 +646,8 @@ function bindMapList(map, talhaoLayers) {
     });
 }
 
-function handlePolygonCreated(event, drawnItems, context = {}) {
-    drawnItems.clearLayers();
-    drawnItems.addLayer(event.layer);
-
-    const points = event.layer.getLatLngs()[0].map((point) => ({
-        lat: Number(point.lat.toFixed(7)),
-        lng: Number(point.lng.toFixed(7)),
-    }));
+function handlePolygonCreated(event, context = {}) {
+    const points = layerPoints(event.layer);
 
     if (context.mode === 'exclusao') {
         event.layer.setStyle?.({ color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.18, dashArray: '6 5' });
@@ -341,23 +655,20 @@ function handlePolygonCreated(event, drawnItems, context = {}) {
         return;
     }
 
-    document.getElementById('polygonCoordinates').value = JSON.stringify(points);
-    document.getElementById('polygonFormPanel').style.display = 'block';
-    document.getElementById('polygonName').focus();
-    document.getElementById('polygonFormPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function selectedExclusionTalhaoId() {
-    return document.querySelector('[data-exclusion-form] [data-map-talhao-select]')?.value
-        || document.getElementById('polygonTalhaoId')?.value
-        || '';
+    const coordinates = document.getElementById('polygonCoordinates');
+    const panel = document.getElementById('polygonFormPanel');
+    const name = document.getElementById('polygonName');
+    if (coordinates) coordinates.value = JSON.stringify(points);
+    if (panel) panel.style.display = 'block';
+    name?.focus();
+    panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function handleExclusionCreated(points, context) {
     const form = document.querySelector('[data-exclusion-form]');
     const select = form?.querySelector('[data-map-talhao-select]');
     const textarea = form?.querySelector('[data-exclusion-json]');
-    const talhaoId = context.talhaoId || selectedExclusionTalhaoId();
+    const talhaoId = context.talhaoId;
 
     if (!form || !select || !textarea || !talhaoId) {
         alert('Não foi possível identificar o talhão da área excluída.');
@@ -376,17 +687,11 @@ function handleExclusionCreated(points, context) {
         if (typeof form.requestSubmit === 'function') {
             form.requestSubmit();
         } else {
-            const submitButton = form.querySelector('[type="submit"]');
-            if (submitButton) {
-                submitButton.click();
-            } else {
-                form.submit();
-            }
+            form.submit();
         }
         return;
     }
 
-    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
     textarea.focus();
 }
 
@@ -415,6 +720,10 @@ function popupHtml(talhao) {
             <a href="${escapeHtml(downloadUrls.shp || downloadLink(talhao.download_url, 'shp'))}"><i class="bi bi-map me-1"></i>SHP</a>
         </div>`
         : '';
+    const blockReason = talhao.map_mutation_block_reason || talhao.block_reason || '';
+    const mapLock = blockReason
+        ? `<div class="map-popup-lock mt-2"><i class="bi bi-lock-fill"></i>${escapeHtml(blockReason)}</div>`
+        : '';
 
     return `
         <div class="map-popup">
@@ -425,6 +734,7 @@ function popupHtml(talhao) {
             <div><span>Despesas:</span> <b>${escapeHtml(talhao.total_despesas_formatado || talhao.custo_formatado || 'R$ 0,00')}</b></div>
             <div><span>Custo/ha:</span> <b>${escapeHtml(talhao.custo_ha_formatado || 'R$ 0,00/ha')}</b></div>
             <div><span>Lançamentos:</span> <b>${escapeHtml(talhao.qtd_despesas ?? 0)}</b></div>
+            ${mapLock}
             ${mapsLink}
             ${downloadLinks}
         </div>

@@ -25,11 +25,17 @@ class CategoriaService
                 'c.ativo',
                 'p.nome as categoria_pai_nome',
             ]);
+        $principais = $categorias->whereNull('categoria_pai_id')->where('ativo', 1)->values();
+        $categorias->each(function ($categoria) use ($principais): void {
+            $categoria->parent_options = $principais
+                ->where('id', '!=', $categoria->id)
+                ->values();
+        });
 
         return [
             'activeModule' => 'financeiro',
             'categorias' => $categorias,
-            'principais' => $categorias->whereNull('categoria_pai_id')->where('ativo', 1)->values(),
+            'principais' => $principais,
             'totais' => [
                 'categorias' => $categorias->count(),
                 'ativas' => $categorias->where('ativo', 1)->count(),
@@ -42,19 +48,14 @@ class CategoriaService
 
     public function criar(array $dados): int
     {
-        DB::table('categorias')->insert($this->payload($dados));
+        DB::table('categorias')->insert($this->payload($dados, null));
 
-        return (int)DB::getPdo()->lastInsertId();
+        return (int) DB::getPdo()->lastInsertId();
     }
 
     public function atualizar(int $id, array $dados): void
     {
-        $payload = $this->payload($dados);
-        if (($payload['categoria_pai_id'] ?? null) === $id) {
-            $payload['categoria_pai_id'] = null;
-        }
-
-        DB::table('categorias')->where('id', $id)->update($payload);
+        DB::table('categorias')->where('id', $id)->update($this->payload($dados, $id));
     }
 
     public function excluirOuDesativar(int $id): array
@@ -95,16 +96,35 @@ class CategoriaService
         return ['insumo', 'manutencao', 'folha', 'servico', 'combustivel', 'administrativo', 'bancario', 'outros'];
     }
 
-    private function payload(array $dados): array
+    private function payload(array $dados, ?int $currentCategoryId): array
     {
         return [
-            'categoria_pai_id' => ($dados['categoria_pai_id'] ?? null) ?: null,
+            'categoria_pai_id' => $this->validParentId($dados['categoria_pai_id'] ?? null, $currentCategoryId),
             'nome' => trim($dados['nome']),
             'tipo' => $dados['tipo'] ?? 'outros',
             'cor' => $dados['cor'] ?? '#6c757d',
             'icone' => trim($dados['icone'] ?? '') ?: 'bi-tag',
-            'ativo' => (bool)($dados['ativo'] ?? true),
+            'ativo' => (bool) ($dados['ativo'] ?? true),
         ];
+    }
+
+    private function validParentId(mixed $parentId, ?int $currentCategoryId): ?int
+    {
+        $parentId = (int) ($parentId ?: 0);
+        if ($parentId <= 0) {
+            return null;
+        }
+
+        $valid = DB::table('categorias')
+            ->where('id', $parentId)
+            ->where('ativo', 1)
+            ->whereNull('categoria_pai_id')
+            ->when($currentCategoryId, fn ($query) => $query->where('id', '!=', $currentCategoryId))
+            ->exists();
+
+        abort_unless($valid, 422, 'Selecione uma categoria principal válida.');
+
+        return $parentId;
     }
 
     private function possuiFilhas(int $id): bool
@@ -126,7 +146,7 @@ class CategoriaService
 
     private function possuiUsoNaSafraAtual(int $id): bool
     {
-        $safraId = (int)session('safra_id', 0);
+        $safraId = (int) session('safra_id', 0);
         if ($safraId <= 0) {
             return false;
         }

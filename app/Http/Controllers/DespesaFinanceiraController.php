@@ -3,15 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Services\DespesaFinanceiraService;
+use App\Services\FinanceiroFormDataService;
 use App\Support\FarmContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use RuntimeException;
 
 class DespesaFinanceiraController extends Controller
 {
+    public function __construct(private readonly FinanceiroFormDataService $formDataService) {}
+
     public function index(Request $request, DespesaFinanceiraService $service): View
     {
         return view('financeiro.despesas.index', $service->pagina(app(FarmContext::class)->propertyId(), $request));
@@ -24,6 +26,8 @@ class DespesaFinanceiraController extends Controller
         try {
             $lancamento = $service->despesaParaEdicao($propertyId, $despesa);
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return redirect()->route('financeiro.despesas.index')->withErrors($exception->getMessage());
         }
 
@@ -41,6 +45,8 @@ class DespesaFinanceiraController extends Controller
         try {
             $lancamento = $service->despesaParaEdicao($propertyId, $despesa);
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return redirect()->route('financeiro.despesas.index')->withErrors($exception->getMessage());
         }
 
@@ -81,6 +87,8 @@ class DespesaFinanceiraController extends Controller
         try {
             $service->atualizar(app(FarmContext::class)->propertyId(), $despesa, $dados, session('usuario_id'));
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return back()->withInput()->withErrors($exception->getMessage());
         }
 
@@ -94,6 +102,8 @@ class DespesaFinanceiraController extends Controller
         try {
             $service->aprovar(app(FarmContext::class)->propertyId(), $despesa, session('usuario_id'));
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return back()->withErrors($exception->getMessage());
         }
 
@@ -111,6 +121,8 @@ class DespesaFinanceiraController extends Controller
                 session('usuario_id')
             );
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return back()->withErrors($exception->getMessage());
         }
 
@@ -134,6 +146,8 @@ class DespesaFinanceiraController extends Controller
                 $request->input('motivo_reprovacao')
             );
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return back()->withErrors($exception->getMessage());
         }
 
@@ -153,6 +167,8 @@ class DespesaFinanceiraController extends Controller
                 session('usuario_id')
             );
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return back()->withErrors($exception->getMessage());
         }
 
@@ -166,6 +182,8 @@ class DespesaFinanceiraController extends Controller
         try {
             $service->cancelar(app(FarmContext::class)->propertyId(), $despesa, session('usuario_id'));
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return back()->withErrors($exception->getMessage());
         }
 
@@ -179,13 +197,7 @@ class DespesaFinanceiraController extends Controller
         return [
             'activeModule' => 'financeiro',
             'tipoSelecionado' => 'despesa',
-            'categorias' => DB::table('categorias')->where('ativo', 1)->whereNull('categoria_pai_id')->orderBy('nome')->get(['id', 'nome', 'tipo']),
-            'subcategorias' => DB::table('categorias')->where('ativo', 1)->whereNotNull('categoria_pai_id')->orderBy('nome')->get(['id', 'categoria_pai_id', 'nome', 'tipo']),
-            'contas' => DB::table('contas')->where('propriedade_id', $propertyId)->where('ativo', 1)->orderBy('nome')->get(['id', 'nome', 'banco']),
-            'compradores' => collect(),
-            'safras' => DB::table('safras')->where('propriedade_id', $propertyId)->orderByDesc('data_inicio')->get(['id', 'descricao']),
-            'talhoes' => DB::table('talhoes')->where('propriedade_id', $propertyId)->where('ativo', 1)->orderBy('nome')->get(['id', 'nome']),
-            'produtores' => DB::table('produtores')->where('propriedade_id', $propertyId)->where('ativo', 1)->orderBy('nome')->get(['id', 'nome']),
+            ...$this->formDataService->options($propertyId),
         ];
     }
 }

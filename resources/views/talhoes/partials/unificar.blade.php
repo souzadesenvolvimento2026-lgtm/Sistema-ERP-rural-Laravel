@@ -6,7 +6,7 @@
         </div>
     </div>
 
-    @if ($talhoesAtivos->count() >= 2)
+    @if ($unification['can_unify'])
         <form method="POST" action="{{ route('talhoes.unificar') }}" class="form-grid">
             @csrf
 
@@ -42,6 +42,6 @@
             </div>
         </form>
     @else
-        <p class="muted">Cadastre pelo menos dois talhoes ativos para usar a unificacao.</p>
+        <p class="muted">{{ $unification['block_reason'] }}</p>
     @endif
 </section>

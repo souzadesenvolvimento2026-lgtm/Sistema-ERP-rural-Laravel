@@ -27,28 +27,30 @@
                         <td>{{ $talhao->sacas }}</td>
                         <td>{{ $talhao->produtividade }}</td>
                         <td>
-                            <span class="pill {{ $talhao->finalizado ? 'success' : 'warning' }}">
-                                {{ $talhao->finalizado ? 'Finalizado' : 'Aberto' }}
+                            <span class="pill {{ $talhao->status_tone }}">
+                                {{ $talhao->status_label }}
                             </span>
-                            @if ($talhao->finalizado)
+                            @if ($talhao->can_reopen)
                                 <br><span class="muted">{{ $talhao->finalizado_em }}</span>
                             @endif
                         </td>
                         <td>
-                            @if ($talhao->finalizado)
+                            @if ($talhao->can_reopen)
                                 <form method="POST" action="{{ route('colheita.talhoes.reabrir') }}">
                                     @csrf
                                     <input type="hidden" name="safra_id" value="{{ $filtros['safra_id'] }}">
                                     <input type="hidden" name="talhao_id" value="{{ $talhao->id }}">
                                     <button class="btn" type="submit">Reabrir</button>
                                 </form>
-                            @else
+                            @elseif ($talhao->can_finalize)
                                 <form method="POST" action="{{ route('colheita.talhoes.finalizar') }}">
                                     @csrf
                                     <input type="hidden" name="safra_id" value="{{ $filtros['safra_id'] }}">
                                     <input type="hidden" name="talhao_id" value="{{ $talhao->id }}">
-                                    <button class="btn primary" type="submit" @disabled($talhao->cargas <= 0)>Finalizar</button>
+                                    <button class="btn primary" type="submit">Finalizar</button>
                                 </form>
+                            @else
+                                <button class="btn primary" type="button" disabled title="{{ $talhao->block_reason }}">Finalizar</button>
                             @endif
                         </td>
                     </tr>

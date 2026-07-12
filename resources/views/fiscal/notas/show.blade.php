@@ -11,7 +11,7 @@
             @if ($nota->tem_xml)
                 <a class="btn" href="{{ route('fiscal.notas.xml', $nota->id) }}">XML</a>
             @endif
-            @if ($nota->status_key === 'aguardando_aprovacao')
+            @if ($nota->can_approve)
                 <form method="post" action="{{ route('fiscal.notas.approve', $nota->id) }}">
                     @csrf
                     <button class="btn primary" type="submit">Aprovar nota</button>
@@ -25,7 +25,7 @@
     <section class="panel">
         <div class="panel-head">
             <h2>Dados da nota fiscal</h2>
-            <span class="pill {{ $nota->status_key === 'aprovada' ? 'success' : '' }}">{{ $nota->status }}</span>
+            <span class="pill {{ $nota->status_tone }}">{{ $nota->status }}</span>
         </div>
         <div class="grid two">
             <div>

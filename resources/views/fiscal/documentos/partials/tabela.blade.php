@@ -26,9 +26,9 @@
                         <td>{{ $documento->pessoa ?: '-' }}</td>
                         <td>{{ $documento->safra_nome ?: '-' }}</td>
                         <td>{{ $documento->valor > 0 ? 'R$ '.number_format($documento->valor, 2, ',', '.') : '-' }}</td>
-                        <td><span class="status {{ $documento->status === 'conferido' ? 'open' : '' }}">{{ ucfirst($documento->status) }}</span></td>
+                        <td><span class="status {{ $documento->status_tone }}">{{ $documento->status_label }}</span></td>
                         <td>
-                            @if ($documento->arquivo)
+                            @if ($documento->has_file)
                                 <a class="btn small" href="{{ route('fiscal.documentos.arquivo', $documento->id) }}">Abrir</a>
                             @else
                                 -
@@ -36,20 +36,12 @@
                         </td>
                         <td>
                             <div class="inline-actions">
-                                @if ($documento->status === 'pendente')
-                                    <form method="POST" action="{{ route('fiscal.documentos.conferir', $documento->id) }}">
+                                @foreach ($documento->actions as $action)
+                                    <form method="POST" action="{{ route($action['route_name'], $documento->id) }}">
                                         @csrf
-                                        <button class="btn small" type="submit">Conferir</button>
+                                        <input type="hidden" name="status" value="{{ $action['target_status'] }}">
+                                        <button class="btn small" type="submit">{{ $action['label'] }}</button>
                                     </form>
-                                @endif
-                                @foreach (['pendente' => 'Pendente', 'arquivado' => 'Arquivar'] as $status => $label)
-                                    @if ($documento->status !== $status)
-                                        <form method="POST" action="{{ route('fiscal.documentos.status', $documento->id) }}">
-                                            @csrf
-                                            <input type="hidden" name="status" value="{{ $status }}">
-                                            <button class="btn small" type="submit">{{ $label }}</button>
-                                        </form>
-                                    @endif
                                 @endforeach
                             </div>
                         </td>

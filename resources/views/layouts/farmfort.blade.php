@@ -3,10 +3,6 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    @php
-        $rawTitle = $title ?? 'Painel';
-        $displayTitle = trim(preg_replace('/^FarmFort\s*-\s*/i', '', (string)$rawTitle));
-    @endphp
     <title>FarmFort - {{ $displayTitle }}</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="any">
@@ -24,48 +20,6 @@
     @stack('styles')
 </head>
 <body>
-@php
-    use App\Support\FarmFormat;
-
-    $financeSubnavRoutes = [
-        'financeiro.*',
-        'relatorios.fluxo-caixa',
-        'relatorios.dre',
-        'relatorios.orcado-realizado',
-        'relatorios.comparativo-safras.*',
-    ];
-    $isFinanceSection = request()->routeIs(...$financeSubnavRoutes);
-    $active = $isFinanceSection ? 'financeiro' : ($activeModule ?? 'dashboard');
-    $fullWidth = (bool)($fullWidth ?? false);
-    $topbarLabel = $topbarLabel ?? $displayTitle;
-    $profile = session('perfil', '');
-    $isSystemAdmin = in_array((string)$profile, ['administrador_sistema', 'gerencia_sistema'], true);
-    $adminMenu = [
-        ['key' => 'admin', 'label' => 'Painel Admin', 'icon' => 'bi-speedometer2', 'route' => route('admin.index')],
-        ['key' => 'propriedades', 'label' => 'Propriedades', 'icon' => 'bi-map', 'route' => route('propriedades.index')],
-        ['key' => 'usuarios', 'label' => 'Usuários', 'icon' => 'bi-people-fill', 'route' => route('usuarios.index')],
-        ['key' => 'auditoria', 'label' => 'Auditoria', 'icon' => 'bi-shield-check', 'route' => route('auditoria.index')],
-        ['key' => 'suporte', 'label' => 'Chat/Suporte', 'icon' => 'bi-chat-dots', 'route' => route('suporte.admin.index')],
-    ];
-    $menu = [
-        ['key' => 'dashboard', 'label' => 'Dashboard', 'icon' => 'bi-speedometer2', 'route' => route('dashboard')],
-        ['key' => 'financeiro', 'label' => 'Financeiro', 'icon' => 'bi-cash-stack', 'route' => route('financeiro.index')],
-        ['key' => 'fiscal', 'label' => 'Fiscal', 'icon' => 'bi-clipboard-check', 'route' => route('fiscal.index')],
-        ['key' => 'compras', 'label' => 'Compras', 'icon' => 'bi-cart-check', 'route' => route('compras.index')],
-        ['key' => 'patrimonio', 'label' => 'Patrimônio', 'icon' => 'bi-truck', 'route' => route('patrimonio.index')],
-        ['key' => 'safras', 'label' => 'Safras', 'icon' => 'bi-calendar3', 'route' => route('safras.index')],
-        ['key' => 'talhoes', 'label' => 'Talhões', 'icon' => 'bi-grid-3x3-gap', 'route' => route('talhoes.mapa')],
-        ['key' => 'colheita', 'label' => 'Colheita', 'icon_svg' => 'assets/icons/colheitadeira.svg', 'route' => route('colheita.index')],
-        ['key' => 'estoque-produtos', 'label' => 'Estoque de produtos', 'icon' => 'bi-box-seam', 'route' => route('produtos.index')],
-        ['key' => 'estoque-producao', 'label' => 'Estoque de produção', 'icon_svg' => 'assets/icons/silo-graos.svg', 'route' => route('estoque-producao.index')],
-        ['key' => 'usuarios', 'label' => 'Usuários', 'icon' => 'bi-people-fill', 'route' => route('usuarios.index')],
-        ['key' => 'relatorios', 'label' => 'Indicadores e relatórios', 'icon' => 'bi-clipboard-data-fill', 'route' => route('relatorios.index')],
-    ];
-    $userName = session('usuario_nome', session('nome', 'Usuário'));
-    $profile = session('perfil', '');
-    $propertyName = $property->nome ?? session('propriedade_nome', 'Fazenda teste');
-@endphp
-
 @unless ($fullWidth)
 <aside class="module-rail sidebar" aria-label="Menus principais">
     <a href="{{ route('dashboard') }}" class="module-brand" aria-label="Ir para a tela inicial do FarmFort">
@@ -98,7 +52,6 @@
     @endif
 
     @foreach ($menu as $item)
-        @continue($isSystemAdmin && $item['key'] === 'usuarios')
         <div class="module-rail-item {{ $active === $item['key'] ? 'active' : '' }}">
             <a href="{{ $item['route'] }}" class="module-rail-button" title="{{ $item['label'] }}">
                 @if (!empty($item['icon_svg']))
@@ -165,7 +118,7 @@
             <span class="topbar-user">
                 <i class="bi bi-person-circle me-1"></i>{{ $userName }}
                 @if ($profile !== '')
-                    <span class="pill topbar-profile ms-1">{{ FarmFormat::statusLabel($profile) }}</span>
+                    <span class="pill topbar-profile ms-1">{{ \App\Support\FarmFormat::statusLabel($profile) }}</span>
                 @endif
             </span>
 

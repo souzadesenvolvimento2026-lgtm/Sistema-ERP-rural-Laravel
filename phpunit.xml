@@ -24,9 +24,13 @@
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
         <env name="DB_CONNECTION" value="mysql"/>
+        <env name="DB_PRODUCTION_CONNECTION" value="mysql" force="true"/>
+        <env name="DB_PRODUCTION_VENDOR" value="mariadb" force="true"/>
+        <env name="DB_PRODUCTION_VERSION" value="11.8.6" force="true"/>
+        <env name="DB_PRODUCTION_SQL_MODE" value="ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION" force="true"/>
         <env name="DB_HOST" value="127.0.0.1"/>
         <env name="DB_PORT" value="3307"/>
-        <env name="DB_DATABASE" value="farmflow"/>
+        <env name="DB_DATABASE" value="farmflow_test"/>
         <env name="DB_USERNAME" value="root"/>
         <env name="DB_PASSWORD" value="root"/>
         <env name="DB_URL" value=""/>

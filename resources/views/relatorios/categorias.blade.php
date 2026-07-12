@@ -1,12 +1,5 @@
 @extends('layouts.farmfort', ['title' => 'FarmFort - '.$title])
 
-@php
-    $categoriaLabels = $rows->pluck('nome')->values();
-    $categoriaValues = $rows->pluck('total')->map(fn ($value) => (float)$value)->values();
-    $categoriaColors = $rows->pluck('cor')->map(fn ($cor) => $cor ?: '#35c49a')->values();
-    $tipoTotais = $rows->groupBy('tipo')->map(fn ($itens) => (float)$itens->sum('total'))->sortDesc();
-@endphp
-
 @section('content')
     <div class="page-head">
         <div>
@@ -121,7 +114,7 @@
                             <td>
                                 {{ number_format($row->percentual, 1, ',', '.') }}%
                                 <div class="progress-line">
-                                    <span style="width: {{ min(100, max(0, $row->percentual)) }}%; background: {{ $row->cor ?: '#35c49a' }}"></span>
+                                    <span style="width: {{ $row->progresso_percentual }}%; background: {{ $row->cor ?: '#35c49a' }}"></span>
                                 </div>
                             </td>
                         </tr>
@@ -146,10 +139,10 @@
             new Chart(document.getElementById('chartCategorias'), {
                 type: 'doughnut',
                 data: {
-                    labels: @json($categoriaLabels),
+                    labels: @json($chart['categoria_labels']),
                     datasets: [{
-                        data: @json($categoriaValues),
-                        backgroundColor: @json($categoriaColors),
+                        data: @json($chart['categoria_values']),
+                        backgroundColor: @json($chart['categoria_colors']),
                         borderWidth: 2,
                         borderColor: '#182431'
                     }]
@@ -166,10 +159,10 @@
             new Chart(document.getElementById('chartTipos'), {
                 type: 'bar',
                 data: {
-                    labels: @json($tipoTotais->keys()->values()),
+                    labels: @json($chart['tipo_labels']),
                     datasets: [{
                         label: 'Total',
-                        data: @json($tipoTotais->values()),
+                        data: @json($chart['tipo_values']),
                         backgroundColor: '#35c49a'
                     }]
                 },

@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Domain\Fiscal\DocumentCapabilities;
+use App\Support\FarmFormat;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -9,6 +11,8 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class DocumentoService
 {
+    public function __construct(private readonly DocumentCapabilities $capabilities) {}
+
     public function pagina(int $propriedadeId): array
     {
         $documentos = DB::table('documentos as d')
@@ -31,7 +35,27 @@ class DocumentoService
                 'd.criado_em',
                 's.descricao as safra_nome',
                 'u.nome as usuario_nome',
-            ]);
+            ])
+            ->map(function (object $documento): object {
+                $prepared = $this->capabilities->for((string) $documento->status);
+                $prepared['actions'] = array_map(
+                    fn (array $action): array => $action + [
+                        'route_name' => $action['action'] === 'conferir'
+                            ? 'fiscal.documentos.conferir'
+                            : 'fiscal.documentos.status',
+                    ],
+                    $prepared['actions'],
+                );
+
+                foreach ($prepared as $capability => $value) {
+                    $documento->{$capability} = $value;
+                }
+
+                $documento->status_label = FarmFormat::statusLabel((string) $documento->status);
+                $documento->has_file = ! empty($documento->arquivo);
+
+                return $documento;
+            });
 
         return [
             'activeModule' => 'fiscal',
@@ -44,8 +68,8 @@ class DocumentoService
             'totais' => [
                 'documentos' => $documentos->count(),
                 'pendentes' => $documentos->where('status', 'pendente')->count(),
-                'valor' => (float)$documentos->sum('valor'),
-                'com_arquivo' => $documentos->filter(fn ($documento) => !empty($documento->arquivo))->count(),
+                'valor' => (float) $documentos->sum('valor'),
+                'com_arquivo' => $documentos->filter(fn ($documento) => ! empty($documento->arquivo))->count(),
             ],
         ];
     }
@@ -74,11 +98,24 @@ class DocumentoService
             'usuario_id' => $usuarioId,
         ]);
 
-        return (int)DB::getPdo()->lastInsertId();
+        return (int) DB::getPdo()->lastInsertId();
     }
 
     public function atualizarStatus(int $id, int $propriedadeId, string $status): void
     {
+        $documento = DB::table('documentos')
+            ->where('id', $id)
+            ->where('propriedade_id', $propriedadeId)
+            ->first(['id', 'status']);
+
+        if (! $documento) {
+            return;
+        }
+
+        if (! $this->capabilities->canTransition((string) $documento->status, $status)) {
+            throw new \RuntimeException('A transicao de status solicitada nao e permitida para este documento.');
+        }
+
         DB::table('documentos')
             ->where('id', $id)
             ->where('propriedade_id', $propriedadeId)
@@ -98,9 +135,9 @@ class DocumentoService
         $path = realpath(base_path('../uploads/comprovantes/'.$documento->arquivo));
         abort_unless($base && $path && str_starts_with($path, $base) && is_file($path), 404);
 
-        $nome = preg_replace('/[\r\n"]+/', '', (string)$documento->titulo) ?: (string)$documento->arquivo;
+        $nome = preg_replace('/[\r\n"]+/', '', (string) $documento->titulo) ?: (string) $documento->arquivo;
 
-        return response()->download($path, $nome.'.'.pathinfo((string)$documento->arquivo, PATHINFO_EXTENSION), [
+        return response()->download($path, $nome.'.'.pathinfo((string) $documento->arquivo, PATHINFO_EXTENSION), [
             'X-Content-Type-Options' => 'nosniff',
         ]);
     }
@@ -112,26 +149,26 @@ class DocumentoService
 
     private function money($value): float
     {
-        $value = trim((string)$value);
+        $value = trim((string) $value);
         if (str_contains($value, ',')) {
             $value = str_replace('.', '', $value);
             $value = str_replace(',', '.', $value);
         }
 
-        return max(0.0, (float)$value);
+        return max(0.0, (float) $value);
     }
 
     private function idDaPropriedade(string $table, mixed $id, int $propriedadeId): ?int
     {
-        if (!$id) {
+        if (! $id) {
             return null;
         }
 
         $exists = DB::table($table)
-            ->where('id', (int)$id)
+            ->where('id', (int) $id)
             ->where('propriedade_id', $propriedadeId)
             ->exists();
 
-        return $exists ? (int)$id : null;
+        return $exists ? (int) $id : null;
     }
 }

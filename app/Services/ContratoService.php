@@ -2,10 +2,13 @@
 
 namespace App\Services;
 
+use App\Domain\Production\ContractRules;
 use Illuminate\Support\Facades\DB;
 
 class ContratoService
 {
+    public function __construct(private readonly ContractRules $rules) {}
+
     public function pagina(int $propriedadeId): array
     {
         $contratos = DB::table('contratos as c')
@@ -31,7 +34,18 @@ class ContratoService
                 's.descricao as safra_nome',
                 DB::raw('(SELECT COALESCE(SUM(ce.quantidade), 0) FROM contrato_entregas ce WHERE ce.contrato_id = c.id) as entregue'),
                 DB::raw('(SELECT COALESCE(SUM(ce.valor), 0) FROM contrato_entregas ce WHERE ce.contrato_id = c.id) as valor_entregue'),
-            ]);
+            ])
+            ->map(function ($contrato) {
+                $contrato->quantidade = (float) $contrato->quantidade;
+                $contrato->entregue = (float) $contrato->entregue;
+                $contrato->percentual_entregue = $this->rules->deliveryProgress(
+                    $contrato->entregue,
+                    $contrato->quantidade,
+                );
+                $contrato->permite_entrega = $this->rules->canRegisterDelivery((string) $contrato->status);
+
+                return $contrato;
+            });
 
         return [
             'activeModule' => 'estoque-producao',
@@ -40,9 +54,9 @@ class ContratoService
             'tipos' => ['venda' => 'Venda', 'deposito' => 'Depósito', 'armazenagem' => 'Armazenagem', 'fixacao' => 'Fixação', 'compra' => 'Compra'],
             'totais' => [
                 'contratos' => $contratos->count(),
-                'abertos' => $contratos->filter(fn ($contrato) => !in_array($contrato->status, ['entregue', 'cancelado'], true))->count(),
-                'valor_contratado' => (float)$contratos->sum('valor_total'),
-                'valor_entregue' => (float)$contratos->sum('valor_entregue'),
+                'abertos' => $contratos->filter(fn ($contrato) => ! in_array($contrato->status, ['entregue', 'cancelado'], true))->count(),
+                'valor_contratado' => (float) $contratos->sum('valor_total'),
+                'valor_entregue' => (float) $contratos->sum('valor_entregue'),
             ],
         ];
     }
@@ -51,10 +65,11 @@ class ContratoService
     {
         $quantidade = $this->decimal($dados['quantidade'] ?? 0);
         $preco = $this->decimal($dados['preco_unitario'] ?? 0);
-        $valor = $this->decimal($dados['valor_total'] ?? 0);
-        if ($valor <= 0 && $quantidade > 0 && $preco > 0) {
-            $valor = $quantidade * $preco;
-        }
+        $valor = $this->rules->totalValue(
+            $quantidade,
+            $preco,
+            $this->decimal($dados['valor_total'] ?? 0),
+        );
 
         DB::table('contratos')->insert([
             'propriedade_id' => $propriedadeId,
@@ -74,13 +89,13 @@ class ContratoService
             'usuario_id' => $usuarioId,
         ]);
 
-        return (int)DB::getPdo()->lastInsertId();
+        return (int) DB::getPdo()->lastInsertId();
     }
 
     public function registrarEntrega(array $dados, int $propriedadeId): int
     {
         $contrato = DB::table('contratos')
-            ->where('id', (int)$dados['contrato_id'])
+            ->where('id', (int) $dados['contrato_id'])
             ->where('propriedade_id', $propriedadeId)
             ->first();
 
@@ -95,27 +110,27 @@ class ContratoService
             'observacoes' => trim($dados['observacoes'] ?? '') ?: null,
         ]);
 
-        $entregaId = (int)DB::getPdo()->lastInsertId();
-        $this->atualizarStatusEntrega((int)$contrato->id, (float)$contrato->quantidade);
+        $entregaId = (int) DB::getPdo()->lastInsertId();
+        $this->atualizarStatusEntrega((int) $contrato->id, (float) $contrato->quantidade);
 
         return $entregaId;
     }
 
     private function atualizarStatusEntrega(int $contratoId, float $quantidadeContratada): void
     {
-        $entregue = (float)DB::table('contrato_entregas')->where('contrato_id', $contratoId)->sum('quantidade');
-        $status = $entregue >= $quantidadeContratada && $quantidadeContratada > 0 ? 'entregue' : 'parcial';
+        $entregue = (float) DB::table('contrato_entregas')->where('contrato_id', $contratoId)->sum('quantidade');
+        $status = $this->rules->deliveryStatus($entregue, $quantidadeContratada);
 
         DB::table('contratos')->where('id', $contratoId)->update(['status' => $status]);
     }
 
     private function idDaPropriedade(string $table, mixed $id, int $propriedadeId): ?int
     {
-        if (!$id) {
+        if (! $id) {
             return null;
         }
 
-        $id = (int)$id;
+        $id = (int) $id;
 
         return DB::table($table)
             ->where('id', $id)
@@ -125,12 +140,12 @@ class ContratoService
 
     private function decimal($value): float
     {
-        $value = trim((string)$value);
+        $value = trim((string) $value);
         if (str_contains($value, ',')) {
             $value = str_replace('.', '', $value);
             $value = str_replace(',', '.', $value);
         }
 
-        return max(0.0, (float)$value);
+        return max(0.0, (float) $value);
     }
 }

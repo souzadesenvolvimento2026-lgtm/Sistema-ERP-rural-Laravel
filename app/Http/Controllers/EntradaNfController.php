@@ -6,7 +6,6 @@ use App\Services\EntradaNfService;
 use App\Support\FarmContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class EntradaNfController extends Controller
@@ -19,15 +18,13 @@ class EntradaNfController extends Controller
         ));
     }
 
-    public function create(): View
+    public function create(EntradaNfService $service): View
     {
         $propertyId = app(FarmContext::class)->propertyId();
 
         return view('fiscal.entrada-nf.create', [
             'activeModule' => 'fiscal',
-            'categorias' => DB::table('categorias')->where('ativo', 1)->orderBy('nome')->get(['id', 'nome', 'tipo']),
-            'contas' => DB::table('contas')->where('propriedade_id', $propertyId)->where('ativo', 1)->orderBy('nome')->get(['id', 'nome']),
-            'safras' => DB::table('safras')->where('propriedade_id', $propertyId)->orderByDesc('id')->get(['id', 'descricao']),
+            ...$service->formOptions($propertyId),
         ]);
     }
 
@@ -137,6 +134,8 @@ class EntradaNfController extends Controller
                 ->route('fiscal.entrada-nf.show', ['entrada' => $entrada])
                 ->with('success', 'Item adicionado a entrada de NF.');
         } catch (\RuntimeException $exception) {
+            report($exception);
+
             return redirect()
                 ->route('fiscal.entrada-nf.show', ['entrada' => $entrada])
                 ->withErrors($exception->getMessage());
@@ -154,7 +153,7 @@ class EntradaNfController extends Controller
             $service->gerarParcelas(
                 app(FarmContext::class)->propertyId(),
                 $entrada,
-                (int)$dados['parcelas_qtd'],
+                (int) $dados['parcelas_qtd'],
                 $dados['primeiro_vencimento'] ?? null
             );
 
@@ -162,6 +161,8 @@ class EntradaNfController extends Controller
                 ->route('fiscal.entrada-nf.show', ['entrada' => $entrada])
                 ->with('success', 'Parcelas geradas para o financeiro da NF.');
         } catch (\RuntimeException $exception) {
+            report($exception);
+
             return redirect()
                 ->route('fiscal.entrada-nf.show', ['entrada' => $entrada])
                 ->withErrors($exception->getMessage());
@@ -181,6 +182,8 @@ class EntradaNfController extends Controller
                 ->route('fiscal.entrada-nf.show', ['entrada' => $entrada])
                 ->with('success', 'Entrada de NF concluida e enviada para contas a pagar.');
         } catch (\RuntimeException $exception) {
+            report($exception);
+
             return redirect()
                 ->route('fiscal.entrada-nf.show', ['entrada' => $entrada])
                 ->withErrors($exception->getMessage());

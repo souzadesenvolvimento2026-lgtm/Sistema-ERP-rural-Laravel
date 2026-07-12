@@ -28,7 +28,7 @@
                         <td>{{ $statusOptions[$atividade->status] ?? $atividade->status }}</td>
                         <td>R$ {{ number_format($atividade->custo_estimado, 2, ',', '.') }}</td>
                         <td>
-                            @if ($atividade->status !== 'concluida')
+                            @if ($atividade->can_complete)
                                 <form method="POST" action="{{ route('talhoes.atividades.status', $atividade->id) }}" style="display: inline;">
                                     @csrf
                                     <input type="hidden" name="status" value="concluida">

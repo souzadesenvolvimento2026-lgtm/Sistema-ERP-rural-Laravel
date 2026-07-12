@@ -24,8 +24,8 @@ class AgendaFinanceiraService
                 ->orderBy('nome')
                 ->get(['id', 'nome']),
             'totais' => [
-                'pagar' => (float)$eventos->where('origem', 'despesa')->sum('valor'),
-                'receber' => (float)$eventos->where('origem', 'receita')->sum('valor'),
+                'pagar' => (float) $eventos->where('origem', 'despesa')->sum('valor'),
+                'receber' => (float) $eventos->where('origem', 'receita')->sum('valor'),
                 'vencidos' => $eventos->filter(fn ($evento) => $evento->data_evento && $evento->data_evento < $hoje)->count(),
                 'semana' => $eventos->filter(fn ($evento) => $evento->data_evento && $evento->data_evento >= $hoje && $evento->data_evento <= $limiteSemana)->count(),
                 'boletos' => $eventos->filter(fn ($evento) => $evento->origem === 'despesa' && $evento->forma_pagamento === 'boleto' && $evento->data_evento && $evento->data_evento >= $hoje && $evento->data_evento <= $limiteSemana)->count(),
@@ -45,16 +45,16 @@ class AgendaFinanceiraService
             $payload['conta_id'] = $contaId;
         }
 
-        $despesaId = (int)$dados['id'];
+        $despesaId = (int) $dados['id'];
         $alteradas = DB::table('despesas')
-            ->where('id', (int)$dados['id'])
+            ->where('id', (int) $dados['id'])
             ->where('propriedade_id', $propriedadeId)
+            ->where('status_pagamento', 'pendente')
             ->where('status_aprovacao', 'aprovada')
             ->update($payload);
 
-        if ($alteradas > 0) {
-            $this->auditar($usuarioId, 'agenda_pagar_despesa', 'despesas', $despesaId, $propriedadeId, 'Pagamento confirmado pela agenda');
-        }
+        abort_if($alteradas === 0, 422, 'A despesa não está pendente e aprovada para pagamento.');
+        $this->auditar($usuarioId, 'agenda_pagar_despesa', 'despesas', $despesaId, $propriedadeId, 'Pagamento confirmado pela agenda');
     }
 
     public function receberReceita(array $dados, int $propriedadeId, ?int $usuarioId): void
@@ -69,15 +69,16 @@ class AgendaFinanceiraService
             $payload['conta_id'] = $contaId;
         }
 
-        $receitaId = (int)$dados['id'];
+        $receitaId = (int) $dados['id'];
         $alteradas = DB::table('receitas')
-            ->where('id', (int)$dados['id'])
+            ->where('id', (int) $dados['id'])
             ->where('propriedade_id', $propriedadeId)
+            ->where('status', 'pendente')
+            ->where('status_aprovacao', 'aprovada')
             ->update($payload);
 
-        if ($alteradas > 0) {
-            $this->auditar($usuarioId, 'agenda_receber_receita', 'receitas', $receitaId, $propriedadeId, 'Recebimento confirmado pela agenda');
-        }
+        abort_if($alteradas === 0, 422, 'A receita não está pendente e aprovada para recebimento.');
+        $this->auditar($usuarioId, 'agenda_receber_receita', 'receitas', $receitaId, $propriedadeId, 'Recebimento confirmado pela agenda');
     }
 
     private function eventos(int $propriedadeId, array $filtros)
@@ -111,6 +112,7 @@ class AgendaFinanceiraService
                     ->leftJoin('contas as ct', 'ct.id', '=', 'r.conta_id')
                     ->where('r.propriedade_id', $propriedadeId)
                     ->where('r.status', 'pendente')
+                    ->where('r.status_aprovacao', 'aprovada')
                     ->when($filtros['forma_pagamento'] === 'boleto' || $filtros['alerta'] === 'boletos_vencendo', fn ($query) => $query->whereRaw('1 = 0'))
                     ->selectRaw("
                         'receita' as origem,
@@ -130,7 +132,20 @@ class AgendaFinanceiraService
             ->orderByRaw('data_evento IS NULL')
             ->orderBy('data_evento')
             ->orderByDesc('valor')
-            ->get();
+            ->get()
+            ->each(function ($evento): void {
+                $isRevenue = $evento->origem === 'receita';
+                $evento->type_label = $isRevenue ? 'Receber' : 'Pagar';
+                $evento->type_tone = $isRevenue ? 'success' : 'danger';
+                $evento->status_tone = 'warning';
+                $evento->can_execute = true;
+                $evento->action_route = $isRevenue
+                    ? route('financeiro.agenda.receber')
+                    : route('financeiro.agenda.pagar');
+                $evento->action_date_field = $isRevenue ? 'data_recebimento' : 'data_pagamento';
+                $evento->action_date = now()->toDateString();
+                $evento->action_label = $isRevenue ? 'Receber' : 'Pagar';
+            });
     }
 
     private function filtros(?Request $request): array
@@ -146,17 +161,17 @@ class AgendaFinanceiraService
 
     private function contaId($contaId, int $propriedadeId): ?int
     {
-        if (!$contaId) {
+        if (! $contaId) {
             return null;
         }
 
         $exists = DB::table('contas')
-            ->where('id', (int)$contaId)
+            ->where('id', (int) $contaId)
             ->where('propriedade_id', $propriedadeId)
             ->where('ativo', 1)
             ->exists();
 
-        return $exists ? (int)$contaId : null;
+        return $exists ? (int) $contaId : null;
     }
 
     private function auditar(?int $usuarioId, string $acao, string $tabela, int $registroId, int $propriedadeId, string $detalhes): void
@@ -172,8 +187,8 @@ class AgendaFinanceiraService
                 'ip' => request()->ip(),
                 'criado_em' => now(),
             ]);
-        } catch (\Throwable) {
-            // Auditoria nao deve impedir a baixa pela agenda.
+        } catch (\Throwable $exception) {
+            report($exception);
         }
     }
 }

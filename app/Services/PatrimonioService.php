@@ -3,8 +3,8 @@
 namespace App\Services;
 
 use App\Support\FarmFormat;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -25,7 +25,7 @@ class PatrimonioService
             'tipos' => $this->tipos(),
             'rows' => $rows,
             'cards' => [
-                ['label' => 'Ativos', 'value' => (string)$rows->where('ativo', true)->count(), 'tone' => 'success'],
+                ['label' => 'Ativos', 'value' => (string) $rows->where('ativo', true)->count(), 'tone' => 'success'],
                 ['label' => 'Valor de aquisição', 'value' => FarmFormat::money($rows->sum('valor_aquisicao_raw')), 'tone' => 'success'],
                 ['label' => 'Custo registrado', 'value' => FarmFormat::money($rows->sum('custo_total_raw')), 'tone' => 'danger'],
                 ['label' => 'Combustível', 'value' => FarmFormat::money($rows->sum('combustivel_raw')), 'tone' => 'warning'],
@@ -42,7 +42,7 @@ class PatrimonioService
                 'ativo' => 1,
             ]));
 
-            $patrimonioId = (int)DB::getPdo()->lastInsertId();
+            $patrimonioId = (int) DB::getPdo()->lastInsertId();
             $this->sincronizarFiscal($patrimonioId, $dados, $propriedadeId, $usuarioId, $arquivoNf);
             $this->auditar($usuarioId, 'novo_patrimonio', 'maquinas', $patrimonioId, $propriedadeId, trim($dados['nome']));
 
@@ -76,7 +76,7 @@ class PatrimonioService
                 ->where('propriedade_id', $propriedadeId)
                 ->update($payload);
 
-            abort_if($alterados === 0 && !$this->existe($propriedadeId, $patrimonioId), 404);
+            abort_if($alterados === 0 && ! $this->existe($propriedadeId, $patrimonioId), 404);
 
             $this->sincronizarFiscal($patrimonioId, $dados, $propriedadeId, $usuarioId, $arquivoNf);
             $this->auditar($usuarioId, 'editar_patrimonio', 'maquinas', $patrimonioId, $propriedadeId, trim($dados['nome']));
@@ -92,7 +92,7 @@ class PatrimonioService
 
         abort_unless($patrimonio, 404);
 
-        $ativo = !$patrimonio->ativo;
+        $ativo = ! $patrimonio->ativo;
 
         DB::table('maquinas')
             ->where('id', $patrimonioId)
@@ -105,7 +105,7 @@ class PatrimonioService
             'maquinas',
             $patrimonioId,
             $propriedadeId,
-            $ativo ? 'Patrimonio reativado no cadastro ativo: '.(string)$patrimonio->nome : 'Patrimonio apagado do cadastro ativo: '.(string)$patrimonio->nome
+            $ativo ? 'Patrimonio reativado no cadastro ativo: '.(string) $patrimonio->nome : 'Patrimonio apagado do cadastro ativo: '.(string) $patrimonio->nome
         );
 
         return $ativo;
@@ -146,7 +146,7 @@ class PatrimonioService
 
         abort_unless($patrimonio, 404);
 
-        $row = $this->normalizar((object)array_merge((array)$patrimonio, [
+        $row = $this->normalizar((object) array_merge((array) $patrimonio, [
             'custo_total' => DB::table('maquina_lancamentos')->where('maquina_id', $patrimonioId)->sum('valor_total'),
             'combustivel' => DB::table('maquina_lancamentos')->where('maquina_id', $patrimonioId)->where('tipo', 'abastecimento')->sum('valor_total'),
             'lancamentos_count' => DB::table('maquina_lancamentos')->where('maquina_id', $patrimonioId)->count(),
@@ -167,7 +167,7 @@ class PatrimonioService
                 ['label' => 'Valor de aquisicao', 'value' => $row->valor_aquisicao, 'tone' => 'success'],
                 ['label' => 'Custo registrado', 'value' => $row->custo_total, 'tone' => 'danger'],
                 ['label' => 'Combustivel', 'value' => $row->combustivel, 'tone' => 'warning'],
-                ['label' => 'Lancamentos', 'value' => (string)$lancamentos->count(), 'tone' => 'success'],
+                ['label' => 'Lancamentos', 'value' => (string) $lancamentos->count(), 'tone' => 'success'],
             ],
         ];
     }
@@ -237,7 +237,7 @@ class PatrimonioService
 
     private function salvarComprovante(?UploadedFile $arquivo): ?string
     {
-        if (!$arquivo) {
+        if (! $arquivo) {
             return null;
         }
 
@@ -251,7 +251,7 @@ class PatrimonioService
 
     private function salvarNotaFiscal(?UploadedFile $arquivo): ?string
     {
-        if (!$arquivo) {
+        if (! $arquivo) {
             return null;
         }
 
@@ -277,14 +277,14 @@ class PatrimonioService
             'valor_aquisicao' => $this->money($dados['valor_aquisicao'] ?? 0),
             'data_aquisicao' => ($dados['data_aquisicao'] ?? null) ?: null,
             'fornecedor' => trim($dados['fornecedor'] ?? '') ?: null,
-            'fornecedor_doc' => preg_replace('/\D+/', '', (string)($dados['fornecedor_doc'] ?? '')) ?: null,
+            'fornecedor_doc' => preg_replace('/\D+/', '', (string) ($dados['fornecedor_doc'] ?? '')) ?: null,
             'nota_fiscal_numero' => trim($dados['nota_fiscal_numero'] ?? '') ?: null,
             'nota_fiscal_serie' => trim($dados['nota_fiscal_serie'] ?? '') ?: null,
-            'nota_fiscal_chave' => preg_replace('/\D+/', '', (string)($dados['nota_fiscal_chave'] ?? '')) ?: null,
-            'controla_horimetro' => (bool)($dados['controla_horimetro'] ?? false),
-            'controla_odometro' => (bool)($dados['controla_odometro'] ?? false),
-            'horimetro_atual' => !empty($dados['controla_horimetro']) ? $this->nullableMoney($dados['horimetro_atual'] ?? null) : null,
-            'odometro_atual' => !empty($dados['controla_odometro']) ? $this->nullableMoney($dados['odometro_atual'] ?? null) : null,
+            'nota_fiscal_chave' => preg_replace('/\D+/', '', (string) ($dados['nota_fiscal_chave'] ?? '')) ?: null,
+            'controla_horimetro' => (bool) ($dados['controla_horimetro'] ?? false),
+            'controla_odometro' => (bool) ($dados['controla_odometro'] ?? false),
+            'horimetro_atual' => ! empty($dados['controla_horimetro']) ? $this->nullableMoney($dados['horimetro_atual'] ?? null) : null,
+            'odometro_atual' => ! empty($dados['controla_odometro']) ? $this->nullableMoney($dados['odometro_atual'] ?? null) : null,
         ]);
     }
 
@@ -298,7 +298,7 @@ class PatrimonioService
 
     private function sincronizarFiscal(int $patrimonioId, array $dados, int $propriedadeId, ?int $usuarioId, ?string $arquivoNf = null): void
     {
-        $numero = trim((string)($dados['nota_fiscal_numero'] ?? ''));
+        $numero = trim((string) ($dados['nota_fiscal_numero'] ?? ''));
         if ($numero === '' && $arquivoNf === null) {
             return;
         }
@@ -310,8 +310,8 @@ class PatrimonioService
 
         abort_unless($patrimonio, 404);
 
-        $nfEntradaId = $this->sincronizarEntradaFiscal($patrimonioId, $dados, $propriedadeId, $usuarioId, $patrimonio->nf_entrada_id ? (int)$patrimonio->nf_entrada_id : null);
-        $documentoId = $this->sincronizarDocumentoFiscal($patrimonioId, $dados, $propriedadeId, $usuarioId, $arquivoNf ?: (string)($patrimonio->nota_fiscal_arquivo ?? ''), $patrimonio->documento_id ? (int)$patrimonio->documento_id : null);
+        $nfEntradaId = $this->sincronizarEntradaFiscal($patrimonioId, $dados, $propriedadeId, $usuarioId, $patrimonio->nf_entrada_id ? (int) $patrimonio->nf_entrada_id : null);
+        $documentoId = $this->sincronizarDocumentoFiscal($patrimonioId, $dados, $propriedadeId, $usuarioId, $arquivoNf ?: (string) ($patrimonio->nota_fiscal_arquivo ?? ''), $patrimonio->documento_id ? (int) $patrimonio->documento_id : null);
 
         $vinculos = $this->filtrarColunas('maquinas', array_filter([
             'nf_entrada_id' => $nfEntradaId,
@@ -328,7 +328,7 @@ class PatrimonioService
 
     private function sincronizarEntradaFiscal(int $patrimonioId, array $dados, int $propriedadeId, ?int $usuarioId, ?int $nfEntradaId = null): ?int
     {
-        $numero = trim((string)($dados['nota_fiscal_numero'] ?? ''));
+        $numero = trim((string) ($dados['nota_fiscal_numero'] ?? ''));
         if ($numero === '') {
             return $nfEntradaId;
         }
@@ -339,11 +339,11 @@ class PatrimonioService
             'propriedade_id' => $propriedadeId,
             'numero' => $numero,
             'serie' => trim($dados['nota_fiscal_serie'] ?? '') ?: null,
-            'chave_acesso' => preg_replace('/\D+/', '', (string)($dados['nota_fiscal_chave'] ?? '')) ?: null,
+            'chave_acesso' => preg_replace('/\D+/', '', (string) ($dados['nota_fiscal_chave'] ?? '')) ?: null,
             'data_emissao' => $data,
             'data_entrada' => $data,
             'fornecedor' => trim($dados['fornecedor'] ?? '') ?: 'Fornecedor nao informado',
-            'fornecedor_doc' => preg_replace('/\D+/', '', (string)($dados['fornecedor_doc'] ?? '')) ?: null,
+            'fornecedor_doc' => preg_replace('/\D+/', '', (string) ($dados['fornecedor_doc'] ?? '')) ?: null,
             'valor_total' => $valor,
             'valor_produtos' => $valor,
             'valor_financeiro_final' => $valor,
@@ -357,23 +357,24 @@ class PatrimonioService
             'patrimonio_nome' => trim($dados['nome'] ?? ''),
             'patrimonio_tipo' => $dados['tipo'] ?? 'outro',
             'patrimonio_tipo_outro' => trim($dados['tipo_outro'] ?? '') ?: null,
-            'patrimonio_controla_horimetro' => !empty($dados['controla_horimetro']) ? 1 : 0,
-            'patrimonio_controla_odometro' => !empty($dados['controla_odometro']) ? 1 : 0,
+            'patrimonio_controla_horimetro' => ! empty($dados['controla_horimetro']) ? 1 : 0,
+            'patrimonio_controla_odometro' => ! empty($dados['controla_odometro']) ? 1 : 0,
         ]);
 
         if ($nfEntradaId && DB::table('nf_entradas')->where('id', $nfEntradaId)->where('propriedade_id', $propriedadeId)->exists()) {
             DB::table('nf_entradas')->where('id', $nfEntradaId)->where('propriedade_id', $propriedadeId)->update($payload);
+
             return $nfEntradaId;
         }
 
         DB::table('nf_entradas')->insert($payload);
 
-        return (int)DB::getPdo()->lastInsertId();
+        return (int) DB::getPdo()->lastInsertId();
     }
 
     private function sincronizarDocumentoFiscal(int $patrimonioId, array $dados, int $propriedadeId, ?int $usuarioId, string $arquivoNf = '', ?int $documentoId = null): ?int
     {
-        if ($arquivoNf === '' && !$documentoId) {
+        if ($arquivoNf === '' && ! $documentoId) {
             return null;
         }
 
@@ -395,6 +396,7 @@ class PatrimonioService
 
         if ($documentoId && DB::table('documentos')->where('id', $documentoId)->where('propriedade_id', $propriedadeId)->exists()) {
             DB::table('documentos')->where('id', $documentoId)->where('propriedade_id', $propriedadeId)->update($payload);
+
             return $documentoId;
         }
 
@@ -404,27 +406,27 @@ class PatrimonioService
 
         DB::table('documentos')->insert($payload);
 
-        return (int)DB::getPdo()->lastInsertId();
+        return (int) DB::getPdo()->lastInsertId();
     }
 
     private function filtrarColunas(string $table, array $payload): array
     {
         return collect($payload)
-            ->filter(fn ($value, $column) => Schema::hasColumn($table, (string)$column))
+            ->filter(fn ($value, $column) => Schema::hasColumn($table, (string) $column))
             ->all();
     }
 
     private function filtros(Request $request): array
     {
-        $tipo = (string)$request->query('tipo', '');
-        if ($tipo !== '' && !array_key_exists($tipo, $this->tipos())) {
+        $tipo = (string) $request->query('tipo', '');
+        if ($tipo !== '' && ! array_key_exists($tipo, $this->tipos())) {
             $tipo = '';
         }
 
         return [
             'tipo' => $tipo,
-            'status' => in_array($request->query('status'), ['ativos', 'inativos', 'todos'], true) ? (string)$request->query('status') : 'ativos',
-            'search' => trim((string)$request->query('search', '')),
+            'status' => in_array($request->query('status'), ['ativos', 'inativos', 'todos'], true) ? (string) $request->query('status') : 'ativos',
+            'search' => trim((string) $request->query('search', '')),
         ];
     }
 
@@ -481,15 +483,15 @@ class PatrimonioService
 
     private function normalizar($row): object
     {
-        return (object)[
-            'id' => (int)$row->id,
+        return (object) [
+            'id' => (int) $row->id,
             'nome' => FarmFormat::value($row->nome),
-            'tipo' => $this->tipoLabel((string)$row->tipo, (string)($row->tipo_outro ?? '')),
+            'tipo' => $this->tipoLabel((string) $row->tipo, (string) ($row->tipo_outro ?? '')),
             'marca_modelo' => FarmFormat::value($row->marca_modelo),
             'identificacao' => FarmFormat::value($row->identificacao),
             'descricao' => FarmFormat::value($row->descricao_patrimonio),
             'ano' => FarmFormat::value($row->ano),
-            'valor_aquisicao_raw' => (float)$row->valor_aquisicao,
+            'valor_aquisicao_raw' => (float) $row->valor_aquisicao,
             'valor_aquisicao' => FarmFormat::money($row->valor_aquisicao),
             'data_aquisicao' => FarmFormat::date($row->data_aquisicao),
             'fornecedor' => FarmFormat::value($row->fornecedor),
@@ -497,18 +499,18 @@ class PatrimonioService
             'nota_fiscal_numero' => FarmFormat::value($row->nota_fiscal_numero ?? null),
             'nota_fiscal_serie' => FarmFormat::value($row->nota_fiscal_serie ?? null),
             'nota_fiscal_chave' => FarmFormat::value($row->nota_fiscal_chave ?? null),
-            'nota_fiscal_arquivo' => trim((string)($row->nota_fiscal_arquivo ?? '')),
-            'nf_entrada_id' => !empty($row->nf_entrada_id) ? (int)$row->nf_entrada_id : null,
-            'documento_id' => !empty($row->documento_id) ? (int)$row->documento_id : null,
+            'nota_fiscal_arquivo' => trim((string) ($row->nota_fiscal_arquivo ?? '')),
+            'nf_entrada_id' => ! empty($row->nf_entrada_id) ? (int) $row->nf_entrada_id : null,
+            'documento_id' => ! empty($row->documento_id) ? (int) $row->documento_id : null,
             'horimetro' => $row->controla_horimetro ? FarmFormat::decimal($row->horimetro_atual, 1).' h' : '-',
             'odometro' => $row->controla_odometro ? FarmFormat::decimal($row->odometro_atual, 1).' km' : '-',
-            'ativo' => (bool)$row->ativo,
-            'status' => (bool)$row->ativo ? 'Ativo' : 'Inativo',
-            'custo_total_raw' => (float)$row->custo_total,
+            'ativo' => (bool) $row->ativo,
+            'status' => (bool) $row->ativo ? 'Ativo' : 'Inativo',
+            'custo_total_raw' => (float) $row->custo_total,
             'custo_total' => FarmFormat::money($row->custo_total),
-            'combustivel_raw' => (float)$row->combustivel,
+            'combustivel_raw' => (float) $row->combustivel,
             'combustivel' => FarmFormat::money($row->combustivel),
-            'lancamentos_count' => (int)$row->lancamentos_count,
+            'lancamentos_count' => (int) $row->lancamentos_count,
         ];
     }
 
@@ -547,9 +549,9 @@ class PatrimonioService
                 's.descricao as safra_nome',
                 't.nome as talhao_nome',
             ])
-            ->map(fn ($row) => (object)[
-                'id' => (int)$row->id,
-                'tipo' => $this->tipoLancamentoLabel((string)$row->tipo),
+            ->map(fn ($row) => (object) [
+                'id' => (int) $row->id,
+                'tipo' => $this->tipoLancamentoLabel((string) $row->tipo),
                 'data' => FarmFormat::date($row->data_lancamento),
                 'descricao' => FarmFormat::value($row->descricao),
                 'fornecedor' => FarmFormat::value($row->fornecedor),
@@ -560,7 +562,7 @@ class PatrimonioService
                 'valor' => FarmFormat::money($row->valor_total),
                 'horimetro' => $row->horimetro ? FarmFormat::decimal($row->horimetro, 1).' h' : '-',
                 'odometro' => $row->odometro ? FarmFormat::decimal($row->odometro, 1).' km' : '-',
-                'comprovante' => trim((string)($row->comprovante ?? '')),
+                'comprovante' => trim((string) ($row->comprovante ?? '')),
                 'observacoes' => FarmFormat::value($row->observacoes),
             ]);
     }
@@ -585,30 +587,30 @@ class PatrimonioService
 
     private function quantidade($quantidade, $unidade): string
     {
-        if ($quantidade === null || (float)$quantidade <= 0) {
+        if ($quantidade === null || (float) $quantidade <= 0) {
             return '-';
         }
 
         $texto = FarmFormat::decimal($quantidade, 2);
-        $unidade = trim((string)$unidade);
+        $unidade = trim((string) $unidade);
 
         return $unidade !== '' ? $texto.' '.$unidade : $texto;
     }
 
     private function money($value): float
     {
-        $value = trim((string)$value);
+        $value = trim((string) $value);
         if (str_contains($value, ',')) {
             $value = str_replace('.', '', $value);
             $value = str_replace(',', '.', $value);
         }
 
-        return max(0.0, (float)$value);
+        return max(0.0, (float) $value);
     }
 
     private function nullableMoney($value): ?float
     {
-        if ($value === null || trim((string)$value) === '') {
+        if ($value === null || trim((string) $value) === '') {
             return null;
         }
 
@@ -617,16 +619,16 @@ class PatrimonioService
 
     private function idDaPropriedade(string $table, $id, int $propriedadeId): ?int
     {
-        if (!$id) {
+        if (! $id) {
             return null;
         }
 
         $exists = DB::table($table)
-            ->where('id', (int)$id)
+            ->where('id', (int) $id)
             ->where('propriedade_id', $propriedadeId)
             ->exists();
 
-        return $exists ? (int)$id : null;
+        return $exists ? (int) $id : null;
     }
 
     private function auditar(?int $usuarioId, string $acao, string $tabela, int $registroId, int $propriedadeId, string $detalhes): void
@@ -642,8 +644,8 @@ class PatrimonioService
                 'ip' => request()->ip(),
                 'criado_em' => now(),
             ]);
-        } catch (\Throwable) {
-            // Auditoria nao deve impedir a gestao do patrimonio.
+        } catch (\Throwable $exception) {
+            report($exception);
         }
     }
 }

@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\NotaFiscalXmlService;
 use App\Services\NotaFiscalListagemService;
+use App\Services\NotaFiscalXmlService;
 use App\Support\FarmContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -36,6 +36,8 @@ class NotaFiscalController extends Controller
             $preview = $service->preview($dados['xml']);
             session(['fiscal_invoice_preview' => $preview]);
         } catch (\Throwable $e) {
+            report($e);
+
             return back()->withErrors(['xml' => $e->getMessage()]);
         }
 
@@ -56,6 +58,8 @@ class NotaFiscalController extends Controller
             );
             session()->forget('fiscal_invoice_preview');
         } catch (\Throwable $e) {
+            report($e);
+
             return redirect()
                 ->route('fiscal.notas.create')
                 ->withErrors(['xml' => $e->getMessage()]);
@@ -85,6 +89,8 @@ class NotaFiscalController extends Controller
         try {
             $service->aprovar(app(FarmContext::class)->propertyId(), $nota, session('usuario_id'));
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return back()->withErrors($exception->getMessage());
         }
 

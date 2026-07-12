@@ -6,7 +6,6 @@ use App\Services\ProdutoService;
 use App\Support\FarmContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class ProdutoController extends Controller
@@ -16,11 +15,11 @@ class ProdutoController extends Controller
         return view('produtos.index', $service->pagina(app(FarmContext::class)->propertyId(), $request));
     }
 
-    public function create(): View
+    public function create(ProdutoService $service): View
     {
         return view('produtos.create', [
             'activeModule' => 'estoque-produtos',
-            'categorias' => DB::table('categorias')->where('ativo', 1)->orderBy('nome')->get(['id', 'nome', 'tipo']),
+            ...$service->formOptions(),
         ]);
     }
 
@@ -29,7 +28,7 @@ class ProdutoController extends Controller
         return view('produtos.edit', [
             'activeModule' => 'estoque-produtos',
             'produto' => $service->buscar($produto, app(FarmContext::class)->propertyId()),
-            'categorias' => DB::table('categorias')->where('ativo', 1)->orderBy('nome')->get(['id', 'nome', 'tipo']),
+            ...$service->formOptions(),
         ]);
     }
 

@@ -12,7 +12,7 @@ class NotaFiscalXmlService
 {
     public function importar(UploadedFile $file, int $propriedadeId, ?int $usuarioId): int
     {
-        $xmlRaw = (string)file_get_contents($file->getRealPath());
+        $xmlRaw = (string) file_get_contents($file->getRealPath());
         $parsed = $this->parse($xmlRaw);
 
         if (DB::table('fiscal_invoices')->where('access_key', $parsed['invoice']['access_key'])->exists()) {
@@ -24,14 +24,14 @@ class NotaFiscalXmlService
 
     public function preview(UploadedFile $file, bool $permitirNotaExistente = false): array
     {
-        $xmlRaw = (string)file_get_contents($file->getRealPath());
+        $xmlRaw = (string) file_get_contents($file->getRealPath());
         $parsed = $this->parse($xmlRaw);
 
-        $notaExistenteId = (int)DB::table('fiscal_invoices')
+        $notaExistenteId = (int) DB::table('fiscal_invoices')
             ->where('access_key', $parsed['invoice']['access_key'])
             ->value('id');
 
-        if ($notaExistenteId > 0 && !$permitirNotaExistente) {
+        if ($notaExistenteId > 0 && ! $permitirNotaExistente) {
             throw new RuntimeException('Esta nota fiscal já foi lançada no sistema.');
         }
 
@@ -62,8 +62,8 @@ class NotaFiscalXmlService
 
         return $this->criarNota(
             $parsed,
-            (string)$preview['xml_raw'],
-            (string)($preview['original_name'] ?? 'nota.xml'),
+            (string) $preview['xml_raw'],
+            (string) ($preview['original_name'] ?? 'nota.xml'),
             $propriedadeId,
             $usuarioId
         );
@@ -94,7 +94,7 @@ class NotaFiscalXmlService
                 'updated_at' => now(),
             ]);
 
-            $invoiceId = (int)DB::getPdo()->lastInsertId();
+            $invoiceId = (int) DB::getPdo()->lastInsertId();
             foreach ($parsed['items'] as $item) {
                 DB::table('fiscal_invoice_items')->insert([
                     'invoice_id' => $invoiceId,
@@ -119,7 +119,7 @@ class NotaFiscalXmlService
     {
         libxml_use_internal_errors(true);
         $xml = simplexml_load_string($xmlRaw);
-        if (!$xml instanceof SimpleXMLElement) {
+        if (! $xml instanceof SimpleXMLElement) {
             throw new RuntimeException('Não foi possível ler o XML informado.');
         }
 
@@ -129,11 +129,11 @@ class NotaFiscalXmlService
         $dest = $this->first($xml->xpath('//*[local-name()="dest"]'));
         $total = $this->first($xml->xpath('//*[local-name()="ICMSTot"]'));
 
-        if (!$infNFe || !$ide || !$emit || !$total) {
+        if (! $infNFe || ! $ide || ! $emit || ! $total) {
             throw new RuntimeException('O XML não contém os dados obrigatórios da NF-e.');
         }
 
-        $accessKey = preg_replace('/\D+/', '', (string)$infNFe['Id']);
+        $accessKey = preg_replace('/\D+/', '', (string) $infNFe['Id']);
         if (str_starts_with($accessKey, 'NFe')) {
             $accessKey = substr($accessKey, 3);
         }
@@ -141,34 +141,34 @@ class NotaFiscalXmlService
         $items = [];
         foreach ($xml->xpath('//*[local-name()="det"]') ?: [] as $det) {
             $prod = $this->first($det->xpath('./*[local-name()="prod"]'));
-            if (!$prod) {
+            if (! $prod) {
                 continue;
             }
             $items[] = [
-                'product_code' => trim((string)$prod->cProd),
-                'description' => trim((string)$prod->xProd),
-                'unit' => trim((string)$prod->uCom),
-                'quantity' => (float)str_replace(',', '.', (string)$prod->qCom),
-                'unit_value' => (float)str_replace(',', '.', (string)$prod->vUnCom),
-                'total_value' => (float)str_replace(',', '.', (string)$prod->vProd),
+                'product_code' => trim((string) $prod->cProd),
+                'description' => trim((string) $prod->xProd),
+                'unit' => trim((string) $prod->uCom),
+                'quantity' => (float) str_replace(',', '.', (string) $prod->qCom),
+                'unit_value' => (float) str_replace(',', '.', (string) $prod->vUnCom),
+                'total_value' => (float) str_replace(',', '.', (string) $prod->vProd),
             ];
         }
 
-        if (strlen($accessKey) !== 44 || !$items) {
+        if (strlen($accessKey) !== 44 || ! $items) {
             throw new RuntimeException('O XML está incompleto ou não possui itens válidos.');
         }
 
         return [
             'invoice' => [
                 'access_key' => $accessKey,
-                'invoice_number' => trim((string)$ide->nNF),
-                'series' => trim((string)$ide->serie),
-                'issue_date' => substr((string)($ide->dhEmi ?: $ide->dEmi), 0, 10),
-                'issuer_cnpj' => preg_replace('/\D+/', '', (string)($emit->CNPJ ?: $emit->CPF)),
-                'issuer_name' => trim((string)$emit->xNome),
-                'recipient_cnpj' => $dest ? preg_replace('/\D+/', '', (string)($dest->CNPJ ?: $dest->CPF)) : '',
-                'recipient_name' => $dest ? trim((string)$dest->xNome) : '',
-                'total_value' => (float)str_replace(',', '.', (string)$total->vNF),
+                'invoice_number' => trim((string) $ide->nNF),
+                'series' => trim((string) $ide->serie),
+                'issue_date' => substr((string) ($ide->dhEmi ?: $ide->dEmi), 0, 10),
+                'issuer_cnpj' => preg_replace('/\D+/', '', (string) ($emit->CNPJ ?: $emit->CPF)),
+                'issuer_name' => trim((string) $emit->xNome),
+                'recipient_cnpj' => $dest ? preg_replace('/\D+/', '', (string) ($dest->CNPJ ?: $dest->CPF)) : '',
+                'recipient_name' => $dest ? trim((string) $dest->xNome) : '',
+                'total_value' => (float) str_replace(',', '.', (string) $total->vNF),
             ],
             'items' => $items,
         ];
@@ -177,10 +177,10 @@ class NotaFiscalXmlService
     private function storeXml(string $originalName, string $accessKey, string $xmlRaw): string
     {
         $safeName = preg_replace('/[^a-zA-Z0-9_.-]/', '', $originalName) ?: 'nota.xml';
-        $path = 'fiscal_invoices/fiscal_invoice_' . $accessKey . '_' . date('YmdHis') . '_' . $safeName;
+        $path = 'fiscal_invoices/fiscal_invoice_'.$accessKey.'_'.date('YmdHis').'_'.$safeName;
         Storage::disk('local')->put($path, $xmlRaw);
 
-        return 'storage/app/private/' . $path;
+        return 'storage/app/private/'.$path;
     }
 
     private function first($value): ?SimpleXMLElement
@@ -201,8 +201,8 @@ class NotaFiscalXmlService
                 'ip' => request()->ip(),
                 'criado_em' => now(),
             ]);
-        } catch (\Throwable) {
-            // Auditoria nao deve impedir a importacao da nota.
+        } catch (\Throwable $exception) {
+            report($exception);
         }
     }
 }

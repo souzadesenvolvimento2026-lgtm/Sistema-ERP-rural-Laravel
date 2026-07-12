@@ -3,7 +3,7 @@
         <h2>Despesas financeiras</h2>
         <span class="badge">{{ $rows->count() }} despesa(s)</span>
     </div>
-    @if ($rows->where('aprovacao_key', 'pendente')->where('status_key', '!=', 'pago')->count() > 0)
+    @if ($can_approve_batch)
         <div class="actions" style="justify-content:flex-start;margin-bottom:12px">
             <button class="btn primary" type="submit" form="despesas-aprovar-lote">Aprovar selecionadas</button>
             <span class="muted">Marque as despesas pendentes na tabela.</span>
@@ -32,7 +32,7 @@
                 @forelse ($rows as $row)
                     <tr>
                         <td>
-                            @if ($row->aprovacao_key === 'pendente' && $row->status_key !== 'pago')
+                            @if ($row->can_select_for_batch)
                                 <input form="despesas-aprovar-lote" type="checkbox" name="despesas[]" value="{{ $row->id }}">
                             @else
                                 <span class="muted">-</span>
@@ -55,9 +55,9 @@
                         <td><strong>{{ $row->valor }}</strong></td>
                         <td>{{ $row->vencimento }}</td>
                         <td>{{ $row->pagamento }}</td>
-                        <td><span class="pill {{ $row->status_key === 'pago' ? 'success' : ($row->status_key === 'vencido' ? 'danger' : 'warning') }}">{{ $row->status }}</span></td>
+                        <td><span class="pill {{ $row->status_tone }}">{{ $row->status }}</span></td>
                         <td>
-                            <span class="pill {{ $row->aprovacao_key === 'aprovada' ? 'success' : ($row->aprovacao_key === 'reprovada' ? 'danger' : 'warning') }}">{{ $row->aprovacao }}</span>
+                            <span class="pill {{ $row->aprovacao_tone }}">{{ $row->aprovacao }}</span>
                             @if ($row->motivo_reprovacao !== '-')
                                 <br><span class="muted">{{ $row->motivo_reprovacao }}</span>
                             @endif
@@ -66,28 +66,32 @@
                             <div class="actions" style="justify-content:flex-start">
                                 <a class="btn" href="{{ route('financeiro.despesas.edit', $row->id) }}">Editar</a>
                                 <a class="btn" href="{{ route('financeiro.despesas.duplicate', $row->id) }}">Duplicar</a>
-                                @if ($row->aprovacao_key === 'pendente')
+                                @if ($row->can_approve)
                                     <form method="post" action="{{ route('financeiro.despesas.approve', $row->id) }}">
                                         @csrf
                                         <button class="btn primary" type="submit">Aprovar</button>
                                     </form>
+                                @endif
+                                @if ($row->can_reject)
                                     <form method="post" action="{{ route('financeiro.despesas.reject', $row->id) }}" class="form-grid" style="grid-template-columns:minmax(140px,1fr) auto;gap:6px">
                                         @csrf
                                         <input name="motivo_reprovacao" maxlength="255" placeholder="Motivo">
                                         <button class="btn danger" type="submit">Reprovar</button>
                                     </form>
                                 @endif
-                                @if (in_array($row->status_key, ['pendente', 'vencido'], true) && $row->aprovacao_key === 'aprovada')
+                                @if ($row->can_pay)
                                     <form method="post" action="{{ route('financeiro.despesas.pay', $row->id) }}">
                                         @csrf
                                         <input type="hidden" name="data_pagamento" value="{{ now()->toDateString() }}">
                                         <button class="btn" type="submit">Pagar</button>
                                     </form>
                                 @endif
-                                <form method="post" action="{{ route('financeiro.despesas.cancel', $row->id) }}">
-                                    @csrf
-                                    <button class="btn danger" type="submit">Cancelar</button>
-                                </form>
+                                @if ($row->can_cancel)
+                                    <form method="post" action="{{ route('financeiro.despesas.cancel', $row->id) }}">
+                                        @csrf
+                                        <button class="btn danger" type="submit">Cancelar</button>
+                                    </form>
+                                @endif
                             </div>
                         </td>
                     </tr>

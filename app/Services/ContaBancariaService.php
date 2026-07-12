@@ -14,7 +14,7 @@ class ContaBancariaService
         $this->garantirEstruturaTransferencias();
 
         $contas = $this->contas($propriedadeId);
-        $saldoInicial = (float)$contas->sum('saldo_inicial');
+        $saldoInicial = (float) $contas->sum('saldo_inicial');
 
         return [
             'activeModule' => 'financeiro',
@@ -25,7 +25,7 @@ class ContaBancariaService
                 'contas' => $contas->count(),
                 'ativas' => $contas->where('ativo', 1)->count(),
                 'saldo_inicial' => $saldoInicial,
-                'saldo_atual' => (float)$contas->sum('saldo_atual'),
+                'saldo_atual' => (float) $contas->sum('saldo_atual'),
                 'inativas' => $contas->where('ativo', 0)->count(),
             ],
         ];
@@ -50,7 +50,7 @@ class ContaBancariaService
             'ativo' => 1,
         ]);
 
-        return (int)DB::getPdo()->lastInsertId();
+        return (int) DB::getPdo()->lastInsertId();
     }
 
     public function buscar(int $contaId, int $propriedadeId): object
@@ -91,8 +91,8 @@ class ContaBancariaService
     {
         $this->garantirEstruturaTransferencias();
 
-        $origemId = (int)($dados['origem'] ?? 0);
-        $destinoId = (int)($dados['destino'] ?? 0);
+        $origemId = (int) ($dados['origem'] ?? 0);
+        $destinoId = (int) ($dados['destino'] ?? 0);
 
         if ($origemId <= 0 || $destinoId <= 0) {
             throw new RuntimeException('Selecione a conta de origem e a conta de destino.');
@@ -114,16 +114,16 @@ class ContaBancariaService
             throw new RuntimeException('Informe um valor de transferencia maior que zero.');
         }
 
-        if ($valor > (float)$origem->saldo_atual) {
+        if ($valor > (float) $origem->saldo_atual) {
             throw new RuntimeException('Saldo insuficiente na conta de origem para concluir a transferencia.');
         }
 
-        $data = (string)($dados['data_transferencia'] ?? date('Y-m-d'));
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $data)) {
+        $data = (string) ($dados['data_transferencia'] ?? date('Y-m-d'));
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $data)) {
             $data = date('Y-m-d');
         }
 
-        $descricao = trim((string)($dados['descricao'] ?? '')) ?: 'Transferencia entre contas';
+        $descricao = trim((string) ($dados['descricao'] ?? '')) ?: 'Transferencia entre contas';
 
         DB::table('transferencias')->insert([
             'propriedade_id' => $propriedadeId,
@@ -136,7 +136,7 @@ class ContaBancariaService
             'criado_em' => now(),
         ]);
 
-        $transferenciaId = (int)DB::getPdo()->lastInsertId();
+        $transferenciaId = (int) DB::getPdo()->lastInsertId();
         $this->auditarTransferencia($transferenciaId, $propriedadeId, $usuarioId, $origem, $destino, $valor, $data, $descricao);
 
         return $transferenciaId;
@@ -161,8 +161,8 @@ class ContaBancariaService
                 'propriedade_id' => $propriedadeId,
                 'detalhes' => sprintf(
                     'Transferencia de %s para %s no valor de R$ %s em %s. %s',
-                    (string)$origem->nome,
-                    (string)$destino->nome,
+                    (string) $origem->nome,
+                    (string) $destino->nome,
                     number_format($valor, 2, ',', '.'),
                     date('d/m/Y', strtotime($data) ?: time()),
                     $descricao
@@ -170,8 +170,8 @@ class ContaBancariaService
                 'ip' => request()->ip(),
                 'criado_em' => now(),
             ]);
-        } catch (\Throwable) {
-            // A auditoria nao deve impedir a transferencia financeira.
+        } catch (\Throwable $exception) {
+            report($exception);
         }
     }
 
@@ -252,7 +252,7 @@ class ContaBancariaService
 
     private function decimal($value): float
     {
-        return (float)str_replace(['.', ','], ['', '.'], trim((string)$value));
+        return (float) str_replace(['.', ','], ['', '.'], trim((string) $value));
     }
 
     private function payload(array $dados): array

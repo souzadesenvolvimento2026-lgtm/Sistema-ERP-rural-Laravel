@@ -30,8 +30,8 @@
     Fazendas Premium *
     <select name="propriedades[]" multiple required size="6">
         @foreach ($propriedades as $propriedade)
-            <option value="{{ $propriedade->id }}" @disabled($propriedade->plano !== 'premium') @selected(in_array($propriedade->id, $grupo->propriedades_ids ?? []))>
-                {{ $propriedade->nome }} - {{ ucfirst($propriedade->plano ?? 'basico') }}
+            <option value="{{ $propriedade->id }}" @disabled(! $propriedade->eligible_for_group) @selected(in_array($propriedade->id, $grupo->propriedades_ids ?? [])) title="{{ $propriedade->group_ineligibility_reason }}">
+                {{ $propriedade->nome }} - {{ $propriedade->plan_label }}
             </option>
         @endforeach
     </select>

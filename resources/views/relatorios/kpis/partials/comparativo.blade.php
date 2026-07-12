@@ -1,9 +1,3 @@
-@php
-    $comparativoLabels = $comparativo->pluck('descricao')->values();
-    $comparativoDespesas = $comparativo->pluck('total_despesas')->map(fn ($value) => (float)$value)->values();
-    $comparativoReceitas = $comparativo->pluck('total_receitas')->map(fn ($value) => (float)$value)->values();
-@endphp
-
 <section class="panel">
     <div class="panel-head"><h2>Comparativo entre safras</h2></div>
     <div class="panel-body chart-box">
@@ -31,7 +25,7 @@
                         <td>{{ $item->descricao }}</td>
                         <td>{{ \App\Support\FarmFormat::money($item->total_despesas) }}</td>
                         <td>{{ \App\Support\FarmFormat::money($item->total_receitas) }}</td>
-                        <td><strong class="{{ $item->resultado >= 0 ? 'success' : 'danger' }}">{{ \App\Support\FarmFormat::money($item->resultado) }}</strong></td>
+                        <td><strong class="{{ $item->result_tone }}">{{ \App\Support\FarmFormat::money($item->resultado) }}</strong></td>
                         <td>{{ number_format((float)$item->area_plantada, 2, ',', '.') }} ha</td>
                         <td>{{ number_format((float)$item->producao_realizada, 2, ',', '.') }} sc</td>
                     </tr>
@@ -55,16 +49,16 @@
             new Chart(document.getElementById('chartComp'), {
                 type: 'bar',
                 data: {
-                    labels: @json($comparativoLabels),
+                    labels: @json($comparativoChart['labels']),
                     datasets: [
                         {
                             label: 'Despesas',
-                            data: @json($comparativoDespesas),
+                            data: @json($comparativoChart['despesas']),
                             backgroundColor: 'rgba(239, 68, 68, 0.75)'
                         },
                         {
                             label: 'Receitas',
-                            data: @json($comparativoReceitas),
+                            data: @json($comparativoChart['receitas']),
                             backgroundColor: 'rgba(53, 196, 154, 0.75)'
                         }
                     ]

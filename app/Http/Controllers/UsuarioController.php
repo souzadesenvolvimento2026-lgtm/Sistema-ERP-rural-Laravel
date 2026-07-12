@@ -2,16 +2,19 @@
 
 namespace App\Http\Controllers;
 
+use App\Domain\Access\ProfileAccess;
 use App\Services\UsuarioService;
 use App\Support\FarmContext;
-use Illuminate\Validation\Rule;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use RuntimeException;
 
 class UsuarioController extends Controller
 {
+    public function __construct(private readonly ProfileAccess $access) {}
+
     public function index(Request $request, UsuarioService $service): View
     {
         return view('usuarios.index', $service->pagina(app(FarmContext::class)->propertyId(), $request, $this->isSystemAdmin()));
@@ -22,6 +25,7 @@ class UsuarioController extends Controller
         return view('usuarios.create', [
             'activeModule' => 'usuarios',
             'perfis' => $this->perfisDisponiveis(),
+            'modoSistema' => $this->isSystemAdmin(),
         ]);
     }
 
@@ -33,6 +37,7 @@ class UsuarioController extends Controller
                 ? $service->buscarSistema($usuario)
                 : $service->buscar($usuario, app(FarmContext::class)->propertyId()),
             'perfis' => $this->perfisDisponiveis(),
+            'modoSistema' => $this->isSystemAdmin(),
         ]);
     }
 
@@ -47,11 +52,13 @@ class UsuarioController extends Controller
 
         try {
             if ($this->isSystemAdmin()) {
-                $service->criarSistema($dados, (int)$request->session()->get('usuario_id'));
+                $service->criarSistema($dados, (int) $request->session()->get('usuario_id'));
             } else {
-                $service->criar($dados, app(FarmContext::class)->propertyId(), (int)$request->session()->get('usuario_id'));
+                $service->criar($dados, app(FarmContext::class)->propertyId(), (int) $request->session()->get('usuario_id'));
             }
         } catch (RuntimeException $exception) {
+            report($exception);
+
             return back()
                 ->with('error', $exception->getMessage());
         }
@@ -71,9 +78,9 @@ class UsuarioController extends Controller
         ]);
 
         if ($this->isSystemAdmin()) {
-            $service->atualizarSistema($usuario, $dados, (int)$request->session()->get('usuario_id'));
+            $service->atualizarSistema($usuario, $dados, (int) $request->session()->get('usuario_id'));
         } else {
-            $service->atualizar($usuario, $dados, app(FarmContext::class)->propertyId(), (int)$request->session()->get('usuario_id'));
+            $service->atualizar($usuario, $dados, app(FarmContext::class)->propertyId(), (int) $request->session()->get('usuario_id'));
         }
 
         return redirect()
@@ -84,8 +91,8 @@ class UsuarioController extends Controller
     public function toggleStatus(Request $request, int $usuario, UsuarioService $service): RedirectResponse
     {
         $ativo = $this->isSystemAdmin()
-            ? $service->alternarStatusSistema($usuario, (int)$request->session()->get('usuario_id'))
-            : $service->alternarStatus($usuario, app(FarmContext::class)->propertyId(), (int)$request->session()->get('usuario_id'));
+            ? $service->alternarStatusSistema($usuario, (int) $request->session()->get('usuario_id'))
+            : $service->alternarStatus($usuario, app(FarmContext::class)->propertyId(), (int) $request->session()->get('usuario_id'));
 
         return redirect()
             ->route('usuarios.index')
@@ -94,7 +101,7 @@ class UsuarioController extends Controller
 
     private function isSystemAdmin(): bool
     {
-        return in_array((string)session('perfil'), ['administrador_sistema', 'gerencia_sistema'], true);
+        return $this->access->isSystemAdministrator((string) session('perfil'));
     }
 
     private function perfisDisponiveis(): array

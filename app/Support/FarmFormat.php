@@ -8,18 +8,24 @@ class FarmFormat
 {
     public static function money($value): string
     {
-        return 'R$ ' . number_format((float)$value, 2, ',', '.');
+        return 'R$ '.number_format((float) $value, 2, ',', '.');
     }
 
     public static function decimal($value, int $places = 2): string
     {
-        $formatted = number_format((float)$value, $places, ',', '.');
+        $formatted = number_format((float) $value, $places, ',', '.');
+
         return rtrim(rtrim($formatted, '0'), ',');
+    }
+
+    public static function percentage($value, int $places = 2): string
+    {
+        return number_format((float) $value, $places, ',', '.').'%';
     }
 
     public static function date($value): string
     {
-        if (!$value) {
+        if (! $value) {
             return '-';
         }
 
@@ -28,7 +34,7 @@ class FarmFormat
 
     public static function bool($value): string
     {
-        return (int)$value === 1 ? 'Sim' : 'Não';
+        return (int) $value === 1 ? 'Sim' : 'Não';
     }
 
     public static function value($value): string
@@ -37,7 +43,7 @@ class FarmFormat
             return '-';
         }
 
-        return (string)$value;
+        return (string) $value;
     }
 
     public static function statusLabel(string $value): string
@@ -107,6 +113,7 @@ class FarmFormat
         }
 
         $text = str_replace('_', ' ', $value);
+
         return implode(' ', array_map(
             static fn (string $part): string => $part === '' ? '' : strtoupper($part[0]).substr($part, 1),
             explode(' ', strtolower($text))

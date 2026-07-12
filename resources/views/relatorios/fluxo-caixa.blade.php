@@ -2,13 +2,6 @@
 
 @php
     use App\Support\FarmFormat;
-
-    $selectedSafras = collect($filtros['safra_ids'] ?? [])->map(fn ($id) => (int) $id)->all();
-    $allSelected = count($selectedSafras) > 0 && count($selectedSafras) === $safras->count();
-    $safraButton = $allSelected || count($selectedSafras) === 0
-        ? 'Todas as safras'
-        : $safras->whereIn('id', $selectedSafras)->pluck('descricao')->implode(' + ');
-    $rowClass = fn ($value) => ((float) $value) >= 0 ? 'text-success' : 'text-danger';
 @endphp
 
 @section('content')
@@ -51,7 +44,7 @@
                         <div class="dropdown-menu p-3">
                             <div class="text-muted small mb-2">Marcar safra limpa o período e analisa apenas a(s) safra(s) escolhida(s).</div>
                             <label class="ff-fluxo-safra-check ff-fluxo-select-all">
-                                <input type="checkbox" id="fluxoSelecionarTodasSafras" @checked($allSelected || count($selectedSafras) === 0)>
+                                <input type="checkbox" id="fluxoSelecionarTodasSafras" @checked($allSafrasSelected || $selectedSafraIds === [])>
                                 <span>
                                     Todas as safras
                                     <small>Seleciona todos os anos e safras cadastradas nesta fazenda.</small>
@@ -59,7 +52,7 @@
                             </label>
                             @foreach ($safras as $safra)
                                 <label class="ff-fluxo-safra-check">
-                                    <input type="checkbox" name="safras[]" value="{{ $safra->id }}" @checked(count($selectedSafras) === 0 || in_array((int) $safra->id, $selectedSafras, true))>
+                                    <input type="checkbox" name="safras[]" value="{{ $safra->id }}" @checked($selectedSafraIds === [] || in_array((int) $safra->id, $selectedSafraIds, true))>
                                     <span>{{ $safra->descricao }}</span>
                                 </label>
                             @endforeach
@@ -153,11 +146,11 @@
                         <td><strong>{{ $row->mes_label }}</strong></td>
                         <td class="text-success">{{ $row->receitas }}</td>
                         <td class="text-danger">{{ $row->despesas }}</td>
-                        <td class="{{ $rowClass($row->saldo_previsto_valor) }}">{{ $row->saldo_previsto }}</td>
+                        <td class="{{ $row->saldo_previsto_classe }}">{{ $row->saldo_previsto }}</td>
                         <td class="text-success">{{ $row->recebido }}</td>
                         <td class="text-danger">{{ $row->pago }}</td>
-                        <td class="fw-bold {{ $rowClass($row->saldo_realizado_valor) }}">{{ $row->saldo_realizado }}</td>
-                        <td class="{{ $rowClass($row->acumulado_valor) }}">{{ $row->acumulado }}</td>
+                        <td class="fw-bold {{ $row->saldo_realizado_classe }}">{{ $row->saldo_realizado }}</td>
+                        <td class="{{ $row->acumulado_classe }}">{{ $row->acumulado }}</td>
                     </tr>
                 @endforeach
                 </tbody>
@@ -166,10 +159,10 @@
                     <td>TOTAL</td>
                     <td class="text-success">{{ FarmFormat::money($totais['receitas']) }}</td>
                     <td class="text-danger">{{ FarmFormat::money($totais['despesas']) }}</td>
-                    <td class="{{ $rowClass($totais['saldo_previsto']) }}">{{ FarmFormat::money($totais['saldo_previsto']) }}</td>
+                    <td class="{{ $totais['saldo_previsto_classe'] }}">{{ FarmFormat::money($totais['saldo_previsto']) }}</td>
                     <td class="text-success">{{ FarmFormat::money($totais['recebido']) }}</td>
                     <td class="text-danger">{{ FarmFormat::money($totais['pago']) }}</td>
-                    <td class="{{ $rowClass($totais['saldo_realizado']) }}">{{ FarmFormat::money($totais['saldo_realizado']) }}</td>
+                    <td class="{{ $totais['saldo_realizado_classe'] }}">{{ FarmFormat::money($totais['saldo_realizado']) }}</td>
                     <td></td>
                 </tr>
                 </tfoot>

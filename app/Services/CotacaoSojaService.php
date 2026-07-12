@@ -9,11 +9,12 @@ use Throwable;
 class CotacaoSojaService
 {
     private const URL = 'https://www.noticiasagricolas.com.br/cotacoes/soja/soja-mercado-fisico-sindicatos-e-cooperativas';
+
     private const FONTE = 'Noticias Agricolas';
 
     public function tick(?int $propriedadeId, bool $force = false): bool
     {
-        if (!$propriedadeId) {
+        if (! $propriedadeId) {
             return false;
         }
 
@@ -22,14 +23,15 @@ class CotacaoSojaService
             ->where('ativo', 1)
             ->first();
 
-        if (!$prop) {
+        if (! $prop) {
             return false;
         }
 
         try {
-            return $this->atualizarPropriedade((array)$prop, null, $force);
+            return $this->atualizarPropriedade((array) $prop, null, $force);
         } catch (Throwable $e) {
             $this->marcarFalha($propriedadeId, $e);
+
             return false;
         }
     }
@@ -42,14 +44,14 @@ class CotacaoSojaService
 
         foreach (DB::table('propriedades')->where('ativo', 1)->orderBy('id')->get() as $prop) {
             try {
-                if ($force || $this->buscaVencida((array)$prop)) {
+                if ($force || $this->buscaVencida((array) $prop)) {
                     $mercado = $mercado ?: $this->buscarMercado();
-                    if ($this->atualizarPropriedade((array)$prop, $mercado, $force)) {
+                    if ($this->atualizarPropriedade((array) $prop, $mercado, $force)) {
                         $ok++;
                     }
                 }
             } catch (Throwable $e) {
-                $this->marcarFalha((int)$prop->id, $e);
+                $this->marcarFalha((int) $prop->id, $e);
                 $falhas++;
             }
         }
@@ -62,17 +64,17 @@ class CotacaoSojaService
         if (empty($prop['id']) || empty($prop['ativo'])) {
             return false;
         }
-        if (!$force && !$this->buscaVencida($prop)) {
+        if (! $force && ! $this->buscaVencida($prop)) {
             return false;
         }
 
         $mercado = $mercado ?: $this->buscarMercado();
         $row = $this->escolherPraca($mercado['rows'], $prop);
-        if (!$row) {
+        if (! $row) {
             throw new RuntimeException('Nenhuma praca compativel encontrada para a propriedade.');
         }
 
-        DB::table('propriedades')->where('id', (int)$prop['id'])->update([
+        DB::table('propriedades')->where('id', (int) $prop['id'])->update([
             'regiao_cotacao' => $row['praca'],
             'cotacao_soja' => $row['valor'],
             'cotacao_soja_atualizada_em' => $mercado['data'],
@@ -89,7 +91,8 @@ class CotacaoSojaService
 
     private function buscaVencida(array $prop): bool
     {
-        $proxima = (string)($prop['cotacao_soja_proxima_busca'] ?? '');
+        $proxima = (string) ($prop['cotacao_soja_proxima_busca'] ?? '');
+
         return $proxima === '' || strtotime($proxima) <= time();
     }
 
@@ -98,19 +101,19 @@ class CotacaoSojaService
         $html = $this->httpGet(self::URL);
 
         libxml_use_internal_errors(true);
-        $dom = new \DOMDocument();
+        $dom = new \DOMDocument;
         $dom->loadHTML('<?xml encoding="UTF-8">'.$html);
         libxml_clear_errors();
         $xpath = new \DOMXPath($dom);
 
         $cotacao = $xpath->query("//div[contains(concat(' ', normalize-space(@class), ' '), ' cotacao ')]")->item(0);
-        if (!$cotacao) {
+        if (! $cotacao) {
             throw new RuntimeException('Tabela de cotacao nao encontrada.');
         }
 
         $fechamentoNode = $xpath->query(".//div[contains(concat(' ', normalize-space(@class), ' '), ' fechamento ')]", $cotacao)->item(0);
         $fechamentoTexto = $fechamentoNode ? trim($fechamentoNode->textContent) : '';
-        if (!preg_match('/(\d{2})\/(\d{2})\/(\d{4})/', $fechamentoTexto, $mData)) {
+        if (! preg_match('/(\d{2})\/(\d{2})\/(\d{4})/', $fechamentoTexto, $mData)) {
             throw new RuntimeException('Data de fechamento nao encontrada.');
         }
         $data = "{$mData[3]}-{$mData[2]}-{$mData[1]}";
@@ -138,7 +141,7 @@ class CotacaoSojaService
             ];
         }
 
-        if (!$rows) {
+        if (! $rows) {
             throw new RuntimeException('Nenhuma praca com cotacao valida foi encontrada.');
         }
 
@@ -161,14 +164,14 @@ class CotacaoSojaService
 
     private function escolherPraca(array $rows, array $prop): ?array
     {
-        $cidadeProp = trim((string)($prop['municipio'] ?? ''));
-        $ufProp = strtoupper(trim((string)($prop['estado'] ?? '')));
-        $lat = ($prop['latitude'] ?? null) !== null && ($prop['latitude'] ?? '') !== '' ? (float)$prop['latitude'] : null;
-        $lng = ($prop['longitude'] ?? null) !== null && ($prop['longitude'] ?? '') !== '' ? (float)$prop['longitude'] : null;
+        $cidadeProp = trim((string) ($prop['municipio'] ?? ''));
+        $ufProp = strtoupper(trim((string) ($prop['estado'] ?? '')));
+        $lat = ($prop['latitude'] ?? null) !== null && ($prop['latitude'] ?? '') !== '' ? (float) $prop['latitude'] : null;
+        $lng = ($prop['longitude'] ?? null) !== null && ($prop['longitude'] ?? '') !== '' ? (float) $prop['longitude'] : null;
         $cidadeNorm = $this->normalizado($cidadeProp);
 
         foreach ($rows as $row) {
-            if ($cidadeNorm !== '' && $this->normalizado((string)$row['cidade']) === $cidadeNorm && (!$ufProp || $row['uf'] === $ufProp)) {
+            if ($cidadeNorm !== '' && $this->normalizado((string) $row['cidade']) === $cidadeNorm && (! $ufProp || $row['uf'] === $ufProp)) {
                 return $row;
             }
         }
@@ -222,6 +225,8 @@ class CotacaoSojaService
 
     private function marcarFalha(int $propriedadeId, Throwable $e): void
     {
+        report($e);
+
         DB::table('propriedades')->where('id', $propriedadeId)->update([
             'cotacao_soja_ultima_busca' => now(),
             'cotacao_soja_proxima_busca' => now()->addHour(),
@@ -253,7 +258,8 @@ class CotacaoSojaService
             return null;
         }
         $valor = preg_replace('/[^0-9,.-]/', '', $valor);
-        return $valor === '' ? null : (float)str_replace(['.', ','], ['', '.'], $valor);
+
+        return $valor === '' ? null : (float) str_replace(['.', ','], ['', '.'], $valor);
     }
 
     private function pracaInfo(string $praca): array
@@ -278,6 +284,7 @@ class CotacaoSojaService
     {
         $ascii = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', trim($texto));
         $texto = strtolower($ascii !== false ? $ascii : $texto);
+
         return preg_replace('/[^a-z0-9]+/', '', $texto) ?: '';
     }
 
@@ -307,6 +314,7 @@ class CotacaoSojaService
         $dLat = deg2rad($lat2 - $lat1);
         $dLng = deg2rad($lng2 - $lng1);
         $a = sin($dLat / 2) ** 2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng / 2) ** 2;
+
         return $r * 2 * atan2(sqrt($a), sqrt(1 - $a));
     }
 }

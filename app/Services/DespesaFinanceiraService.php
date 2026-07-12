@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Domain\Finance\FinancialWorkflowRules;
 use App\Support\FarmFormat;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -10,6 +11,8 @@ use RuntimeException;
 
 class DespesaFinanceiraService
 {
+    public function __construct(private readonly FinancialWorkflowRules $workflowRules) {}
+
     public function pagina(int $propertyId, Request $request): array
     {
         $listas = $this->listas($propertyId);
@@ -25,11 +28,14 @@ class DespesaFinanceiraService
             'categorias' => $listas['categorias'],
             'contas' => $listas['contas'],
             'rows' => $rows,
+            'can_approve_batch' => $rows->contains(
+                fn (object $row): bool => $row->can_select_for_batch
+            ),
             'cards' => [
                 ['label' => 'Despesas', 'value' => FarmFormat::money($rows->sum('valor_raw')), 'tone' => 'danger'],
                 ['label' => 'Pago', 'value' => FarmFormat::money($rows->where('status_key', 'pago')->sum('valor_raw')), 'tone' => 'success'],
                 ['label' => 'A pagar', 'value' => FarmFormat::money($rows->whereIn('status_key', ['pendente', 'vencido'])->sum('valor_raw')), 'tone' => 'warning'],
-                ['label' => 'Aguardando aprovacao', 'value' => (string)$rows->where('aprovacao_key', 'pendente')->count(), 'tone' => 'warning'],
+                ['label' => 'Aguardando aprovacao', 'value' => (string) $rows->where('aprovacao_key', 'pendente')->count(), 'tone' => 'warning'],
             ],
             'statusOptions' => [
                 '' => 'Todos',
@@ -48,7 +54,7 @@ class DespesaFinanceiraService
 
     public function aprovar(int $propertyId, int $despesaId, ?int $userId): void
     {
-        if (!$this->podeAprovar($propertyId, $userId)) {
+        if (! $this->podeAprovar($propertyId, $userId)) {
             throw new RuntimeException('Seu usuario nao tem permissao para aprovar despesas desta propriedade.');
         }
 
@@ -60,13 +66,19 @@ class DespesaFinanceiraService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$despesa) {
+            if (! $despesa) {
                 throw new RuntimeException('Despesa nao encontrada para aprovacao.');
             }
 
             $temSolicitacao = $this->temSolicitacaoExclusao($despesa->observacoes ?? null);
-            if (($despesa->status_pagamento ?? '') === 'pago' && !$temSolicitacao) {
-                throw new RuntimeException('Despesa paga nao pode ter a aprovacao alterada.');
+            $capabilities = $this->workflowRules->expenseCapabilities(
+                (string) ($despesa->status_pagamento ?? ''),
+                (string) ($despesa->status_aprovacao ?? ''),
+                $temSolicitacao
+            );
+
+            if (! $capabilities['can_approve']) {
+                throw new RuntimeException('Esta despesa nao esta pendente de aprovacao.');
             }
 
             if ($temSolicitacao) {
@@ -84,6 +96,7 @@ class DespesaFinanceiraService
                     ]);
 
                 $this->auditar($userId, 'aprovar_exclusao_despesa', 'despesas', $despesaId, $propertyId, 'Exclusao de despesa aprovada');
+
                 return;
             }
 
@@ -103,16 +116,16 @@ class DespesaFinanceiraService
 
     public function aprovarLote(int $propertyId, array $despesaIds, ?int $userId): array
     {
-        if (!$this->podeAprovar($propertyId, $userId)) {
+        if (! $this->podeAprovar($propertyId, $userId)) {
             throw new RuntimeException('Seu usuario nao tem permissao para aprovar despesas desta propriedade.');
         }
 
         $despesaIds = array_values(array_unique(array_filter(
-            array_map(fn ($id) => (int)$id, $despesaIds),
+            array_map(fn ($id) => (int) $id, $despesaIds),
             fn ($id) => $id > 0
         )));
 
-        if (!$despesaIds) {
+        if (! $despesaIds) {
             throw new RuntimeException('Selecione ao menos uma despesa para aprovar.');
         }
 
@@ -127,11 +140,20 @@ class DespesaFinanceiraService
                     ->where('status_pagamento', '!=', 'cancelado')
                     ->where('status_aprovacao', 'pendente')
                     ->lockForUpdate()
-                    ->first(['id', 'status_pagamento', 'observacoes']);
+                    ->first(['id', 'status_pagamento', 'status_aprovacao', 'observacoes']);
 
                 $temSolicitacao = $despesa && $this->temSolicitacaoExclusao($despesa->observacoes ?? null);
-                if (!$despesa || (($despesa->status_pagamento ?? '') === 'pago' && !$temSolicitacao)) {
+                $capabilities = $despesa
+                    ? $this->workflowRules->expenseCapabilities(
+                        (string) ($despesa->status_pagamento ?? ''),
+                        (string) ($despesa->status_aprovacao ?? ''),
+                        $temSolicitacao
+                    )
+                    : null;
+
+                if (! ($capabilities['can_select_for_batch'] ?? false)) {
                     $ignoradas++;
+
                     continue;
                 }
 
@@ -151,6 +173,7 @@ class DespesaFinanceiraService
 
                     $this->auditar($userId, 'aprovar_exclusao_despesa', 'despesas', $despesaId, $propertyId, 'Exclusao de despesa aprovada em lote');
                     $aprovadas++;
+
                     continue;
                 }
 
@@ -174,7 +197,7 @@ class DespesaFinanceiraService
 
     public function reprovar(int $propertyId, int $despesaId, ?int $userId, ?string $motivo): void
     {
-        if (!$this->podeAprovar($propertyId, $userId)) {
+        if (! $this->podeAprovar($propertyId, $userId)) {
             throw new RuntimeException('Seu usuario nao tem permissao para aprovar despesas desta propriedade.');
         }
 
@@ -186,13 +209,19 @@ class DespesaFinanceiraService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$despesa) {
+            if (! $despesa) {
                 throw new RuntimeException('Despesa nao encontrada para aprovacao.');
             }
 
             $temSolicitacao = $this->temSolicitacaoExclusao($despesa->observacoes ?? null);
-            if (($despesa->status_pagamento ?? '') === 'pago' && !$temSolicitacao) {
-                throw new RuntimeException('Despesa paga nao pode ter a aprovacao alterada.');
+            $capabilities = $this->workflowRules->expenseCapabilities(
+                (string) ($despesa->status_pagamento ?? ''),
+                (string) ($despesa->status_aprovacao ?? ''),
+                $temSolicitacao
+            );
+
+            if (! $capabilities['can_reject']) {
+                throw new RuntimeException('Esta despesa nao esta pendente de aprovacao.');
             }
 
             if ($temSolicitacao) {
@@ -204,16 +233,17 @@ class DespesaFinanceiraService
                         'status_aprovacao' => 'aprovada',
                         'aprovado_por' => $userId,
                         'aprovado_em' => now(),
-                        'motivo_reprovacao' => trim((string)$motivo) ?: null,
+                        'motivo_reprovacao' => trim((string) $motivo) ?: null,
                         'observacoes' => $observacoes ?: null,
                     ]);
 
                 $detalhes = 'Exclusao de despesa reprovada';
-                if (trim((string)$motivo) !== '') {
-                    $detalhes .= ' | Motivo: '.trim((string)$motivo);
+                if (trim((string) $motivo) !== '') {
+                    $detalhes .= ' | Motivo: '.trim((string) $motivo);
                 }
 
                 $this->auditar($userId, 'reprovar_exclusao_despesa', 'despesas', $despesaId, $propertyId, $detalhes);
+
                 return;
             }
 
@@ -224,12 +254,12 @@ class DespesaFinanceiraService
                     'status_aprovacao' => 'reprovada',
                     'aprovado_por' => $userId,
                     'aprovado_em' => now(),
-                    'motivo_reprovacao' => trim((string)$motivo) ?: null,
+                    'motivo_reprovacao' => trim((string) $motivo) ?: null,
                 ]);
 
             $detalhes = 'Despesa reprovada';
-            if (trim((string)$motivo) !== '') {
-                $detalhes .= ' | Motivo: '.trim((string)$motivo);
+            if (trim((string) $motivo) !== '') {
+                $detalhes .= ' | Motivo: '.trim((string) $motivo);
             }
 
             $this->auditar($userId, 'reprovar_despesa', 'despesas', $despesaId, $propertyId, $detalhes);
@@ -246,15 +276,20 @@ class DespesaFinanceiraService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$despesa) {
+            if (! $despesa) {
                 throw new RuntimeException('Despesa nao encontrada para pagamento.');
             }
 
-            if (($despesa->status_aprovacao ?? '') !== 'aprovada') {
-                throw new RuntimeException('Esta despesa precisa ser aprovada antes do pagamento.');
+            $capabilities = $this->workflowRules->expenseCapabilities(
+                (string) ($despesa->status_pagamento ?? ''),
+                (string) ($despesa->status_aprovacao ?? '')
+            );
+
+            if (! $capabilities['can_pay']) {
+                throw new RuntimeException('Esta despesa nao esta disponivel para pagamento.');
             }
 
-            if ($contaId && !DB::table('contas')->where('id', $contaId)->where('propriedade_id', $propertyId)->exists()) {
+            if ($contaId && ! DB::table('contas')->where('id', $contaId)->where('propriedade_id', $propertyId)->exists()) {
                 $contaId = null;
             }
 
@@ -283,11 +318,11 @@ class DespesaFinanceiraService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$despesa) {
+            if (! $despesa) {
                 throw new RuntimeException('Despesa nao encontrada para exclusao.');
             }
 
-            if (!$this->podeAprovar($propertyId, $userId)) {
+            if (! $this->podeAprovar($propertyId, $userId)) {
                 if ($this->temSolicitacaoExclusao($despesa->observacoes ?? null)) {
                     throw new RuntimeException('A exclusao desta despesa ja foi solicitada ao gestor.');
                 }
@@ -304,6 +339,7 @@ class DespesaFinanceiraService
                     ]);
 
                 $this->auditar($userId, 'solicitar_exclusao_despesa', 'despesas', $despesaId, $propertyId, 'Exclusao de despesa solicitada');
+
                 return;
             }
 
@@ -337,7 +373,7 @@ class DespesaFinanceiraService
             ->where('status_pagamento', '!=', 'cancelado')
             ->first();
 
-        if (!$despesa) {
+        if (! $despesa) {
             throw new RuntimeException('Despesa nao encontrada para edicao.');
         }
 
@@ -360,7 +396,7 @@ class DespesaFinanceiraService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$despesa) {
+            if (! $despesa) {
                 throw new RuntimeException('Despesa nao encontrada para edicao.');
             }
 
@@ -371,7 +407,7 @@ class DespesaFinanceiraService
                 $valorTotal = $quantidade * $valorUnitario;
             }
 
-            $statusPagamento = ((string)($dados['baixado'] ?? '0')) === '1' ? 'pago' : 'pendente';
+            $statusPagamento = ((string) ($dados['baixado'] ?? '0')) === '1' ? 'pago' : 'pendente';
             $dataPagamento = $statusPagamento === 'pago'
                 ? (($dados['data_vencimento'] ?? null) ?: ($dados['data_lancamento'] ?? now()->toDateString()))
                 : null;
@@ -382,14 +418,14 @@ class DespesaFinanceiraService
                 ->update([
                     'safra_id' => $this->idDaPropriedade('safras', $dados['safra_id'] ?? null, $propertyId),
                     'talhao_id' => $this->idDaPropriedade('talhoes', $dados['talhao_id'] ?? null, $propertyId),
-                    'categoria_id' => (int)$dados['categoria_id'],
+                    'categoria_id' => (int) $dados['categoria_id'],
                     'subcategoria_id' => $this->subcategoriaId($dados['subcategoria_id'] ?? null, $dados['categoria_id'] ?? null),
                     'conta_id' => $this->idDaPropriedade('contas', $dados['conta_id'] ?? null, $propertyId),
                     'produtor_id' => $this->idDaPropriedade('produtores', $dados['produtor_id'] ?? null, $propertyId),
-                    'descricao' => trim((string)$dados['descricao']),
-                    'fornecedor' => trim((string)($dados['pessoa'] ?? '')) ?: null,
+                    'descricao' => trim((string) $dados['descricao']),
+                    'fornecedor' => trim((string) ($dados['pessoa'] ?? '')) ?: null,
                     'quantidade' => $quantidade > 0 ? $quantidade : null,
-                    'unidade' => $quantidade > 0 ? (trim((string)($dados['unidade'] ?? '')) ?: 'un') : null,
+                    'unidade' => $quantidade > 0 ? (trim((string) ($dados['unidade'] ?? '')) ?: 'un') : null,
                     'valor_unitario' => $valorUnitario,
                     'valor_total' => $valorTotal,
                     'data_lancamento' => $dados['data_lancamento'],
@@ -401,7 +437,7 @@ class DespesaFinanceiraService
                     'aprovado_em' => now(),
                     'motivo_reprovacao' => null,
                     'forma_pagamento' => ($dados['forma_pagamento'] ?? null) ?: ($despesa->forma_pagamento ?: 'pix'),
-                    'observacoes' => trim((string)($dados['observacoes'] ?? '')) ?: null,
+                    'observacoes' => trim((string) ($dados['observacoes'] ?? '')) ?: null,
                     'usuario_id' => $userId ?: $despesa->usuario_id,
                 ]);
 
@@ -421,29 +457,29 @@ class DespesaFinanceiraService
     private function filtros(int $propertyId, Request $request, array $listas): array
     {
         $safraId = $request->integer('safra_id') ?: null;
-        if ($safraId && !$listas['safras']->contains('id', $safraId)) {
+        if ($safraId && ! $listas['safras']->contains('id', $safraId)) {
             $safraId = null;
         }
 
         $categoriaId = $request->integer('categoria_id') ?: null;
-        if ($categoriaId && !$listas['categorias']->contains('id', $categoriaId)) {
+        if ($categoriaId && ! $listas['categorias']->contains('id', $categoriaId)) {
             $categoriaId = null;
         }
 
         $contaId = $request->integer('conta_id') ?: null;
-        if ($contaId && !$listas['contas']->contains('id', $contaId)) {
+        if ($contaId && ! $listas['contas']->contains('id', $contaId)) {
             $contaId = null;
         }
 
         return [
-            'status' => in_array($request->query('status'), ['pendente', 'vencido', 'pago'], true) ? (string)$request->query('status') : '',
-            'aprovacao' => in_array($request->query('aprovacao'), ['pendente', 'aprovada', 'reprovada'], true) ? (string)$request->query('aprovacao') : '',
-            'date_from' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$request->query('date_from')) ? (string)$request->query('date_from') : '',
-            'date_to' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$request->query('date_to')) ? (string)$request->query('date_to') : '',
+            'status' => in_array($request->query('status'), ['pendente', 'vencido', 'pago'], true) ? (string) $request->query('status') : '',
+            'aprovacao' => in_array($request->query('aprovacao'), ['pendente', 'aprovada', 'reprovada'], true) ? (string) $request->query('aprovacao') : '',
+            'date_from' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $request->query('date_from')) ? (string) $request->query('date_from') : '',
+            'date_to' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $request->query('date_to')) ? (string) $request->query('date_to') : '',
             'safra_id' => $safraId,
             'categoria_id' => $categoriaId,
             'conta_id' => $contaId,
-            'search' => trim((string)$request->query('search', '')),
+            'search' => trim((string) $request->query('search', '')),
         ];
     }
 
@@ -520,6 +556,7 @@ class DespesaFinanceiraService
                 'd.numero_parcelas',
                 'd.nota_fiscal',
                 'd.motivo_reprovacao',
+                'd.observacoes',
                 's.descricao as safra_nome',
                 'c.nome as categoria_nome',
                 'sc.nome as subcategoria_nome',
@@ -533,18 +570,20 @@ class DespesaFinanceiraService
 
     private function normalizar($row): object
     {
-        $categoria = trim((string)($row->categoria_nome ?? ''));
-        if (!empty($row->subcategoria_nome)) {
+        $paymentStatus = (string) $row->status_pagamento;
+        $approvalStatus = (string) ($row->status_aprovacao ?: 'aprovada');
+        $categoria = trim((string) ($row->categoria_nome ?? ''));
+        if (! empty($row->subcategoria_nome)) {
             $categoria .= ($categoria ? ' / ' : '').$row->subcategoria_nome;
         }
 
-        $conta = trim((string)($row->conta_nome ?? ''));
-        if (!empty($row->conta_banco)) {
+        $conta = trim((string) ($row->conta_nome ?? ''));
+        if (! empty($row->conta_banco)) {
             $conta .= ($conta ? ' - ' : '').$row->conta_banco;
         }
 
-        return (object)[
-            'id' => (int)$row->id,
+        return (object) [
+            'id' => (int) $row->id,
             'data_lancamento' => FarmFormat::date($row->data_lancamento),
             'descricao' => FarmFormat::value($row->descricao),
             'fornecedor' => FarmFormat::value($row->fornecedor),
@@ -554,7 +593,7 @@ class DespesaFinanceiraService
             'produtor' => FarmFormat::value($row->produtor_nome),
             'quantidade' => $this->quantidade($row->quantidade, $row->unidade),
             'valor_unitario' => FarmFormat::money($row->valor_unitario),
-            'valor_raw' => (float)$row->valor_total,
+            'valor_raw' => (float) $row->valor_total,
             'valor' => FarmFormat::money($row->valor_total),
             'vencimento' => FarmFormat::date($row->data_vencimento),
             'pagamento' => FarmFormat::date($row->data_pagamento),
@@ -562,27 +601,42 @@ class DespesaFinanceiraService
             'forma_pagamento' => FarmFormat::value($row->forma_pagamento),
             'parcela' => $this->parcela($row->parcela_atual, $row->numero_parcelas),
             'nota_fiscal' => FarmFormat::value($row->nota_fiscal),
-            'status_key' => (string)$row->status_pagamento,
-            'status' => $this->labelStatus((string)$row->status_pagamento),
-            'aprovacao_key' => (string)($row->status_aprovacao ?: 'aprovada'),
-            'aprovacao' => $this->labelAprovacao((string)($row->status_aprovacao ?: 'aprovada')),
+            'status_key' => $paymentStatus,
+            'status' => $this->labelStatus($paymentStatus),
+            'status_tone' => match ($paymentStatus) {
+                'pago' => 'success',
+                'vencido' => 'danger',
+                default => 'warning',
+            },
+            'aprovacao_key' => $approvalStatus,
+            'aprovacao' => $this->labelAprovacao($approvalStatus),
+            'aprovacao_tone' => match ($approvalStatus) {
+                'aprovada' => 'success',
+                'reprovada' => 'danger',
+                default => 'warning',
+            },
             'motivo_reprovacao' => FarmFormat::value($row->motivo_reprovacao),
+            ...$this->workflowRules->expenseCapabilities(
+                $paymentStatus,
+                $approvalStatus,
+                $this->temSolicitacaoExclusao($row->observacoes ?? null)
+            ),
         ];
     }
 
     private function quantidade($quantidade, ?string $unidade): string
     {
-        if ($quantidade === null || (float)$quantidade == 0.0) {
+        if ($quantidade === null || (float) $quantidade == 0.0) {
             return '-';
         }
 
-        return FarmFormat::decimal($quantidade, 3).' '.trim((string)$unidade);
+        return FarmFormat::decimal($quantidade, 3).' '.trim((string) $unidade);
     }
 
     private function parcela($atual, $total): string
     {
-        $atual = max(1, (int)$atual);
-        $total = max(1, (int)$total);
+        $atual = max(1, (int) $atual);
+        $total = max(1, (int) $total);
 
         return $atual.'/'.$total;
     }
@@ -599,7 +653,7 @@ class DespesaFinanceiraService
 
     private function idDaPropriedade(string $table, mixed $id, int $propertyId): ?int
     {
-        $id = (int)($id ?? 0);
+        $id = (int) ($id ?? 0);
         if ($id <= 0) {
             return null;
         }
@@ -612,7 +666,7 @@ class DespesaFinanceiraService
 
     private function subcategoriaId(mixed $id, mixed $categoriaId): ?int
     {
-        $id = (int)($id ?? 0);
+        $id = (int) ($id ?? 0);
         if ($id <= 0) {
             return null;
         }
@@ -622,7 +676,7 @@ class DespesaFinanceiraService
             ->where('ativo', 1)
             ->whereNotNull('categoria_pai_id');
 
-        $categoriaId = (int)($categoriaId ?? 0);
+        $categoriaId = (int) ($categoriaId ?? 0);
         if ($categoriaId > 0) {
             $query->where('categoria_pai_id', $categoriaId);
         }
@@ -637,33 +691,33 @@ class DespesaFinanceiraService
 
     private function temSolicitacaoExclusao(?string $observacoes): bool
     {
-        return str_contains((string)$observacoes, $this->marcadorExclusao());
+        return str_contains((string) $observacoes, $this->marcadorExclusao());
     }
 
     private function adicionarSolicitacaoExclusao(?string $observacoes, ?int $userId): string
     {
         if ($this->temSolicitacaoExclusao($observacoes)) {
-            return (string)$observacoes;
+            return (string) $observacoes;
         }
 
-        $usuario = $userId ? (string)DB::table('usuarios')->where('id', $userId)->value('nome') : 'colaborador';
+        $usuario = $userId ? (string) DB::table('usuarios')->where('id', $userId)->value('nome') : 'colaborador';
         $linha = $this->marcadorExclusao().' Solicitado por '.($usuario ?: 'colaborador').' em '.now()->format('d/m/Y H:i');
-        $observacoes = trim((string)$observacoes);
+        $observacoes = trim((string) $observacoes);
 
         return $observacoes === '' ? $linha : $observacoes.PHP_EOL.$linha;
     }
 
     private function limparSolicitacaoExclusao(?string $observacoes): string
     {
-        $linhas = preg_split('/\r\n|\r|\n/', (string)$observacoes) ?: [];
-        $linhas = array_filter($linhas, fn ($linha) => !str_contains((string)$linha, $this->marcadorExclusao()));
+        $linhas = preg_split('/\r\n|\r|\n/', (string) $observacoes) ?: [];
+        $linhas = array_filter($linhas, fn ($linha) => ! str_contains((string) $linha, $this->marcadorExclusao()));
 
         return trim(implode(PHP_EOL, $linhas));
     }
 
     private function podeAprovar(int $propertyId, ?int $userId): bool
     {
-        if (!$propertyId || !$userId) {
+        if (! $propertyId || ! $userId) {
             return false;
         }
 
@@ -672,20 +726,20 @@ class DespesaFinanceiraService
             ->where('ativo', 1)
             ->first(['id', 'perfil']);
 
-        if (!$usuario) {
+        if (! $usuario) {
             return false;
         }
 
-        $perfil = (string)$usuario->perfil;
+        $perfil = (string) $usuario->perfil;
         if (in_array($perfil, ['administrador_sistema', 'gerencia_sistema'], true)) {
             return true;
         }
 
-        if (!in_array($perfil, ['administrador', 'gestor_financeiro', 'gestor_propriedade', 'gestao', 'financeiro'], true)) {
+        if (! in_array($perfil, ['administrador', 'gestor_financeiro', 'gestor_propriedade', 'gestao', 'financeiro'], true)) {
             return false;
         }
 
-        if (!$this->usuarioAcessaPropriedade($propertyId, $userId, $perfil)) {
+        if (! $this->usuarioAcessaPropriedade($propertyId, $userId, $perfil)) {
             return false;
         }
 
@@ -727,13 +781,13 @@ class DespesaFinanceiraService
 
     private function decimal(mixed $value): float
     {
-        $value = trim((string)$value);
+        $value = trim((string) $value);
         if (str_contains($value, ',')) {
             $value = str_replace('.', '', $value);
             $value = str_replace(',', '.', $value);
         }
 
-        return max(0.0, (float)$value);
+        return max(0.0, (float) $value);
     }
 
     private function auditar(?int $usuarioId, string $acao, string $tabela, int $registroId, int $propriedadeId, string $detalhes): void
@@ -749,8 +803,8 @@ class DespesaFinanceiraService
                 'ip' => request()->ip(),
                 'criado_em' => now(),
             ]);
-        } catch (\Throwable) {
-            // Auditoria nao deve impedir a operacao financeira.
+        } catch (\Throwable $exception) {
+            report($exception);
         }
     }
 }

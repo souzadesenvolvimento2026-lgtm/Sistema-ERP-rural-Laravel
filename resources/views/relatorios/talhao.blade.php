@@ -1,10 +1,5 @@
 @extends('layouts.farmfort', ['title' => 'FarmFort - '.$title])
 
-@php
-    $talhaoLabels = $rows->pluck('nome')->values();
-    $talhaoValues = $rows->map(fn ($row) => (float)$row->custo_ha)->values();
-@endphp
-
 @section('content')
     <div class="page-head">
         <div>
@@ -76,10 +71,10 @@
             new Chart(document.getElementById('chartTalhao'), {
                 type: 'bar',
                 data: {
-                    labels: @json($talhaoLabels),
+                    labels: @json($chart['labels']),
                     datasets: [{
                         label: 'R$/ha',
-                        data: @json($talhaoValues),
+                        data: @json($chart['values']),
                         backgroundColor: '#35c49a'
                     }]
                 },

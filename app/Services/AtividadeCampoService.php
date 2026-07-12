@@ -6,6 +6,11 @@ use Illuminate\Support\Facades\DB;
 
 class AtividadeCampoService
 {
+    public function validSafraId(mixed $safraId, int $propertyId): ?int
+    {
+        return $this->idValido('safras', $safraId, $propertyId);
+    }
+
     public function pagina(int $propriedadeId, ?int $safraId = null): array
     {
         $query = DB::table('atividades_campo as a')
@@ -38,7 +43,10 @@ class AtividadeCampoService
                 'a.observacoes',
                 's.descricao as safra_nome',
                 't.nome as talhao_nome',
-            ]);
+            ])
+            ->each(function ($atividade): void {
+                $atividade->can_complete = $atividade->status !== 'concluida';
+            });
 
         $concluidas = $atividades->where('status', 'concluida')->count();
 
@@ -62,7 +70,7 @@ class AtividadeCampoService
                 'atividades' => $atividades->count(),
                 'concluidas' => $concluidas,
                 'pendentes' => $atividades->count() - $concluidas,
-                'custo' => (float)$atividades->sum('custo_estimado'),
+                'custo' => (float) $atividades->sum('custo_estimado'),
             ],
         ];
     }
@@ -88,7 +96,7 @@ class AtividadeCampoService
             'usuario_id' => $usuarioId,
         ]);
 
-        return (int)DB::getPdo()->lastInsertId();
+        return (int) DB::getPdo()->lastInsertId();
     }
 
     public function atualizarStatus(int $id, int $propriedadeId, string $status): void
@@ -124,18 +132,18 @@ class AtividadeCampoService
 
     private function decimal($value): float
     {
-        $value = trim((string)$value);
+        $value = trim((string) $value);
         if (str_contains($value, ',')) {
             $value = str_replace('.', '', $value);
             $value = str_replace(',', '.', $value);
         }
 
-        return max(0.0, (float)$value);
+        return max(0.0, (float) $value);
     }
 
     private function decimalOuNulo($value): ?float
     {
-        if ($value === null || trim((string)$value) === '') {
+        if ($value === null || trim((string) $value) === '') {
             return null;
         }
 
@@ -144,7 +152,7 @@ class AtividadeCampoService
 
     private function idValido(string $tabela, $id, int $propriedadeId, bool $somenteAtivo = false): ?int
     {
-        $id = (int)($id ?: 0);
+        $id = (int) ($id ?: 0);
         if ($id <= 0) {
             return null;
         }

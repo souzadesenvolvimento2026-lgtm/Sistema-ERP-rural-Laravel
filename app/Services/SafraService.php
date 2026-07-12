@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Domain\Production\SafraCapabilities;
 use App\Support\FarmFormat;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -11,6 +12,21 @@ use RuntimeException;
 
 class SafraService
 {
+    public function __construct(private readonly SafraCapabilities $capabilities) {}
+
+    public function formData(int $propertyId): array
+    {
+        return [
+            'activeModule' => 'safras',
+            'culturas' => DB::table('culturas')->orderBy('nome')->get(['id', 'nome']),
+            'talhoes' => DB::table('talhoes')
+                ->where('propriedade_id', $propertyId)
+                ->where('ativo', 1)
+                ->orderBy('nome')
+                ->get(['id', 'nome', 'area']),
+        ];
+    }
+
     public function pagina(int $propriedadeId, Request $request): array
     {
         $filtros = $this->filtros($request);
@@ -23,7 +39,7 @@ class SafraService
             'filtros' => $filtros,
             'rows' => $rows,
             'cards' => [
-                ['label' => 'Safras', 'value' => (string)$rows->count(), 'tone' => 'success'],
+                ['label' => 'Safras', 'value' => (string) $rows->count(), 'tone' => 'success'],
                 ['label' => 'Área plantada', 'value' => FarmFormat::decimal($rows->sum('area_raw'), 2).' ha', 'tone' => 'success'],
                 ['label' => 'Produção estimada', 'value' => FarmFormat::decimal($rows->sum('producao_estimada_raw'), 2).' sc/ha', 'tone' => 'warning'],
                 ['label' => 'Produção realizada', 'value' => FarmFormat::decimal($rows->sum('producao_realizada_raw'), 2).' sc', 'tone' => 'success'],
@@ -47,7 +63,7 @@ class SafraService
                 ...$this->payload($dados),
             ]);
 
-            $safraId = (int)DB::getPdo()->lastInsertId();
+            $safraId = (int) DB::getPdo()->lastInsertId();
             $this->sincronizarTalhoes($safraId, $propriedadeId, $dados['talhoes'] ?? []);
             $this->auditar($usuarioId, 'salvar_safra', 'safras', $safraId, $propriedadeId, trim($dados['descricao']));
 
@@ -68,7 +84,7 @@ class SafraService
             ->where('safra_id', $safraId)
             ->where('propriedade_id', $propriedadeId)
             ->pluck('talhao_id')
-            ->map(fn ($id) => (int)$id)
+            ->map(fn ($id) => (int) $id)
             ->all();
 
         return $safra;
@@ -94,7 +110,11 @@ class SafraService
             ->where('propriedade_id', $propriedadeId)
             ->first(['id', 'descricao', 'status']);
 
-        abort_if(!$safra, 404);
+        abort_if(! $safra, 404);
+
+        if (! $this->capabilities->canTransition((string) $safra->status, $status)) {
+            throw new RuntimeException('A transicao de status solicitada nao e permitida para esta safra.');
+        }
 
         DB::table('safras')
             ->where('id', $safraId)
@@ -102,9 +122,9 @@ class SafraService
             ->update(['status' => $status]);
 
         if ($status === 'encerrada') {
-            $this->auditar($usuarioId, 'arquivar_safra', 'safras', $safraId, $propriedadeId, (string)($safra->descricao ?: 'Safra arquivada'));
-        } elseif ($status === 'planejamento' && (string)$safra->status === 'encerrada') {
-            $this->auditar($usuarioId, 'desarquivar_safra', 'safras', $safraId, $propriedadeId, (string)$safra->descricao);
+            $this->auditar($usuarioId, 'arquivar_safra', 'safras', $safraId, $propriedadeId, (string) ($safra->descricao ?: 'Safra arquivada'));
+        } elseif ($status === 'planejamento' && (string) $safra->status === 'encerrada') {
+            $this->auditar($usuarioId, 'desarquivar_safra', 'safras', $safraId, $propriedadeId, (string) $safra->descricao);
         }
     }
 
@@ -115,12 +135,12 @@ class SafraService
             ->where('propriedade_id', $propriedadeId)
             ->first(['id', 'descricao']);
 
-        if (!$safra) {
+        if (! $safra) {
             throw new RuntimeException('Safra nao encontrada nesta propriedade.');
         }
 
         $hash = $usuarioId ? DB::table('usuarios')->where('id', $usuarioId)->where('ativo', 1)->value('senha') : null;
-        if (!$hash || !password_verify($senha, (string)$hash)) {
+        if (! $hash || ! password_verify($senha, (string) $hash)) {
             throw new RuntimeException('Senha incorreta. A safra nao foi excluida.');
         }
 
@@ -140,20 +160,20 @@ class SafraService
                 ->where('propriedade_id', $propriedadeId)
                 ->delete();
 
-            $this->auditar($usuarioId, 'excluir_safra_sem_dados', 'safras', $safraId, $propriedadeId, (string)$safra->descricao);
+            $this->auditar($usuarioId, 'excluir_safra_sem_dados', 'safras', $safraId, $propriedadeId, (string) $safra->descricao);
         });
     }
 
     private function filtros(Request $request): array
     {
-        $status = (string)$request->query('status', '');
-        if (!in_array($status, ['', 'todas', 'planejamento', 'em_andamento', 'colhida', 'encerrada'], true)) {
+        $status = (string) $request->query('status', '');
+        if (! in_array($status, ['', 'todas', 'planejamento', 'em_andamento', 'colhida', 'encerrada'], true)) {
             $status = '';
         }
 
         return [
             'status' => $status,
-            'search' => trim((string)$request->query('search', '')),
+            'search' => trim((string) $request->query('search', '')),
         ];
     }
 
@@ -201,8 +221,19 @@ class SafraService
             ])
             ->map(function ($row) {
                 $normalizado = $this->normalizar($row);
-                $normalizado->dados_lancados = $this->dadosLancados((int)$row->id);
+                $normalizado->dados_lancados = $this->dadosLancados((int) $row->id);
                 $normalizado->dados_lancados_resumo = $this->resumoDados($normalizado->dados_lancados);
+
+                foreach ($this->capabilities->for(
+                    $normalizado->status_key,
+                    $normalizado->dados_lancados,
+                ) as $capability => $value) {
+                    $normalizado->{$capability} = $value;
+                }
+
+                if (! $normalizado->can_delete) {
+                    $normalizado->delete_block_reason = 'Nao pode excluir: '.$normalizado->dados_lancados_resumo;
+                }
 
                 return $normalizado;
             });
@@ -210,28 +241,28 @@ class SafraService
 
     private function normalizar($row): object
     {
-        $area = (float)($row->area_plantada ?: $row->area_talhoes);
-        $pesoColhido = (float)$row->peso_colhido;
+        $area = (float) ($row->area_plantada ?: $row->area_talhoes);
+        $pesoColhido = (float) $row->peso_colhido;
         $sacasRealizadas = $pesoColhido / 60;
 
-        return (object)[
-            'id' => (int)$row->id,
+        return (object) [
+            'id' => (int) $row->id,
             'descricao' => FarmFormat::value($row->descricao),
             'cultura' => FarmFormat::value($row->cultura_nome),
-            'referencia' => $this->referenciaLabel((string)$row->safra_referencia),
+            'referencia' => $this->referenciaLabel((string) $row->safra_referencia),
             'inicio' => FarmFormat::date($row->data_inicio),
             'fim' => FarmFormat::date($row->data_fim),
             'area_raw' => $area,
             'area' => FarmFormat::decimal($area, 2).' ha',
-            'producao_estimada_raw' => (float)$row->producao_estimada,
+            'producao_estimada_raw' => (float) $row->producao_estimada,
             'producao_estimada' => FarmFormat::decimal($row->producao_estimada, 2).' sc/ha',
             'producao_realizada_raw' => $sacasRealizadas,
             'producao_realizada' => FarmFormat::decimal($sacasRealizadas, 2).' sc',
             'preco_estimado' => FarmFormat::money($row->preco_estimado),
-            'status_key' => (string)$row->status,
-            'status' => $this->statusLabel((string)$row->status),
-            'talhoes_count' => (int)$row->talhoes_count,
-            'talhoes_colhidos' => (int)$row->talhoes_colhidos,
+            'status_key' => (string) $row->status,
+            'status' => $this->statusLabel((string) $row->status),
+            'talhoes_count' => (int) $row->talhoes_count,
+            'talhoes_colhidos' => (int) $row->talhoes_colhidos,
             'observacoes' => FarmFormat::value($row->observacoes),
         ];
     }
@@ -253,6 +284,34 @@ class SafraService
     private function sincronizarTalhoes(int $safraId, int $propriedadeId, array $talhoes): void
     {
         $talhaoIds = array_values(array_unique(array_filter(array_map('intval', $talhoes))));
+        $talhaoIdsVinculados = DB::table('safra_talhoes')
+            ->where('safra_id', $safraId)
+            ->where('propriedade_id', $propriedadeId)
+            ->pluck('talhao_id');
+        $talhaoIdsParaBloquear = collect($talhaoIds)
+            ->merge($talhaoIdsVinculados)
+            ->map(fn ($talhaoId) => (int) $talhaoId)
+            ->filter(fn ($talhaoId) => $talhaoId > 0)
+            ->unique()
+            ->sort()
+            ->values();
+
+        if ($talhaoIdsParaBloquear->isNotEmpty()) {
+            $talhaoIdsDaPropriedade = DB::table('talhoes')
+                ->where('propriedade_id', $propriedadeId)
+                ->whereIn('id', $talhaoIdsParaBloquear->all())
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->pluck('id')
+                ->map(fn ($talhaoId) => (int) $talhaoId);
+
+            abort_if(
+                collect($talhaoIds)->diff($talhaoIdsDaPropriedade)->isNotEmpty(),
+                422,
+                'Existe talhao invalido para esta propriedade.'
+            );
+        }
+
         $conflitos = $this->talhoesComConflitoEmExecucao($safraId, $propriedadeId, $talhaoIds);
         abort_if(
             $conflitos->isNotEmpty(),
@@ -265,6 +324,7 @@ class SafraService
                 ->where('safra_id', $safraId)
                 ->where('propriedade_id', $propriedadeId)
                 ->delete();
+
             return;
         }
 
@@ -335,19 +395,20 @@ class SafraService
 
     private function decimal($value): float
     {
-        $value = str_replace(',', '.', trim((string)$value));
-        return max(0.0, (float)$value);
+        $value = str_replace(',', '.', trim((string) $value));
+
+        return max(0.0, (float) $value);
     }
 
     private function money($value): float
     {
-        $value = trim((string)$value);
+        $value = trim((string) $value);
         if (str_contains($value, ',')) {
             $value = str_replace('.', '', $value);
             $value = str_replace(',', '.', $value);
         }
 
-        return max(0.0, (float)$value);
+        return max(0.0, (float) $value);
     }
 
     private function dadosLancados(int $safraId): array
@@ -371,7 +432,7 @@ class SafraService
 
         $detalhes = [];
         foreach ($labels as $table => $label) {
-            if (!Schema::hasTable($table) || !Schema::hasColumn($table, 'safra_id')) {
+            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'safra_id')) {
                 continue;
             }
 
@@ -387,7 +448,7 @@ class SafraService
     private function resumoDados(array $detalhes): string
     {
         return collect($detalhes)
-            ->map(fn ($qtd, $label) => $label.' ('.(int)$qtd.')')
+            ->map(fn ($qtd, $label) => $label.' ('.(int) $qtd.')')
             ->implode(', ');
     }
 
@@ -404,8 +465,8 @@ class SafraService
                 'ip' => request()->ip(),
                 'criado_em' => now(),
             ]);
-        } catch (\Throwable) {
-            // Auditoria nao deve impedir a gestao da safra.
+        } catch (\Throwable $exception) {
+            report($exception);
         }
     }
 }

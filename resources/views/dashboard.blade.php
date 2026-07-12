@@ -61,7 +61,7 @@
             <div class="ff-bi-summary">
                 <div><span>Recebido</span><strong>{{ $fmtMoney($receitasRecebidas) }}</strong></div>
                 <div><span>Pago</span><strong>{{ $fmtMoney($despesasPagas) }}</strong></div>
-                <div><span>Saldo financeiro</span><strong>{{ $fmtMoney($receitasRecebidas - $despesasPagas) }}</strong></div>
+                <div><span>Saldo financeiro</span><strong>{{ $fmtMoney($saldoFinanceiro) }}</strong></div>
             </div>
         </div>
 
@@ -84,19 +84,13 @@
             <header><span>Controle Categoria</span><strong>Orçado x realizado por categoria de despesa</strong></header>
             <div class="ff-bi-category-list">
                 @forelse ($budgetRows as $row)
-                    @php
-                        $previsto = (float) $row->valor_previsto;
-                        $realizado = (float) $row->realizado;
-                        $pct = $previsto > 0 ? ($realizado / $previsto) * 100 : 0;
-                        $desvio = $realizado - $previsto;
-                    @endphp
                     <div class="ff-bi-category-row">
                         <div><i style="--cat-color:{{ $row->cor ?: '#35bd91' }}"></i><strong>{{ $row->nome }}</strong></div>
-                        <span>{{ $fmtMoney($previsto) }}</span>
-                        <span>{{ $fmtMoney($realizado) }}</span>
-                        <span class="{{ $desvio > 0 ? 'negative' : 'positive' }}">{{ $fmtMoney($desvio) }}</span>
-                        <em>{{ $fmtNum($pct) }}%</em>
-                        <b><i style="width:{{ min(100, $pct) }}%"></i></b>
+                        <span>{{ $fmtMoney($row->valor_previsto) }}</span>
+                        <span>{{ $fmtMoney($row->realizado) }}</span>
+                        <span class="{{ $row->desvio_classe }}">{{ $fmtMoney($row->desvio) }}</span>
+                        <em>{{ $fmtNum($row->percentual_execucao) }}%</em>
+                        <b><i style="width:{{ $row->progresso_execucao }}%"></i></b>
                     </div>
                 @empty
                     <div class="ff-bi-empty">Sem orçamento de despesas lançado para esta safra.</div>

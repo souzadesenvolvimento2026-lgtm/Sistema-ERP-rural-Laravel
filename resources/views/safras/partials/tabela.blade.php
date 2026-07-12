@@ -37,24 +37,18 @@
                         <td>{{ $row->producao_realizada }}</td>
                         <td>{{ $row->preco_estimado }}</td>
                         <td>{{ $row->talhoes_colhidos }}/{{ $row->talhoes_count }} colhidos</td>
-                        <td><span class="pill {{ in_array($row->status_key, ['colhida', 'encerrada'], true) ? 'success' : 'warning' }}">{{ $row->status }}</span></td>
+                        <td><span class="pill {{ $row->status_tone }}">{{ $row->status }}</span></td>
                         <td>
                             <div class="inline-actions">
                                 <a class="btn small" href="{{ route('safras.edit', $row->id) }}">Editar</a>
-                                @if ($row->status_key === 'encerrada')
+                                @foreach ($row->actions as $action)
                                     <form method="POST" action="{{ route('safras.status', $row->id) }}">
                                         @csrf
-                                        <input type="hidden" name="status" value="planejamento">
-                                        <button class="btn small" type="submit">Desarquivar</button>
+                                        <input type="hidden" name="status" value="{{ $action['target_status'] }}">
+                                        <button class="btn small" type="submit">{{ $action['label'] }}</button>
                                     </form>
-                                @else
-                                    <form method="POST" action="{{ route('safras.status', $row->id) }}">
-                                        @csrf
-                                        <input type="hidden" name="status" value="encerrada">
-                                        <button class="btn small" type="submit">Arquivar</button>
-                                    </form>
-                                @endif
-                                @if (empty($row->dados_lancados))
+                                @endforeach
+                                @if ($row->can_delete)
                                     <form method="POST" action="{{ route('safras.destroy', $row->id) }}" onsubmit="return confirm('Excluir definitivamente esta safra? Esta acao nao pode ser desfeita.');">
                                         @csrf
                                         @method('DELETE')
@@ -62,7 +56,7 @@
                                         <button class="btn small danger" type="submit">Excluir</button>
                                     </form>
                                 @else
-                                    <button class="btn small" type="button" disabled title="Nao pode excluir: {{ $row->dados_lancados_resumo }}">Excluir</button>
+                                    <button class="btn small" type="button" disabled title="{{ $row->delete_block_reason }}">Excluir</button>
                                 @endif
                             </div>
                         </td>

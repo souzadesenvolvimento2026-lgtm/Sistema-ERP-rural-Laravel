@@ -3,9 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\RelatorioFinanceiroService;
-use App\Support\FarmContext;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class RelatorioController extends Controller
@@ -44,27 +42,8 @@ class RelatorioController extends Controller
             'data_inicio' => $request->query('data_inicio'),
             'data_fim' => $request->query('data_fim'),
         ];
-        $propertyId = app(FarmContext::class)->propertyId();
 
-        return view('relatorios.orcado-realizado', [
-            ...$service->orcadoRealizado($filtros),
-            'filtros' => [
-                'safra_id' => $filtros['safra_id'],
-                'categoria_id' => $filtros['categoria_id'],
-                'tipo' => in_array($filtros['tipo'], ['receita', 'custos_despesas'], true) ? $filtros['tipo'] : 'todos',
-                'data_inicio' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$filtros['data_inicio']) ? $filtros['data_inicio'] : null,
-                'data_fim' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$filtros['data_fim']) ? $filtros['data_fim'] : null,
-            ],
-            'safras' => DB::table('safras')
-                ->where('propriedade_id', $propertyId)
-                ->orderByDesc('data_inicio')
-                ->get(['id', 'descricao']),
-            'categoriasFiltro' => DB::table('categorias')
-                ->where('ativo', 1)
-                ->whereNull('categoria_pai_id')
-                ->orderBy('nome')
-                ->get(['id', 'nome']),
-        ]);
+        return view('relatorios.orcado-realizado', $service->orcadoRealizado($filtros));
     }
 
     public function categorias(Request $request, RelatorioFinanceiroService $service): View

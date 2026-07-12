@@ -47,6 +47,8 @@ class CertificadoDigitalController extends Controller
         try {
             $service->criar($dados, $this->propriedadeId(), session('usuario_id'), $request->file('certificado'));
         } catch (\RuntimeException $e) {
+            report($e);
+
             return redirect()
                 ->route('fiscal.certificados.index')
                 ->withErrors(['certificado' => $e->getMessage()])

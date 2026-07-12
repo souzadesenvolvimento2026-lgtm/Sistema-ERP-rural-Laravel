@@ -2,7 +2,7 @@
     <div class="panel-head">
         <h2>Novo talhão pelo mapa</h2>
     </div>
-    <form method="POST" action="{{ route('talhoes.mapa.store') }}" class="form-grid">
+    <form method="POST" action="{{ route('talhoes.mapa.store') }}" class="form-grid" data-polygon-form>
         @csrf
         <input type="hidden" name="coordenadas_json" id="polygonCoordinates">
 
@@ -23,7 +23,7 @@
 
         <label class="span-2">
             Descrição
-            <textarea name="descricao" rows="3">{{ old('descricao') }}</textarea>
+            <textarea id="polygonDescription" name="descricao" rows="3">{{ old('descricao') }}</textarea>
         </label>
 
         <div class="form-actions span-2">
@@ -38,7 +38,7 @@
     </div>
 
     <div class="grid cols-3">
-        <form method="POST" class="stack" data-map-action-template="{{ url('/talhoes/__ID__/mapa/dados') }}">
+        <form method="POST" class="stack" data-map-details-form data-map-action-template="{{ url('/talhoes/__ID__/mapa/dados') }}">
             @csrf
             <label>
                 Talhão

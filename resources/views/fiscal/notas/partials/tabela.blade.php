@@ -28,7 +28,7 @@
                         <td>{{ $row->item_count }}</td>
                         <td>{{ $row->linked_orders }}</td>
                         <td><strong>{{ $row->total }}</strong></td>
-                        <td><span class="pill {{ $row->status_key === 'aprovada' ? 'success' : '' }}">{{ $row->status }}</span></td>
+                        <td><span class="pill {{ $row->status_tone }}">{{ $row->status }}</span></td>
                         <td>
                             <div class="actions" style="justify-content:flex-start">
                                 <a class="btn" href="{{ route('fiscal.notas.show', $row->id) }}">Detalhes</a>
@@ -36,7 +36,7 @@
                                     <a class="btn" href="{{ route('fiscal.notas.xml', $row->id) }}">XML</a>
                                 @endif
                                 <a class="btn" href="{{ $row->consolidated_url }}">Consolidado</a>
-                                @if ($row->status_key === 'aguardando_aprovacao')
+                                @if ($row->can_approve)
                                     <form method="post" action="{{ route('fiscal.notas.approve', $row->id) }}">
                                         @csrf
                                         <button class="btn primary" type="submit">Aprovar</button>

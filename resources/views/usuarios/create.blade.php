@@ -1,9 +1,5 @@
 @extends('layouts.farmfort', ['title' => 'FarmFort - Novo Usuário'])
 
-@php
-    $modoSistema = in_array((string)session('perfil'), ['administrador_sistema', 'gerencia_sistema'], true);
-@endphp
-
 @section('content')
     <div class="page-head">
         <div>

@@ -2,10 +2,13 @@
 
 namespace App\Services;
 
+use App\Domain\Property\FarmGroupEligibility;
 use Illuminate\Support\Facades\DB;
 
 class GrupoFazendaService
 {
+    public function __construct(private readonly FarmGroupEligibility $eligibility) {}
+
     public function pagina(): array
     {
         $grupos = DB::table('grupos_fazendas as gf')
@@ -31,19 +34,33 @@ class GrupoFazendaService
                 $grupo->propriedades_ids = DB::table('grupo_fazenda_propriedades')
                     ->where('grupo_id', $grupo->id)
                     ->pluck('propriedade_id')
-                    ->map(fn ($id) => (int)$id)
+                    ->map(fn ($id) => (int) $id)
                     ->all();
 
                 return $grupo;
             });
 
+        $propriedades = DB::table('propriedades')
+            ->where('ativo', 1)
+            ->orderBy('nome')
+            ->get(['id', 'nome', 'plano', 'ativo'])
+            ->map(function (object $propriedade): object {
+                foreach ($this->eligibility->for(
+                    (bool) $propriedade->ativo,
+                    $propriedade->plano,
+                ) as $capability => $value) {
+                    $propriedade->{$capability} = $value;
+                }
+
+                $propriedade->plan_label = ucfirst((string) ($propriedade->plano ?? 'basico'));
+
+                return $propriedade;
+            });
+
         return [
             'activeModule' => 'propriedades',
             'grupos' => $grupos,
-            'propriedades' => DB::table('propriedades')
-                ->where('ativo', 1)
-                ->orderBy('nome')
-                ->get(['id', 'nome', 'plano']),
+            'propriedades' => $propriedades,
             'aprovadores' => DB::table('usuarios')
                 ->where('ativo', 1)
                 ->whereIn('perfil', ['administrador', 'gestor_financeiro', 'gestor_propriedade', 'gestao', 'financeiro'])
@@ -51,8 +68,8 @@ class GrupoFazendaService
                 ->get(['id', 'nome', 'email', 'perfil']),
             'totais' => [
                 'grupos' => $grupos->count(),
-                'fazendas' => (int)$grupos->sum('qtd_propriedades'),
-                'usuarios' => (int)$grupos->sum('qtd_usuarios'),
+                'fazendas' => (int) $grupos->sum('qtd_propriedades'),
+                'usuarios' => (int) $grupos->sum('qtd_usuarios'),
                 'premium' => DB::table('propriedades')->where('ativo', 1)->where('plano', 'premium')->count(),
             ],
         ];
@@ -71,7 +88,7 @@ class GrupoFazendaService
             'ativo' => 1,
         ]);
 
-        $grupoId = (int)DB::getPdo()->lastInsertId();
+        $grupoId = (int) DB::getPdo()->lastInsertId();
         $this->sincronizarPropriedades($grupoId, $propriedades->pluck('id')->all());
         $this->vincularAprovador($grupoId, $dados['aprovador_usuario_id'] ?? null);
 
@@ -90,7 +107,7 @@ class GrupoFazendaService
                 'nome' => trim($dados['nome']),
                 'descricao' => trim($dados['descricao'] ?? '') ?: null,
                 'aprovador_usuario_id' => ($dados['aprovador_usuario_id'] ?? null) ?: null,
-                'ativo' => (bool)($dados['ativo'] ?? true),
+                'ativo' => (bool) ($dados['ativo'] ?? true),
             ]);
 
         $this->sincronizarPropriedades($id, $propriedades->pluck('id')->all());
@@ -104,13 +121,13 @@ class GrupoFazendaService
 
     private function propriedadesPremium(array $ids)
     {
-        $ids = collect($ids)->map(fn ($id) => (int)$id)->filter()->unique()->values();
+        $ids = collect($ids)->map(fn ($id) => (int) $id)->filter()->unique()->values();
         abort_if($ids->isEmpty(), 422, 'Selecione pelo menos uma fazenda Premium.');
 
         $propriedades = DB::table('propriedades')
             ->whereIn('id', $ids)
             ->where('ativo', 1)
-            ->get(['id', 'nome', 'plano']);
+            ->get(['id', 'nome', 'plano', 'ativo']);
 
         abort_if(
             $propriedades->count() !== $ids->count(),
@@ -118,7 +135,10 @@ class GrupoFazendaService
             'Uma ou mais fazendas selecionadas nao estao ativas.'
         );
 
-        $foraPremium = $propriedades->filter(fn ($propriedade) => ($propriedade->plano ?? 'basico') !== 'premium');
+        $foraPremium = $propriedades->filter(fn ($propriedade) => ! $this->eligibility->for(
+            (bool) $propriedade->ativo,
+            $propriedade->plano,
+        )['eligible_for_group']);
         abort_if(
             $foraPremium->isNotEmpty(),
             422,
@@ -142,23 +162,23 @@ class GrupoFazendaService
 
     private function vincularAprovador(int $grupoId, $aprovadorId): void
     {
-        if (!$aprovadorId) {
+        if (! $aprovadorId) {
             return;
         }
 
         DB::table('usuario_grupos_fazendas')->insertOrIgnore([
-            'usuario_id' => (int)$aprovadorId,
+            'usuario_id' => (int) $aprovadorId,
             'grupo_id' => $grupoId,
         ]);
     }
 
     private function validarAprovador($aprovadorId, array $propriedadesIds): void
     {
-        if (!$aprovadorId) {
+        if (! $aprovadorId) {
             return;
         }
 
-        $propriedadesIds = collect($propriedadesIds)->map(fn ($id) => (int)$id)->filter()->unique()->values()->all();
+        $propriedadesIds = collect($propriedadesIds)->map(fn ($id) => (int) $id)->filter()->unique()->values()->all();
         $placeholders = implode(',', array_fill(0, count($propriedadesIds), '?'));
 
         $vinculado = DB::selectOne(
@@ -182,7 +202,7 @@ class GrupoFazendaService
               AND acessos.propriedade_id IN ($placeholders)
             LIMIT 1
             ",
-            array_merge([(int)$aprovadorId], $propriedadesIds)
+            array_merge([(int) $aprovadorId], $propriedadesIds)
         );
 
         abort_unless($vinculado, 422, 'O aprovador precisa ser usuario vinculado a uma das fazendas do grupo.');

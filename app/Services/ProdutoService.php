@@ -9,6 +9,16 @@ use Illuminate\Support\Facades\DB;
 
 class ProdutoService
 {
+    public function formOptions(): array
+    {
+        return [
+            'categorias' => DB::table('categorias')
+                ->where('ativo', 1)
+                ->orderBy('nome')
+                ->get(['id', 'nome', 'tipo']),
+        ];
+    }
+
     public function pagina(int $propriedadeId, Request $request): array
     {
         $filtros = $this->filtros($request);
@@ -27,9 +37,9 @@ class ProdutoService
                 'fiscal_pendente' => 'Fiscal pendente',
             ],
             'cards' => [
-                ['label' => 'Produtos', 'value' => (string)$rows->count(), 'tone' => 'success'],
-                ['label' => 'Ativos', 'value' => (string)$rows->where('ativo', true)->count(), 'tone' => 'success'],
-                ['label' => 'Fiscal pendente', 'value' => (string)$rows->where('fiscal_completo', false)->count(), 'tone' => 'warning'],
+                ['label' => 'Produtos', 'value' => (string) $rows->count(), 'tone' => 'success'],
+                ['label' => 'Ativos', 'value' => (string) $rows->where('ativo', true)->count(), 'tone' => 'success'],
+                ['label' => 'Fiscal pendente', 'value' => (string) $rows->where('fiscal_completo', false)->count(), 'tone' => 'warning'],
                 ['label' => 'Valor em estoque', 'value' => FarmFormat::money($rows->sum('valor_estoque_raw')), 'tone' => 'success'],
             ],
         ];
@@ -42,7 +52,7 @@ class ProdutoService
             'ativo' => 1,
         ]);
 
-        $produtoId = (int)DB::getPdo()->lastInsertId();
+        $produtoId = (int) DB::getPdo()->lastInsertId();
         $this->auditar($usuarioId, 'criar_produto_estoque', 'produtos', $produtoId, $propriedadeId, 'Produto criado no estoque de produtos');
 
         return $produtoId;
@@ -55,7 +65,7 @@ class ProdutoService
             ->where('propriedade_id', $propriedadeId)
             ->first();
 
-        abort_if(!$produto, 404);
+        abort_if(! $produto, 404);
 
         return $produto;
     }
@@ -75,7 +85,7 @@ class ProdutoService
     public function alternarStatus(int $produtoId, int $propriedadeId, ?int $usuarioId): bool
     {
         $produto = $this->buscar($produtoId, $propriedadeId);
-        $ativo = (int)$produto->ativo === 1 ? 0 : 1;
+        $ativo = (int) $produto->ativo === 1 ? 0 : 1;
 
         DB::table('produtos')
             ->where('id', $produtoId)
@@ -112,7 +122,7 @@ class ProdutoService
             'aliquota_pis' => $this->percentual($dados['aliquota_pis'] ?? null),
             'aliquota_cofins' => $this->percentual($dados['aliquota_cofins'] ?? null),
             'aliquota_ipi' => $this->percentual($dados['aliquota_ipi'] ?? null),
-            'origem_mercadoria' => trim((string)($dados['origem_mercadoria'] ?? '')) !== '' ? trim((string)$dados['origem_mercadoria']) : null,
+            'origem_mercadoria' => trim((string) ($dados['origem_mercadoria'] ?? '')) !== '' ? trim((string) $dados['origem_mercadoria']) : null,
             'tipo_item' => trim($dados['tipo_item'] ?? '') ?: null,
             'codigo_anp' => trim($dados['codigo_anp'] ?? '') ?: null,
             'informacoes_fiscais' => trim($dados['informacoes_fiscais'] ?? '') ?: null,
@@ -122,24 +132,24 @@ class ProdutoService
 
     private function percentual(mixed $valor): float
     {
-        $valor = trim((string)$valor);
+        $valor = trim((string) $valor);
         if ($valor === '') {
             return 0.0;
         }
 
-        return max(0.0, (float)str_replace(',', '.', $valor));
+        return max(0.0, (float) str_replace(',', '.', $valor));
     }
 
     private function filtros(Request $request): array
     {
-        $status = (string)$request->query('status', '');
-        if (!in_array($status, ['', 'ativos', 'inativos', 'fiscal_pendente'], true)) {
+        $status = (string) $request->query('status', '');
+        if (! in_array($status, ['', 'ativos', 'inativos', 'fiscal_pendente'], true)) {
             $status = '';
         }
 
         return [
             'status' => $status,
-            'search' => trim((string)$request->query('search', '')),
+            'search' => trim((string) $request->query('search', '')),
         ];
     }
 
@@ -223,38 +233,38 @@ class ProdutoService
 
     private function normalizar($row): object
     {
-        $unidade = $this->unidadeLabel((string)($row->unidade_medida ?: 'un'));
+        $unidade = $this->unidadeLabel((string) ($row->unidade_medida ?: 'un'));
         $fiscalCompleto = $this->fiscalCompleto($row);
 
-        return (object)[
-            'id' => (int)$row->id,
+        return (object) [
+            'id' => (int) $row->id,
             'descricao' => FarmFormat::value($row->descricao_generica),
             'codigo_interno' => FarmFormat::value($row->codigo_interno),
             'codigo_fornecedor' => FarmFormat::value($row->codigo_fornecedor),
             'categoria' => FarmFormat::value($row->categoria_nome),
             'unidade' => $unidade,
             'marca' => FarmFormat::value($row->marca),
-            'ativo' => (int)$row->ativo === 1,
-            'status' => (int)$row->ativo === 1 ? 'Ativo' : 'Inativo',
+            'ativo' => (int) $row->ativo === 1,
+            'status' => (int) $row->ativo === 1 ? 'Ativo' : 'Inativo',
             'fiscal_completo' => $fiscalCompleto,
             'fiscal_status' => $fiscalCompleto ? 'Completo' : 'Pendente',
             'ncm' => FarmFormat::value($row->ncm),
             'saldo_estoque' => FarmFormat::decimal($row->saldo_estoque, 2).' '.$unidade,
             'valor_estoque' => FarmFormat::money($row->valor_estoque),
-            'valor_estoque_raw' => (float)$row->valor_estoque,
-            'movimentos_estoque' => (int)$row->movimentos_estoque,
+            'valor_estoque_raw' => (float) $row->valor_estoque,
+            'movimentos_estoque' => (int) $row->movimentos_estoque,
             'quantidade_nf' => FarmFormat::decimal($row->quantidade_nf, 2).' '.$unidade,
             'valor_nf' => FarmFormat::money($row->valor_nf),
-            'itens_nf' => (int)$row->itens_nf,
+            'itens_nf' => (int) $row->itens_nf,
         ];
     }
 
     private function fiscalCompleto($row): bool
     {
-        return trim((string)$row->ncm) !== ''
-            && trim((string)$row->cst_icms) !== ''
-            && trim((string)$row->cst_pis) !== ''
-            && trim((string)$row->cst_cofins) !== '';
+        return trim((string) $row->ncm) !== ''
+            && trim((string) $row->cst_icms) !== ''
+            && trim((string) $row->cst_pis) !== ''
+            && trim((string) $row->cst_cofins) !== '';
     }
 
     private function unidadeLabel(string $unidade): string
@@ -281,8 +291,8 @@ class ProdutoService
                 'ip' => request()->ip(),
                 'criado_em' => now(),
             ]);
-        } catch (\Throwable) {
-            // Auditoria nao deve impedir a gestao do estoque.
+        } catch (\Throwable $exception) {
+            report($exception);
         }
     }
 }

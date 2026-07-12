@@ -26,7 +26,7 @@
                                 <form method="POST" action="{{ route('financeiro.categorias.update', $categoria->id) }}" class="form-grid compact-form">
                                     @csrf
                                     @method('PUT')
-                                    @include('financeiro.categorias.partials.form-fields', ['categoria' => $categoria])
+                                    @include('financeiro.categorias.partials.form-fields', ['categoria' => $categoria, 'parentOptions' => $categoria->parent_options])
                                     <div class="form-actions">
                                         <button class="btn primary" type="submit">Atualizar</button>
                                     </div>

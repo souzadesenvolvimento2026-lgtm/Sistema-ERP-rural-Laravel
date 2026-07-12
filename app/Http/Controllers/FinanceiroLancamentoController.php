@@ -2,31 +2,25 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\FinanceiroFormDataService;
 use App\Services\FinanceiroLancamentoService;
 use App\Services\ReceitaFinanceiraService;
 use App\Support\FarmContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class FinanceiroLancamentoController extends Controller
 {
-    public function create(Request $request, ReceitaFinanceiraService $receitas): View
+    public function create(Request $request, ReceitaFinanceiraService $receitas, FinanceiroFormDataService $formData): View
     {
         $propertyId = app(FarmContext::class)->propertyId();
-        $tipo = in_array($request->query('tipo'), ['despesa', 'receita'], true) ? (string)$request->query('tipo') : 'despesa';
+        $tipo = in_array($request->query('tipo'), ['despesa', 'receita'], true) ? (string) $request->query('tipo') : 'despesa';
 
         return view('financeiro.lancamentos.create', [
             'activeModule' => 'financeiro',
             'tipoSelecionado' => $tipo,
-            'categorias' => DB::table('categorias')->where('ativo', 1)->whereNull('categoria_pai_id')->orderBy('nome')->get(['id', 'nome', 'tipo']),
-            'subcategorias' => DB::table('categorias')->where('ativo', 1)->whereNotNull('categoria_pai_id')->orderBy('nome')->get(['id', 'categoria_pai_id', 'nome', 'tipo']),
-            'contas' => DB::table('contas')->where('propriedade_id', $propertyId)->where('ativo', 1)->orderBy('nome')->get(['id', 'nome', 'banco']),
-            'compradores' => $receitas->listarCompradores($propertyId),
-            'safras' => DB::table('safras')->where('propriedade_id', $propertyId)->orderByDesc('data_inicio')->get(['id', 'descricao']),
-            'talhoes' => DB::table('talhoes')->where('propriedade_id', $propertyId)->where('ativo', 1)->orderBy('nome')->get(['id', 'nome']),
-            'produtores' => DB::table('produtores')->where('propriedade_id', $propertyId)->where('ativo', 1)->orderBy('nome')->get(['id', 'nome']),
+            ...$formData->options($propertyId, $receitas->listarCompradores($propertyId)),
         ]);
     }
 
@@ -55,7 +49,7 @@ class FinanceiroLancamentoController extends Controller
             'observacoes' => ['nullable', 'string'],
         ]);
 
-        $dados['baixado'] = (bool)($dados['baixado'] ?? false);
+        $dados['baixado'] = (bool) ($dados['baixado'] ?? false);
         $service->criar($dados, app(FarmContext::class)->propertyId(), session('usuario_id'));
 
         return redirect()

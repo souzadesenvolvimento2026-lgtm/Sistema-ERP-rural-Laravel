@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Domain\Access\ProfileAccess;
 use App\Services\ChatInternoService;
 use App\Services\SuporteChatService;
 use App\Support\FarmContext;
@@ -12,20 +13,22 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class LegacyAjaxController extends Controller
 {
+    public function __construct(private readonly ProfileAccess $access) {}
+
     public function chatInterno(Request $request, ChatInternoService $service): JsonResponse
     {
         $usuarioId = $this->usuarioId();
         $propriedadeId = app(FarmContext::class)->propertyId();
-        $action = (string)$request->input('action', $request->query('action', ''));
+        $action = (string) $request->input('action', $request->query('action', ''));
 
         return match ($action) {
-            'heartbeat' => $this->jsonTap(fn () => $service->online($usuarioId, $request->session()->getId(), (string)session('sessao_token', ''))),
+            'heartbeat' => $this->jsonTap(fn () => $service->online($usuarioId, $request->session()->getId(), (string) session('sessao_token', ''))),
             'offline' => $this->jsonTap(fn () => $service->offline($usuarioId)),
             'peers' => response()->json($service->contatos($usuarioId, $propriedadeId)),
-            'messages' => response()->json($service->mensagens($usuarioId, (int)$request->query('usuario_id'), $propriedadeId)),
+            'messages' => response()->json($service->mensagens($usuarioId, (int) $request->query('usuario_id'), $propriedadeId)),
             'send' => response()->json($service->enviar(
                 $usuarioId,
-                (int)$request->input('destinatario_id', $request->input('usuario_id', 0)),
+                (int) $request->input('destinatario_id', $request->input('usuario_id', 0)),
                 $propriedadeId,
                 $request->input('mensagem'),
                 $request->file('anexos', [])
@@ -36,14 +39,14 @@ class LegacyAjaxController extends Controller
 
     public function chatAnexo(Request $request, ChatInternoService $service): BinaryFileResponse
     {
-        return $service->baixarAnexo((int)$request->query('id'), $this->usuarioId());
+        return $service->baixarAnexo((int) $request->query('id'), $this->usuarioId());
     }
 
     public function suporteChat(Request $request, SuporteChatService $service): JsonResponse
     {
         $usuarioId = $this->usuarioId();
         $propriedadeId = app(FarmContext::class)->propertyId();
-        $action = (string)$request->input('action', $request->query('action', ''));
+        $action = (string) $request->input('action', $request->query('action', ''));
 
         return match ($action) {
             'client_boot', 'client_summary' => response()->json($service->conversaCliente($usuarioId, $propriedadeId)),
@@ -65,12 +68,12 @@ class LegacyAjaxController extends Controller
 
     public function suporteAnexo(Request $request, SuporteChatService $service): BinaryFileResponse
     {
-        return $service->baixarAnexo((int)$request->query('id'), $this->usuarioId(), $this->podeAtenderSuporte());
+        return $service->baixarAnexo((int) $request->query('id'), $this->usuarioId(), $this->podeAtenderSuporte());
     }
 
     private function clienteKeepOpen(Request $request, SuporteChatService $service): JsonResponse
     {
-        $conversaId = (int)$request->input('conversa_id');
+        $conversaId = (int) $request->input('conversa_id');
         DB::table('suporte_conversas')
             ->where('id', $conversaId)
             ->where('usuario_id', $this->usuarioId())
@@ -86,7 +89,7 @@ class LegacyAjaxController extends Controller
 
     private function clienteClose(Request $request, SuporteChatService $service): JsonResponse
     {
-        $conversaId = (int)$request->input('conversa_id');
+        $conversaId = (int) $request->input('conversa_id');
         DB::table('suporte_conversas')
             ->where('id', $conversaId)
             ->where('usuario_id', $this->usuarioId())
@@ -97,7 +100,7 @@ class LegacyAjaxController extends Controller
 
     private function suporteClientMessages(Request $request, SuporteChatService $service): JsonResponse
     {
-        $conversaId = (int)$request->query('conversa_id');
+        $conversaId = (int) $request->query('conversa_id');
         DB::table('suporte_mensagens')
             ->where('conversa_id', $conversaId)
             ->where('autor_tipo', 'admin')
@@ -111,18 +114,18 @@ class LegacyAjaxController extends Controller
     {
         abort_unless($this->podeAtenderSuporte(), 403);
 
-        $unread = (int)DB::table('suporte_mensagens as sm')
+        $unread = (int) DB::table('suporte_mensagens as sm')
             ->join('suporte_conversas as c', 'c.id', '=', 'sm.conversa_id')
             ->where('sm.autor_tipo', 'cliente')
             ->where('sm.lida_admin', 0)
             ->where('c.status', '!=', 'encerrada')
             ->count();
 
-        $pending = (int)DB::table('suporte_conversas')
+        $pending = (int) DB::table('suporte_conversas')
             ->whereIn('status', ['aberta', 'respondida', 'aguardando_encerramento'])
             ->count();
 
-        $lastId = (int)DB::table('suporte_mensagens as sm')
+        $lastId = (int) DB::table('suporte_mensagens as sm')
             ->join('suporte_conversas as c', 'c.id', '=', 'sm.conversa_id')
             ->where('sm.autor_tipo', 'cliente')
             ->where('c.status', '!=', 'encerrada')
@@ -158,7 +161,7 @@ class LegacyAjaxController extends Controller
                 'p.nome as propriedade_nome',
                 'ultima.mensagem as ultima_mensagem',
                 DB::raw('(SELECT COUNT(*) FROM suporte_mensagens sm WHERE sm.conversa_id = c.id AND sm.autor_tipo = "cliente" AND sm.lida_admin = 0) as nao_lidas'),
-                DB::raw('CASE WHEN c.atendente_usuario_id = '.(int)$this->usuarioId().' THEN 1 ELSE 0 END as assumido_por_mim'),
+                DB::raw('CASE WHEN c.atendente_usuario_id = '.(int) $this->usuarioId().' THEN 1 ELSE 0 END as assumido_por_mim'),
             ]);
 
         return response()->json(['ok' => true, 'threads' => $threads]);
@@ -168,7 +171,7 @@ class LegacyAjaxController extends Controller
     {
         abort_unless($this->podeAtenderSuporte(), 403);
 
-        $perfilAtual = (string)session('perfil');
+        $perfilAtual = (string) session('perfil');
         $perfis = match ($perfilAtual) {
             'administrador_sistema' => ['gerencia_sistema', 'colaborador_sistema'],
             'gerencia_sistema' => ['colaborador_sistema'],
@@ -184,10 +187,10 @@ class LegacyAjaxController extends Controller
                 ->orderBy('u.nome')
                 ->get(['u.id', 'u.nome', 'u.perfil'])
                 ->map(fn ($user) => [
-                    'id' => (int)$user->id,
-                    'nome' => (string)$user->nome,
-                    'perfil' => (string)$user->perfil,
-                    'nivel_label' => match ((string)$user->perfil) {
+                    'id' => (int) $user->id,
+                    'nome' => (string) $user->nome,
+                    'perfil' => (string) $user->perfil,
+                    'nivel_label' => match ((string) $user->perfil) {
                         'gerencia_sistema' => 'gerência',
                         'colaborador_sistema' => 'colaborador',
                         default => 'suporte',
@@ -204,10 +207,10 @@ class LegacyAjaxController extends Controller
     {
         abort_unless($this->podeAtenderSuporte(), 403);
 
-        $conversaId = (int)$request->input('conversa_id');
-        $destino = (string)$request->input('destino', '');
-        $atendenteId = (int)$request->input('atendente_usuario_id', $request->input('usuario_id', $this->usuarioId()));
-        $nivel = (string)$request->input('nivel_atendimento', $request->input('nivel', $destino ?: 'colaborador'));
+        $conversaId = (int) $request->input('conversa_id');
+        $destino = (string) $request->input('destino', '');
+        $atendenteId = (int) $request->input('atendente_usuario_id', $request->input('usuario_id', $this->usuarioId()));
+        $nivel = (string) $request->input('nivel_atendimento', $request->input('nivel', $destino ?: 'colaborador'));
         $nivel = in_array($nivel, ['colaborador', 'gerencia', 'admin'], true) ? $nivel : 'colaborador';
         if ($destino !== '') {
             $atendenteId = null;
@@ -229,7 +232,7 @@ class LegacyAjaxController extends Controller
     {
         abort_unless($this->podeAtenderSuporte(), 403);
 
-        $conversaId = (int)$request->query('conversa_id');
+        $conversaId = (int) $request->query('conversa_id');
         DB::table('suporte_mensagens')
             ->where('conversa_id', $conversaId)
             ->where('autor_tipo', 'cliente')
@@ -243,7 +246,7 @@ class LegacyAjaxController extends Controller
     {
         abort_unless($this->podeAtenderSuporte(), 403);
 
-        $conversaId = (int)$request->input('conversa_id');
+        $conversaId = (int) $request->input('conversa_id');
         $service->responderAdmin($conversaId, $this->usuarioId(), $request->input('mensagem'), $request->file('anexos', []));
 
         return $this->suportePayload($service, $conversaId);
@@ -253,7 +256,7 @@ class LegacyAjaxController extends Controller
     {
         abort_unless($this->podeAtenderSuporte(), 403);
 
-        $conversaId = (int)$request->input('conversa_id');
+        $conversaId = (int) $request->input('conversa_id');
         DB::table('suporte_conversas')
             ->where('id', $conversaId)
             ->update([
@@ -270,7 +273,7 @@ class LegacyAjaxController extends Controller
     {
         abort_unless($this->podeAtenderSuporte(), 403);
 
-        $conversaId = (int)$request->input('conversa_id');
+        $conversaId = (int) $request->input('conversa_id');
         DB::table('suporte_conversas')
             ->where('id', $conversaId)
             ->update([
@@ -303,14 +306,14 @@ class LegacyAjaxController extends Controller
             ]);
 
         if ($conversa) {
-            $payload['propriedade_id'] = $conversa->propriedade_id ? (int)$conversa->propriedade_id : null;
+            $payload['propriedade_id'] = $conversa->propriedade_id ? (int) $conversa->propriedade_id : null;
             $payload['propriedade_nome'] = $conversa->propriedade_nome ?: null;
             $payload['usuario_nome'] = $conversa->usuario_nome ?: null;
-            $payload['atendente_usuario_id'] = $conversa->atendente_usuario_id ? (int)$conversa->atendente_usuario_id : null;
+            $payload['atendente_usuario_id'] = $conversa->atendente_usuario_id ? (int) $conversa->atendente_usuario_id : null;
             $payload['atendente_nome'] = $conversa->atendente_nome ?: null;
             $payload['assumido_por_mim'] = $payload['atendente_usuario_id'] === $this->usuarioId();
-            $payload['nivel_atendimento'] = (string)$conversa->nivel_atendimento;
-            $payload['status'] = (string)$conversa->status;
+            $payload['nivel_atendimento'] = (string) $conversa->nivel_atendimento;
+            $payload['status'] = (string) $conversa->status;
         }
 
         return response()->json($payload);
@@ -325,11 +328,11 @@ class LegacyAjaxController extends Controller
 
     private function usuarioId(): int
     {
-        return (int)session('usuario_id');
+        return (int) session('usuario_id');
     }
 
     private function podeAtenderSuporte(): bool
     {
-        return in_array((string)session('perfil'), ['administrador_sistema', 'gerencia_sistema', 'colaborador_sistema'], true);
+        return $this->access->canHandleSupport((string) session('perfil'));
     }
 }
