@@ -220,20 +220,29 @@ class ComparativoSafrasService
             return $grupos;
         }
 
-        $rows = DB::table('despesas as d')
+        $despesasNormalizadas = DB::table('despesas as d')
             ->join('categorias as c', 'c.id', '=', 'd.categoria_id')
             ->leftJoin('categorias as cp', 'cp.id', '=', 'c.categoria_pai_id')
             ->where('d.propriedade_id', $propertyId)
             ->whereIn('d.safra_id', $safraIds)
             ->where('d.status_pagamento', '!=', 'cancelado')
             ->whereRaw("COALESCE(d.status_aprovacao, '') != 'reprovada'")
-            ->groupBy('d.safra_id', 'categoria_id', 'categoria_nome')
-            ->orderBy('categoria_nome')
-            ->get([
+            ->select([
                 'd.safra_id',
                 DB::raw('COALESCE(cp.id, c.id) as categoria_id'),
                 DB::raw('COALESCE(cp.nome, c.nome) as categoria_nome'),
-                DB::raw('SUM(d.valor_total) as total'),
+                'd.valor_total',
+            ]);
+
+        $rows = DB::query()
+            ->fromSub($despesasNormalizadas, 'base')
+            ->groupBy('safra_id', 'categoria_id', 'categoria_nome')
+            ->orderBy('categoria_nome')
+            ->get([
+                'safra_id',
+                'categoria_id',
+                'categoria_nome',
+                DB::raw('SUM(valor_total) as total'),
             ]);
 
         foreach ($rows as $row) {

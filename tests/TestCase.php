@@ -4,6 +4,7 @@ namespace Tests;
 
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 abstract class TestCase extends BaseTestCase
@@ -17,6 +18,7 @@ abstract class TestCase extends BaseTestCase
         parent::setUp();
 
         $this->assertSafeProductionLikeDatabase();
+        $this->seedAnonymousTestFixtures();
     }
 
     protected function setUpTraits()
@@ -185,5 +187,236 @@ abstract class TestCase extends BaseTestCase
         sort($modes);
 
         return $modes;
+    }
+
+    private function seedAnonymousTestFixtures(): void
+    {
+        if (! app()->runningUnitTests()) {
+            return;
+        }
+
+        foreach (['propriedades', 'usuarios', 'usuario_propriedades', 'talhoes', 'safras', 'safra_talhoes'] as $table) {
+            if (! Schema::hasTable($table)) {
+                throw new RuntimeException(
+                    "Schema de teste incompleto: tabela {$table} ausente. Execute scripts/dev/sync-schema.ps1.",
+                );
+            }
+        }
+
+        $propertyId = $this->anonymousPropertyId();
+        $userIds = $this->anonymousUserIds($propertyId);
+        $talhaoId = $this->anonymousTalhaoId($propertyId);
+        $safraId = $this->anonymousSafraId($propertyId);
+
+        DB::table('safra_talhoes')
+            ->where('safra_id', $safraId)
+            ->where('talhao_id', $talhaoId)
+            ->where('propriedade_id', $propertyId)
+            ->delete();
+
+        if (Schema::hasTable('culturas') && ! DB::table('culturas')->where('nome', 'Soja teste')->exists()) {
+            DB::table('culturas')->insert([
+                'nome' => 'Soja teste',
+                'unidade_producao' => 'sc',
+            ]);
+        }
+
+        if (Schema::hasTable('categorias') && ! DB::table('categorias')->where('nome', 'Categoria teste')->exists()) {
+            DB::table('categorias')->insert([
+                'nome' => 'Categoria teste',
+                'tipo' => 'outros',
+                'cor' => '#6c757d',
+                'icone' => 'bi-tag',
+                'ativo' => 1,
+            ]);
+        }
+
+        if (Schema::hasTable('compradores') && ! DB::table('compradores')->where('nome', 'Comprador teste')->where('propriedade_id', $propertyId)->exists()) {
+            DB::table('compradores')->insert([
+                'propriedade_id' => $propertyId,
+                'nome' => 'Comprador teste',
+                'documento' => '00000000000',
+                'ativo' => 1,
+            ]);
+        }
+
+        if (Schema::hasTable('maquinas') && ! DB::table('maquinas')->where('nome', 'Trator teste')->where('propriedade_id', $propertyId)->exists()) {
+            DB::table('maquinas')->insert([
+                'propriedade_id' => $propertyId,
+                'nome' => 'Trator teste',
+                'tipo' => 'trator',
+                'marca_modelo' => 'Fixture automatizada',
+                'identificacao' => 'TESTE-001',
+                'valor_aquisicao' => 0,
+                'controla_horimetro' => 1,
+                'controla_odometro' => 0,
+                'horimetro_atual' => 0,
+                'odometro_atual' => 0,
+                'ativo' => 1,
+            ]);
+        }
+
+        foreach ($userIds as $userId) {
+            DB::table('usuario_propriedades')->updateOrInsert([
+                'usuario_id' => $userId,
+                'propriedade_id' => $propertyId,
+            ]);
+        }
+    }
+
+    private function anonymousPropertyId(): int
+    {
+        $propertyId = DB::table('propriedades')
+            ->where('nome', 'Fazenda teste')
+            ->orderBy('id')
+            ->value('id');
+
+        $data = [
+            'nome' => 'Fazenda teste',
+            'municipio' => 'Rio Verde',
+            'estado' => 'GO',
+            'area_total' => 100,
+            'responsavel' => 'Fixture automatizada',
+            'cnpj_cpf' => '00000000000191',
+            'plano' => 'premium',
+            'pecuaria_ativa' => 0,
+            'ativo' => 1,
+            'latitude' => -17.79250000,
+            'longitude' => -50.91920000,
+            'regiao_cotacao' => 'Rio Verde/GO',
+            'cotacao_soja' => 0,
+            'cotacao_soja_auto' => 0,
+        ];
+
+        if ($propertyId) {
+            DB::table('propriedades')->where('id', $propertyId)->update($data);
+
+            return (int) $propertyId;
+        }
+
+        DB::table('propriedades')->insert($data);
+
+        return (int) DB::getPdo()->lastInsertId();
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function anonymousUserIds(int $propertyId): array
+    {
+        $users = [
+            ['nome' => 'Administrador Teste', 'email' => 'teste.admin@farmfort.local', 'perfil' => 'administrador_sistema'],
+            ['nome' => 'Gerencia Teste', 'email' => 'teste.gerencia@farmfort.local', 'perfil' => 'gerencia_sistema'],
+            ['nome' => 'Colaborador Teste', 'email' => 'teste.colaborador@farmfort.local', 'perfil' => 'colaborador_sistema'],
+            ['nome' => 'Gestor Propriedade Teste', 'email' => 'teste.gestor@farmfort.local', 'perfil' => 'gestor_propriedade'],
+            ['nome' => 'Visualizador Teste', 'email' => 'teste.visualizador@farmfort.local', 'perfil' => 'visualizador'],
+        ];
+
+        $ids = [];
+        foreach ($users as $user) {
+            $userId = DB::table('usuarios')->where('email', $user['email'])->value('id');
+            $data = [
+                'nome' => $user['nome'],
+                'email' => $user['email'],
+                'senha' => password_hash('senha-segura', PASSWORD_DEFAULT),
+                'perfil' => $user['perfil'],
+                'ativo' => 1,
+                'sessao_token' => null,
+                'sessao_atualizada_em' => null,
+            ];
+
+            if ($userId) {
+                DB::table('usuarios')->where('id', $userId)->update($data);
+            } else {
+                DB::table('usuarios')->insert($data);
+                $userId = DB::getPdo()->lastInsertId();
+            }
+
+            $userId = (int) $userId;
+            DB::table('usuario_propriedades')->updateOrInsert([
+                'usuario_id' => $userId,
+                'propriedade_id' => $propertyId,
+            ]);
+
+            $ids[] = $userId;
+        }
+
+        return $ids;
+    }
+
+    private function anonymousTalhaoId(int $propertyId): int
+    {
+        $talhaoId = DB::table('talhoes')
+            ->where('propriedade_id', $propertyId)
+            ->where('nome', 'Talhao teste')
+            ->orderBy('id')
+            ->value('id');
+
+        $coordinates = json_encode([[
+            ['lat' => -17.7930, 'lng' => -50.9200],
+            ['lat' => -17.7930, 'lng' => -50.9180],
+            ['lat' => -17.7910, 'lng' => -50.9180],
+            ['lat' => -17.7910, 'lng' => -50.9200],
+        ]], JSON_THROW_ON_ERROR);
+
+        $data = [
+            'propriedade_id' => $propertyId,
+            'nome' => 'Talhao teste',
+            'area' => 10,
+            'area_bruta' => 10,
+            'area_excluida_ha' => 0,
+            'descricao' => 'Fixture automatizada para testes',
+            'ativo' => 1,
+            'latitude' => -17.79200000,
+            'longitude' => -50.91900000,
+            'geometria_tipo' => 'polygon',
+            'coordenadas_json' => $coordinates,
+            'exclusoes_json' => null,
+            'pivo_ativo' => 0,
+        ];
+
+        if ($talhaoId) {
+            DB::table('talhoes')->where('id', $talhaoId)->update($data);
+
+            return (int) $talhaoId;
+        }
+
+        DB::table('talhoes')->insert($data);
+
+        return (int) DB::getPdo()->lastInsertId();
+    }
+
+    private function anonymousSafraId(int $propertyId): int
+    {
+        $safraId = DB::table('safras')
+            ->where('propriedade_id', $propertyId)
+            ->where('descricao', 'Safra teste')
+            ->orderBy('id')
+            ->value('id');
+
+        $data = [
+            'propriedade_id' => $propertyId,
+            'cultura_id' => null,
+            'safra_referencia' => 'primeira',
+            'descricao' => 'Safra teste',
+            'data_inicio' => '2026-01-01',
+            'data_fim' => null,
+            'area_plantada' => 10,
+            'producao_estimada' => 0,
+            'producao_realizada' => 0,
+            'preco_estimado' => 0,
+            'status' => 'em_andamento',
+            'observacoes' => 'Fixture automatizada para testes',
+        ];
+
+        if ($safraId) {
+            DB::table('safras')->where('id', $safraId)->update($data);
+
+            return (int) $safraId;
+        }
+
+        DB::table('safras')->insert($data);
+
+        return (int) DB::getPdo()->lastInsertId();
     }
 }

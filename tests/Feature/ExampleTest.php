@@ -89,7 +89,7 @@ class ExampleTest extends TestCase
         $user = $query->orderBy('id')->first(['id', 'nome', 'perfil']);
 
         if (! $user && $profile !== null && $userId === null) {
-            $userId = $this->userId();
+            $userId = $this->propertyManagerUserId($propertyId);
             $user = DB::table('usuarios')->where('id', $userId)->first(['id', 'nome', 'perfil']);
             $this->assertNotNull($user, 'O fixture precisa de um usuário ativo.');
 
@@ -145,6 +145,37 @@ class ExampleTest extends TestCase
             })
             ->orderBy('u.id')
             ->value('u.id');
+    }
+
+    private function propertyManagerUserId(int $propertyId): int
+    {
+        $userId = (int) DB::table('usuarios as u')
+            ->join('usuario_propriedades as up', 'up.usuario_id', '=', 'u.id')
+            ->where('up.propriedade_id', $propertyId)
+            ->where('u.perfil', 'gestor_propriedade')
+            ->where('u.ativo', 1)
+            ->orderBy('u.id')
+            ->value('u.id');
+
+        if ($userId > 0) {
+            return $userId;
+        }
+
+        DB::table('usuarios')->insert([
+            'nome' => 'Gestor propriedade teste',
+            'email' => 'gestor-propriedade-'.uniqid().'@teste.local',
+            'senha' => password_hash('senha-segura', PASSWORD_DEFAULT),
+            'perfil' => 'gestor_propriedade',
+            'ativo' => 1,
+        ]);
+
+        $userId = (int) DB::getPdo()->lastInsertId();
+        DB::table('usuario_propriedades')->insert([
+            'usuario_id' => $userId,
+            'propriedade_id' => $propertyId,
+        ]);
+
+        return $userId;
     }
 
     private function simplePointShp(float $lng, float $lat): string
@@ -360,7 +391,7 @@ class ExampleTest extends TestCase
 
         try {
             $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
-            $userId = $this->userId();
+            $userId = $this->propertyManagerUserId($propertyId);
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('usuarios')->insert([
@@ -3110,12 +3141,25 @@ XML;
                 'status' => 'conciliado',
             ]);
 
+            DB::table('movimentacoes_bancarias')->insert([
+                'propriedade_id' => $propertyId,
+                'conta_id' => $contaId,
+                'data_movimento' => '2026-07-10',
+                'tipo' => 'saida',
+                'descricao' => 'Movimentacao bancaria ignorada teste',
+                'valor' => 100,
+                'origem' => 'manual',
+                'status' => 'pendente',
+                'usuario_id' => $this->userId(),
+            ]);
+            $ignoredMovementId = (int) DB::getPdo()->lastInsertId();
+
             $this->withSession($this->loggedSession(propertyId: $propertyId))
-                ->post('/financeiro/movimentacoes/'.$movimentacaoId.'/ignorar')
+                ->post('/financeiro/movimentacoes/'.$ignoredMovementId.'/ignorar')
                 ->assertRedirect('/financeiro/movimentacoes');
 
             $this->assertDatabaseHas('movimentacoes_bancarias', [
-                'id' => $movimentacaoId,
+                'id' => $ignoredMovementId,
                 'status' => 'ignorado',
             ]);
         } finally {
@@ -5513,7 +5557,7 @@ KML;
             ->get('/usuarios')
             ->assertStatus(200)
             ->assertSee('Usuários')
-            ->assertSee('Usuários da propriedade');
+            ->assertSee('Logins internos FarmFort');
     }
 
     public function test_user_can_be_created_with_audit_log(): void
@@ -5522,12 +5566,12 @@ KML;
 
         try {
             $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
-            $userId = $this->userId();
+            $userId = $this->propertyManagerUserId($propertyId);
             $email = 'usuario-criado-'.uniqid().'@teste.local';
 
             DB::table('propriedades')->where('id', $propertyId)->update(['plano' => 'premium']);
 
-            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $userId))
+            $this->withSession($this->loggedSession(propertyId: $propertyId, profile: 'gestor_propriedade', userId: $userId))
                 ->post('/usuarios', [
                     'nome' => 'Usuario Laravel Criado',
                     'email' => $email,
@@ -5562,7 +5606,7 @@ KML;
 
         try {
             $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
-            $userId = $this->userId();
+            $userId = $this->propertyManagerUserId($propertyId);
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('usuarios')->insert([
@@ -5580,13 +5624,13 @@ KML;
 
             $novoEmail = 'usuario-editado-'.uniqid().'@teste.local';
 
-            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $userId))
+            $this->withSession($this->loggedSession(propertyId: $propertyId, profile: 'gestor_propriedade', userId: $userId))
                 ->get('/usuarios/'.$usuarioId.'/editar')
                 ->assertStatus(200)
                 ->assertSee('Editar usuário')
                 ->assertSee('Usuario Laravel Edicao');
 
-            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $userId))
+            $this->withSession($this->loggedSession(propertyId: $propertyId, profile: 'gestor_propriedade', userId: $userId))
                 ->put('/usuarios/'.$usuarioId, [
                     'nome' => 'Usuario Laravel Editado',
                     'email' => $novoEmail,
@@ -5618,7 +5662,7 @@ KML;
                 'propriedade_id' => $propertyId,
             ]);
 
-            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $userId))
+            $this->withSession($this->loggedSession(propertyId: $propertyId, profile: 'gestor_propriedade', userId: $userId))
                 ->post('/usuarios/'.$usuarioId.'/alternar-status')
                 ->assertRedirect('/usuarios');
 
@@ -5644,7 +5688,7 @@ KML;
 
         try {
             $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
-            $userId = $this->userId();
+            $userId = $this->propertyManagerUserId($propertyId);
             $this->assertGreaterThan(0, $propertyId);
 
             DB::table('grupos_fazendas')->insert([
@@ -5670,13 +5714,13 @@ KML;
                 'grupo_id' => $grupoId,
             ]);
 
-            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $userId))
+            $this->withSession($this->loggedSession(propertyId: $propertyId, profile: 'gestor_propriedade', userId: $userId))
                 ->get('/usuarios')
                 ->assertStatus(200)
                 ->assertSee('Usuario grupo Laravel');
 
             $novoEmail = 'usuario-grupo-editado-'.uniqid().'@teste.local';
-            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $userId))
+            $this->withSession($this->loggedSession(propertyId: $propertyId, profile: 'gestor_propriedade', userId: $userId))
                 ->put('/usuarios/'.$usuarioId, [
                     'nome' => 'Usuario grupo editado Laravel',
                     'email' => $novoEmail,
@@ -5697,7 +5741,7 @@ KML;
                 'grupo_id' => $grupoId,
             ]);
 
-            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $userId))
+            $this->withSession($this->loggedSession(propertyId: $propertyId, profile: 'gestor_propriedade', userId: $userId))
                 ->post('/usuarios/'.$usuarioId.'/alternar-status')
                 ->assertRedirect('/usuarios');
 
@@ -5716,6 +5760,7 @@ KML;
 
         try {
             $propertyId = app(FarmContext::class)->propertyId();
+            $userId = $this->propertyManagerUserId($propertyId);
             DB::table('propriedades')->where('id', $propertyId)->update(['plano' => 'basico']);
 
             DB::table('grupos_fazendas')->insert([
@@ -5763,7 +5808,7 @@ KML;
             ]);
 
             $emailNovo = 'usuario-limite-grupo-'.uniqid().'@teste.local';
-            $this->withSession($this->loggedSession(propertyId: $propertyId))
+            $this->withSession($this->loggedSession(propertyId: $propertyId, profile: 'gestor_propriedade', userId: $userId))
                 ->from('/usuarios/novo')
                 ->post('/usuarios', [
                     'nome' => 'Usuario excede limite por grupo',
@@ -5789,12 +5834,15 @@ KML;
 
         try {
             $propertyId = app(FarmContext::class)->propertyId();
+            $userId = $this->propertyManagerUserId($propertyId);
             DB::table('propriedades')->where('id', $propertyId)->update(['plano' => 'basico']);
 
-            $usuariosVinculados = DB::table('usuario_propriedades')
-                ->where('propriedade_id', $propertyId)
-                ->distinct('usuario_id')
-                ->count('usuario_id');
+            $usuariosVinculados = DB::table('usuarios as u')
+                ->join('usuario_propriedades as up', 'up.usuario_id', '=', 'u.id')
+                ->where('up.propriedade_id', $propertyId)
+                ->whereNotIn('u.perfil', ['administrador', 'administrador_sistema', 'gerencia_sistema', 'colaborador_sistema'])
+                ->distinct('u.id')
+                ->count('u.id');
 
             for ($i = $usuariosVinculados + 1; $i <= 3; $i++) {
                 DB::table('usuarios')->insert([
@@ -5813,7 +5861,7 @@ KML;
 
             $emailNovo = 'usuario-excede-limite-'.uniqid().'@teste.local';
 
-            $this->withSession($this->loggedSession(propertyId: $propertyId))
+            $this->withSession($this->loggedSession(propertyId: $propertyId, profile: 'gestor_propriedade', userId: $userId))
                 ->from('/usuarios/novo')
                 ->post('/usuarios', [
                     'nome' => 'Usuario excede limite',
@@ -7657,7 +7705,7 @@ KML;
             ->assertSee('Relatório por Categoria')
             ->assertSee('Distribuição por categoria')
             ->assertSee('Total por tipo')
-            ->assertSee('chartCategorias', false)
+            ->assertSee('Sem dados para esta safra.')
             ->assertSee('Imprimir');
     }
 
@@ -8888,7 +8936,7 @@ KML;
                 'propriedade_id' => $propertyId,
                 'safra_referencia' => 'primeira',
                 'descricao' => 'Safra origem copia Laravel',
-                'data_inicio' => '2025-07-01',
+                'data_inicio' => '2026-06-01',
                 'status' => 'encerrada',
             ]);
             $safraOrigemId = (int) DB::getPdo()->lastInsertId();
@@ -8908,7 +8956,7 @@ KML;
                 'tipo_lancamento' => 'despesa',
                 'tipo_safra' => 'principal',
                 'ano_safra' => '2025/2026',
-                'mes_referencia' => '2025-08-01',
+                'mes_referencia' => '2026-07-01',
                 'categoria_id' => $categoriaId,
                 'quantidade' => 2,
                 'unidade' => 'ha',

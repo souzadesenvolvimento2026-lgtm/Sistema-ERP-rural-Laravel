@@ -36,6 +36,16 @@ Para manter o banco ligado durante uma sessao de trabalho:
 .\scripts\dev\validate.ps1 -Mode full -KeepDatabase
 ```
 
+## Sincronizar schema local com o servidor
+
+Quando o banco local `farmflow_test` estiver sem tabelas ou desatualizado, sincronize somente o schema da aplicação publicada. O script nao copia dados de produção:
+
+```powershell
+.\scripts\dev\sync-schema.ps1
+```
+
+Ele usa SSH por chave, recria o banco local e importa apenas estrutura, rotinas, triggers e eventos.
+
 Controle manual do banco:
 
 ```powershell
@@ -58,4 +68,26 @@ O `gh` portatil fica em `work/runtime/gh/bin/gh.exe`. Ele nao roda em segundo pl
 
 ```powershell
 .\work\runtime\gh\bin\gh.exe auth login
+```
+
+## Fluxo seguro para publicar branch
+
+Depois de programar, use:
+
+```powershell
+.\scripts\dev\release.ps1 -SyncSchema -Validation full
+```
+
+Se passou e voce quiser commitar todos os arquivos alterados intencionalmente e subir a branch atual:
+
+```powershell
+.\scripts\dev\release.ps1 -Validation full -CommitMessage "Prepara fluxo seguro de desenvolvimento" -StageAll -Push
+```
+
+O script bloqueia `push` direto em `main`. Para evitar misturar alteracoes, sem `-StageAll` ele so commita arquivos que voce ja adicionou explicitamente com `git add`.
+
+Deploy de produção continua exigindo main aprovada, CI/homologação e confirmação explicita:
+
+```powershell
+.\scripts\dev\release.ps1 -Validation full -DeployProduction -ConfirmProduction
 ```
