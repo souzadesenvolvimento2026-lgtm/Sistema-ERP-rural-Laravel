@@ -136,6 +136,26 @@ class TalhaoMapUiTest extends TestCase
         }
     }
 
+    public function test_map_screen_uses_fixed_viewport_with_scroll_only_on_field_list(): void
+    {
+        $layout = $this->contents('resources/views/layouts/farmfort.blade.php');
+        $view = $this->contents('resources/views/talhoes/mapa.blade.php');
+        $css = $this->contents('public/css/farmfort.css');
+
+        $this->assertStringContainsString('bodyClass', $layout);
+        $this->assertStringContainsString("'bodyClass' => 'ff-map-fixed-body'", $view);
+        $this->assertStringContainsString('html:has(body.ff-map-fixed-body)', $css);
+        $this->assertStringContainsString('body.ff-map-fixed-body {', $css);
+        $this->assertStringContainsString('body.ff-map-fixed-body .main', $css);
+        $this->assertStringContainsString('grid-template-rows: auto minmax(0, 1fr);', $css);
+        $this->assertStringContainsString('body.ff-map-fixed-body .ff-map-page', $css);
+        $this->assertStringContainsString('grid-template-rows: auto auto minmax(0, 1fr);', $css);
+        $this->assertStringContainsString('body.ff-map-fixed-body .ff-map-list-panel .map-list', $css);
+        $this->assertStringContainsString('overflow-y: auto;', $css);
+        $this->assertStringContainsString('body.ff-map-fixed-body .ff-map-canvas', $css);
+        $this->assertStringContainsString('height: 100% !important;', $css);
+    }
+
     public function test_map_forms_use_relative_actions_to_keep_the_current_protocol(): void
     {
         $view = $this->contents('resources/views/talhoes/partials/mapa-form.blade.php');

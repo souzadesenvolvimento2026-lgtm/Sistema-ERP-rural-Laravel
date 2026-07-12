@@ -8076,6 +8076,134 @@ html[data-theme="dark"] .ff-map-list-panel .map-list-edit { background: color-mi
   .ff-map-actions .btn, .ff-map-actions button.btn { width: 100%; justify-content: center; }
 }
 
+/* Mapa dos talhoes fixo: a pagina nao rola; somente a lista de talhoes rola */
+html:has(body.ff-map-fixed-body),
+body.ff-map-fixed-body {
+  height: 100vh;
+  overflow: hidden;
+}
+
+body.ff-map-fixed-body .main {
+  height: 100vh;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+body.ff-map-fixed-body .topbar {
+  position: relative;
+  top: auto;
+}
+
+body.ff-map-fixed-body .page-body {
+  min-height: 0;
+  overflow: hidden;
+  padding: 18px 24px 12px;
+}
+
+body.ff-map-fixed-body .ff-map-page {
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 14px;
+  overflow: hidden;
+}
+
+body.ff-map-fixed-body .ff-map-toolbar {
+  min-height: 0;
+}
+
+body.ff-map-fixed-body .ff-map-kpis {
+  gap: 12px;
+}
+
+body.ff-map-fixed-body .ff-map-kpi {
+  min-height: 84px;
+  padding: 14px 18px;
+}
+
+body.ff-map-fixed-body .ff-map-kpi strong {
+  font-size: 22px;
+}
+
+body.ff-map-fixed-body .ff-map-print-shell {
+  min-height: 0 !important;
+  height: 100%;
+  overflow: hidden;
+}
+
+body.ff-map-fixed-body .ff-map-list-panel,
+body.ff-map-fixed-body .ff-map-panel {
+  min-height: 0 !important;
+  height: 100%;
+  overflow: hidden;
+}
+
+body.ff-map-fixed-body .ff-map-list-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+body.ff-map-fixed-body .ff-map-list-panel .farm-map-sidebar-head {
+  flex: 0 0 auto;
+}
+
+body.ff-map-fixed-body .ff-map-list-panel .map-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+body.ff-map-fixed-body .ff-map-canvas {
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+body.ff-map-fixed-body .ff-map-hidden-forms {
+  display: contents;
+}
+
+@media (max-width: 1180px) {
+  html:has(body.ff-map-fixed-body),
+  body.ff-map-fixed-body {
+    height: auto;
+    overflow: auto;
+  }
+
+  body.ff-map-fixed-body .main {
+    height: auto;
+    min-height: 100vh;
+    display: block;
+    overflow: visible;
+  }
+
+  body.ff-map-fixed-body .topbar {
+    position: sticky;
+    top: 0;
+  }
+
+  body.ff-map-fixed-body .page-body,
+  body.ff-map-fixed-body .ff-map-page,
+  body.ff-map-fixed-body .ff-map-print-shell,
+  body.ff-map-fixed-body .ff-map-list-panel,
+  body.ff-map-fixed-body .ff-map-panel {
+    height: auto;
+    overflow: visible;
+  }
+
+  body.ff-map-fixed-body .ff-map-list-panel .map-list {
+    max-height: 360px;
+  }
+
+  body.ff-map-fixed-body .ff-map-canvas {
+    height: 58vh !important;
+    min-height: 430px !important;
+  }
+}
+
 /* Mapa de talhoes: visual alinhado ao legado */
 #talhaoMap .leaflet-popup-content-wrapper,
 #talhaoMap .leaflet-popup-tip {

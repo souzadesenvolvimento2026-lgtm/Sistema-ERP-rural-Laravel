@@ -19,7 +19,10 @@
     <link rel="stylesheet" href="{{ asset('css/farmfort.css') }}?v={{ @filemtime(public_path('css/farmfort.css')) }}">
     @stack('styles')
 </head>
-<body>
+@php
+    $bodyClass = trim((string) ($bodyClass ?? ''));
+@endphp
+<body @if ($bodyClass !== '') class="{{ $bodyClass }}" @endif>
 @unless ($fullWidth)
 <aside class="module-rail sidebar" aria-label="Menus principais">
     <a href="{{ route('dashboard') }}" class="module-brand" aria-label="Ir para a tela inicial do FarmFort">

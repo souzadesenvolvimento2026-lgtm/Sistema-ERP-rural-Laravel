@@ -1,4 +1,7 @@
-@extends('layouts.farmfort', ['title' => 'FarmFort - Mapa dos Talhões'])
+@extends('layouts.farmfort', [
+    'title' => 'FarmFort - Mapa dos Talhões',
+    'bodyClass' => 'ff-map-fixed-body',
+])
 
 @php
     use App\Support\FarmFormat;
