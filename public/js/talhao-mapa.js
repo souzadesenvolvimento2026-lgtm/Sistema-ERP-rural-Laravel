@@ -54,7 +54,8 @@ window.initTalhaoMapa = function initTalhaoMapa(config) {
     const mapTools = configureDraw(map, draftItems, talhoes, talhaoLayers);
     bindPolygonTargetSelector(talhoes);
     bindMapActionForms();
-    bindMapList(map, talhaoLayers, mapTools.selectTalhao);
+    const editModal = bindTalhaoEditModal(talhoes, mapTools);
+    bindMapList(map, talhaoLayers, mapTools.selectTalhao, editModal.open);
 
     setTimeout(() => map.invalidateSize(), 120);
 };
@@ -428,7 +429,10 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers) {
         panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
 
-    return { selectTalhao };
+    return {
+        selectTalhao,
+        startExclusion: () => startDraw('exclusao'),
+    };
 }
 
 function createMapContextToolbar(map, callbacks) {
@@ -537,10 +541,8 @@ function markSelectedListItem(talhaoId) {
 }
 
 function synchronizeMapForms(talhaoId) {
-    const select = document.querySelector('[data-exclusion-form] [data-map-talhao-select]');
-    if (!select || !Array.from(select.options).some((option) => String(option.value) === String(talhaoId))) return;
-    select.value = String(talhaoId);
-    select.dispatchEvent(new Event('change', { bubbles: true }));
+    const form = document.querySelector('[data-exclusion-form]');
+    setMapSelectValues(talhaoId, form || document);
 }
 
 function clearDraftForms() {
@@ -614,7 +616,146 @@ function bindMapActionForms() {
     });
 }
 
-function bindMapList(map, talhaoLayers, selectTalhao) {
+function setMapSelectValues(talhaoId, root = document) {
+    const id = String(talhaoId || '');
+    if (!id) return;
+
+    root.querySelectorAll('[data-map-talhao-select]').forEach((select) => {
+        if (!Array.from(select.options).some((option) => String(option.value) === id)) return;
+
+        select.value = id;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+}
+
+function bindTalhaoEditModal(talhoes, mapTools) {
+    const modalEl = document.getElementById('mapTalhaoEditModal');
+    const form = modalEl?.querySelector('[data-map-details-form]');
+    const modal = modalEl && window.bootstrap ? bootstrap.Modal.getOrCreateInstance(modalEl) : null;
+    const talhoesById = new Map((talhoes || []).map((talhao) => [String(talhao.id), talhao]));
+    let activeTalhaoId = null;
+
+    if (!modalEl || !form) {
+        return { open: () => {} };
+    }
+
+    const fields = {
+        id: modalEl.querySelector('[data-map-edit-talhao-id]'),
+        name: modalEl.querySelector('[name="nome"]'),
+        area: modalEl.querySelector('[name="area"]'),
+        description: modalEl.querySelector('[name="descricao"]'),
+        geometry: modalEl.querySelector('[data-map-edit-geometry]'),
+        removePivo: modalEl.querySelector('[data-map-modal-remove-pivo]'),
+    };
+
+    const closeFallback = () => {
+        modalEl.classList.remove('show');
+        modalEl.style.display = 'none';
+        modalEl.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('modal-open');
+    };
+
+    modalEl.querySelectorAll('[data-bs-dismiss="modal"]').forEach((button) => {
+        button.addEventListener('click', () => {
+            if (!modal) closeFallback();
+        });
+    });
+
+    const open = (talhaoId) => {
+        const id = String(talhaoId || '');
+        const talhao = talhoesById.get(id);
+        if (!talhao) return;
+
+        activeTalhaoId = id;
+        const hasPolygon = Array.isArray(talhao.points) && talhao.points.length >= 3;
+        const hasGeometry = hasPolygon || Boolean(talhao.tem_geometria);
+        const actionTemplate = form.dataset.mapActionTemplate || '';
+
+        if (actionTemplate.includes('__ID__')) {
+            form.action = actionTemplate.replace('__ID__', encodeURIComponent(id));
+        }
+
+        if (fields.id) fields.id.value = id;
+        if (fields.name) fields.name.value = talhao.nome || '';
+        if (fields.area) {
+            fields.area.value = formatAreaInput(talhao.area);
+            fields.area.readOnly = hasPolygon;
+            fields.area.title = hasPolygon ? 'Área calculada pelo polígono do mapa.' : '';
+        }
+        if (fields.description) fields.description.value = talhao.descricao || '';
+        if (fields.geometry) {
+            const geometryLabel = talhao.tipo_label || (hasPolygon ? 'Polígono' : 'Manual');
+            fields.geometry.value = hasPolygon
+                ? `${geometryLabel} - com desenho no mapa`
+                : (hasGeometry ? `${geometryLabel} - com referência no mapa` : 'Manual - sem desenho no mapa');
+        }
+        if (fields.removePivo) {
+            fields.removePivo.disabled = !talhao.pivo_ativo;
+            fields.removePivo.title = talhao.pivo_ativo ? 'Remover pivô deste talhão' : 'Este talhão não possui pivô cadastrado';
+        }
+
+        setMapSelectValues(id, document.querySelector('[data-pivo-panel]') || document);
+
+        if (modal) {
+            modal.show();
+        } else {
+            modalEl.style.display = 'block';
+            modalEl.classList.add('show');
+            modalEl.removeAttribute('aria-hidden');
+            document.body.classList.add('modal-open');
+        }
+
+        setTimeout(() => fields.name?.focus(), 180);
+    };
+
+    modalEl.querySelector('[data-map-modal-exclusion]')?.addEventListener('click', () => {
+        const id = activeTalhaoId;
+        if (!id) return;
+
+        modal?.hide();
+        if (!modal) closeFallback();
+
+        setTimeout(() => {
+            if (!mapTools.selectTalhao(id, { openPopup: false })) return;
+            mapTools.startExclusion();
+        }, 180);
+    });
+
+    modalEl.querySelector('[data-map-modal-pivo]')?.addEventListener('click', () => {
+        const id = activeTalhaoId;
+        const panel = document.querySelector('[data-pivo-panel]');
+        if (!id || !panel) return;
+
+        setMapSelectValues(id, panel);
+        modal?.hide();
+        if (!modal) closeFallback();
+        panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    modalEl.querySelector('[data-map-modal-remove-pivo]')?.addEventListener('click', () => {
+        const id = activeTalhaoId;
+        const talhao = id ? talhoesById.get(id) : null;
+        const deleteForm = document.querySelector('[data-pivo-delete-form]');
+        const select = deleteForm?.querySelector('[data-map-talhao-select]');
+        if (!id || !talhao?.pivo_ativo || !deleteForm || !select) return;
+        if (!confirm(`Remover o pivô do talhão ${talhao.nome}?`)) return;
+
+        setMapSelectValues(id, deleteForm);
+        if (typeof deleteForm.requestSubmit === 'function') {
+            deleteForm.requestSubmit();
+        } else {
+            deleteForm.submit();
+        }
+    });
+
+    return { open };
+}
+
+function formatAreaInput(value) {
+    return Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function bindMapList(map, talhaoLayers, selectTalhao, openEditModal) {
     const MAP_MAX_ZOOM = 17;
     document.querySelectorAll('[data-map-focus-talhao]').forEach((button) => {
         button.addEventListener('click', () => {
@@ -636,12 +777,7 @@ function bindMapList(map, talhaoLayers, selectTalhao) {
             const talhaoId = String(button.dataset.mapEditTalhao);
             if (!selectTalhao(talhaoId, { openPopup: false })) return;
 
-            const select = document.querySelector('[data-map-details-form] [data-map-talhao-select]');
-            if (select) {
-                select.value = talhaoId;
-                select.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-            document.querySelector('.ff-map-hidden-forms')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            openEditModal?.(talhaoId);
         });
     });
 }

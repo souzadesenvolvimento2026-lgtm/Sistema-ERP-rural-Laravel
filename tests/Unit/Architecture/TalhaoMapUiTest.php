@@ -47,6 +47,18 @@ class TalhaoMapUiTest extends TestCase
         $this->assertStringContainsString('revert: busy', $javascript);
     }
 
+    public function test_list_edit_action_opens_the_floating_modal_without_scrolling_to_bottom_forms(): void
+    {
+        $view = $this->contents('resources/views/talhoes/partials/mapa-form.blade.php');
+        $javascript = $this->contents('public/js/talhao-mapa.js');
+
+        $this->assertStringContainsString('id="mapTalhaoEditModal"', $view);
+        $this->assertStringContainsString('data-map-details-form', $view);
+        $this->assertStringContainsString('function bindTalhaoEditModal(', $javascript);
+        $this->assertStringContainsString('openEditModal?.(talhaoId)', $javascript);
+        $this->assertStringNotContainsString("document.querySelector('.ff-map-hidden-forms')?.scrollIntoView", $javascript);
+    }
+
     private function contents(string $relativePath): string
     {
         $path = dirname(__DIR__, 3).DIRECTORY_SEPARATOR.str_replace('/', DIRECTORY_SEPARATOR, $relativePath);

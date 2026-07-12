@@ -380,6 +380,25 @@ class TalhaoExcludedAreaTest extends TestCase
             ->assertStatus(405);
     }
 
+    public function test_map_region_prefers_property_city_over_quote_region(): void
+    {
+        $propertyId = $this->propertyId();
+        DB::table('propriedades')->where('id', $propertyId)->update([
+            'municipio' => 'São João da Paraúna',
+            'estado' => 'GO',
+            'regiao_cotacao' => 'Rio Verde/GO (Comigo)',
+        ]);
+        $this->createTalhao($propertyId);
+
+        $response = $this->withSession($this->sessionData($propertyId))
+            ->get('/talhoes/mapa')
+            ->assertOk();
+
+        $cards = $response->viewData('mapCards');
+        $this->assertSame('São João da Paraúna/GO', $cards['regiao']);
+        $this->assertNotSame('Rio Verde/GO (Comigo)', $cards['regiao']);
+    }
+
     private function createTalhao(int $propertyId): int
     {
         DB::table('talhoes')->insert([

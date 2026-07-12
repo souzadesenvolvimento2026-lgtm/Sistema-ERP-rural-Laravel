@@ -32,29 +32,69 @@
     </form>
 </section>
 
+<div class="modal fade ff-talhao-edit-modal" id="mapTalhaoEditModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered ff-talhao-edit-dialog">
+        <form method="POST" class="modal-content ff-talhao-edit-content" data-map-details-form data-map-action-template="{{ url('/talhoes/__ID__/mapa/dados') }}">
+            @csrf
+            <div class="modal-header modal-header-green">
+                <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>Editar talhão</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" data-map-edit-talhao-id>
+
+                <div class="row g-3">
+                    <label class="col-12">
+                        Nome *
+                        <input id="mapEditTalhaoName" name="nome" required maxlength="80" autocomplete="off">
+                    </label>
+
+                    <label class="col-md-5">
+                        Área (ha)
+                        <input id="mapEditTalhaoArea" name="area" inputmode="decimal">
+                    </label>
+
+                    <label class="col-md-7">
+                        Geometria
+                        <input id="mapEditTalhaoGeometry" type="text" readonly data-map-edit-geometry>
+                    </label>
+
+                    <label class="col-12">
+                        Descrição / Localização
+                        <textarea id="mapEditTalhaoDescription" name="descricao" rows="3"></textarea>
+                    </label>
+                </div>
+
+                <div class="ff-talhao-edit-tools">
+                    <strong>Ferramentas do mapa</strong>
+                    <div>
+                        <button class="btn warning" type="button" data-map-modal-exclusion>
+                            <i class="bi bi-scissors"></i>Adicionar área excluída
+                        </button>
+                        <button class="btn btn-info-outline" type="button" data-map-modal-pivo>
+                            <i class="bi bi-record-circle"></i>Criar/editar pivô
+                        </button>
+                        <button class="btn btn-outline-secondary" type="button" data-map-modal-remove-pivo>
+                            <i class="bi bi-x-circle"></i>Remover pivô
+                        </button>
+                    </div>
+                    <small>As áreas excluídas são descontadas da área plantável do talhão.</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn primary"><i class="bi bi-shield-check"></i>Salvar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <section class="panel" data-pivo-panel>
     <div class="panel-head">
         <h2>Ajustes do mapa</h2>
     </div>
 
-    <div class="grid cols-3">
-        <form method="POST" class="stack" data-map-details-form data-map-action-template="{{ url('/talhoes/__ID__/mapa/dados') }}">
-            @csrf
-            <label>
-                Talhão
-                <select data-map-talhao-select required>
-                    <option value="">Selecione...</option>
-                    @foreach ($talhoes as $talhao)
-                        <option value="{{ $talhao['id'] }}" data-nome="{{ $talhao['nome'] }}" data-area="{{ $talhao['area'] }}" data-descricao="{{ $talhao['descricao'] ?? '' }}">{{ $talhao['nome'] }}</option>
-                    @endforeach
-                </select>
-            </label>
-            <label>Nome <input name="nome" maxlength="80" required></label>
-            <label>Área ha <input name="area" inputmode="decimal"></label>
-            <label>Descrição <textarea name="descricao" rows="3"></textarea></label>
-            <button class="btn primary" type="submit">Salvar dados</button>
-        </form>
-
+    <div class="grid two">
         <div class="stack">
             <form method="POST" data-map-action-template="{{ url('/talhoes/__ID__/mapa/pivo') }}">
                 @csrf
@@ -73,7 +113,7 @@
                 <button class="btn primary" type="submit">Salvar pivô</button>
             </form>
 
-            <form method="POST" data-map-action-template="{{ url('/talhoes/__ID__/mapa/pivo') }}">
+            <form method="POST" data-map-action-template="{{ url('/talhoes/__ID__/mapa/pivo') }}" data-pivo-delete-form>
                 @csrf
                 @method('DELETE')
                 <label>

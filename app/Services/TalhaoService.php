@@ -128,16 +128,13 @@ class TalhaoService
                 return $mapa;
             });
 
-        $centro = $talhoes->first(fn ($talhao) => $talhao['lat'] && $talhao['lng']) ?? ['lat' => -15.7801, 'lng' => -47.9292];
+        $centro = $this->centroGeograficoTalhoes($talhoes)
+            ?? $talhoes->first(fn ($talhao) => $talhao['lat'] && $talhao['lng'])
+            ?? ['lat' => -15.7801, 'lng' => -47.9292];
         $areaTotal = (float) $talhoes->sum('area');
         $totalGasto = (float) $talhoes->sum('custo');
         $talhoesGeo = $talhoes->filter(fn ($talhao) => ($talhao['lat'] && $talhao['lng']) || count($talhao['points'] ?? []) >= 3)->count();
-        $regiao = trim((string) ($propriedade->regiao_cotacao ?? ''))
-            ?: trim((string) ($propriedade->municipio ?? ''))
-            ?: 'Regiao da fazenda';
-        if (! empty($propriedade->estado) && stripos($regiao, (string) $propriedade->estado) === false) {
-            $regiao = trim($regiao.' / '.$propriedade->estado, ' /');
-        }
+        $regiao = $this->regiaoGeograficaMapa($propriedade);
 
         return [
             'activeModule' => 'talhoes',
@@ -154,6 +151,41 @@ class TalhaoService
                 'regiao' => $regiao,
                 'coordenadas' => number_format((float) ($centro['lat'] ?? -15.7801), 6, '.', '').', '.number_format((float) ($centro['lng'] ?? -47.9292), 6, '.', ''),
             ],
+        ];
+    }
+
+    private function regiaoGeograficaMapa(object $propriedade): string
+    {
+        $municipio = trim((string) ($propriedade->municipio ?? ''));
+        $estado = strtoupper(trim((string) ($propriedade->estado ?? '')));
+
+        if ($municipio !== '') {
+            return $estado !== '' && stripos($municipio, $estado) === false
+                ? trim($municipio.'/'.$estado, '/')
+                : $municipio;
+        }
+
+        return trim((string) ($propriedade->regiao_cotacao ?? '')) ?: 'Região da fazenda';
+    }
+
+    private function centroGeograficoTalhoes(Collection $talhoes): ?array
+    {
+        $georreferenciados = $talhoes->filter(fn ($talhao) => $talhao['lat'] !== null && $talhao['lng'] !== null);
+        if ($georreferenciados->isEmpty()) {
+            return null;
+        }
+
+        $pesoTotal = (float) $georreferenciados->sum(fn ($talhao) => max(0.0, (float) ($talhao['area'] ?? 0)));
+        if ($pesoTotal <= 0.0) {
+            return [
+                'lat' => (float) $georreferenciados->avg('lat'),
+                'lng' => (float) $georreferenciados->avg('lng'),
+            ];
+        }
+
+        return [
+            'lat' => (float) ($georreferenciados->sum(fn ($talhao) => (float) $talhao['lat'] * max(0.0, (float) ($talhao['area'] ?? 0))) / $pesoTotal),
+            'lng' => (float) ($georreferenciados->sum(fn ($talhao) => (float) $talhao['lng'] * max(0.0, (float) ($talhao['area'] ?? 0))) / $pesoTotal),
         ];
     }
 

@@ -7943,6 +7943,43 @@ button:disabled {
 .ff-talhao-map-label::before { display: none; }
 .ff-map-hidden-forms { display: grid; gap: 16px; padding-bottom: 28px; }
 .ff-map-hidden-forms #polygonFormPanel { scroll-margin-top: 90px; }
+.ff-talhao-edit-dialog { width: min(94vw, 520px); }
+.ff-talhao-edit-content { border-radius: 8px; }
+.ff-talhao-edit-modal .modal-header { min-height: 64px; }
+.ff-talhao-edit-modal .modal-body { padding: 18px; }
+.ff-talhao-edit-modal label { display: grid; gap: 7px; }
+.ff-talhao-edit-modal input[readonly] {
+  color: var(--ff-muted);
+  background: color-mix(in srgb, var(--ff-surface-2) 86%, #94a3b8);
+}
+.ff-talhao-edit-tools {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+.ff-talhao-edit-tools strong {
+  color: var(--ff-text);
+  font-size: 13px;
+  font-weight: 900;
+}
+.ff-talhao-edit-tools > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.ff-talhao-edit-tools .btn {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 13px;
+}
+.ff-talhao-edit-tools .btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+.ff-talhao-edit-tools small {
+  color: var(--ff-muted);
+  font-size: 12px;
+}
 html[data-theme="dark"] .ff-map-list-panel .map-list-item { background: var(--ff-surface); }
 html[data-theme="dark"] .ff-map-list-panel .map-list-edit { background: color-mix(in srgb, var(--ff-accent) 12%, var(--ff-surface)); }
 @media (max-width: 1180px) {
