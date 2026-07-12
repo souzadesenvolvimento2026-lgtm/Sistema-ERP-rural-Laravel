@@ -96,6 +96,23 @@ Deploy de produção continua exigindo main aprovada, CI/homologação e confirm
 
 Enquanto o Laravel ainda estiver em desenvolvimento e o legado continuar sendo o sistema principal, use o fluxo rapido para o servidor `192.168.17.65`.
 
+### Jeito igual ao legado: eu subo no GitHub, voce atualiza no servidor
+
+Depois que a alteracao estiver no GitHub, entre no servidor e rode:
+
+```bash
+cd /home/higor/Sistema-ERP-rural-Laravel
+./deploy/update-development.sh
+```
+
+Isso atualiza a branch `refactor/separacao-regras-negocio` e publica em:
+
+```text
+/var/www/erp-rural/Sistema-ERP-rural-Laravel
+```
+
+Observacao: no Laravel, o Git fica em `/home/higor/Sistema-ERP-rural-Laravel`. A pasta `/var/www/...` e o destino publicado do site, preservando `.env`, `storage/` e `public/uploads/`.
+
 Comando padrao:
 
 ```powershell
