@@ -53,10 +53,10 @@ window.initTalhaoMapa = function initTalhaoMapa(config) {
         map.fitBounds(bounds.pad(0.18), { maxZoom: MAP_MAX_ZOOM });
     }
 
-    configureDraw(map, drawnItems, config.talhoes || []);
+    const drawTools = configureDraw(map, drawnItems, config.talhoes || [], talhaoLayers);
     bindPolygonTargetSelector(config.talhoes || []);
     bindMapActionForms();
-    bindMapList(map, talhaoLayers);
+    bindMapList(map, talhaoLayers, drawTools.selectTalhao);
 
     setTimeout(() => map.invalidateSize(), 120);
 };
@@ -163,9 +163,11 @@ function renderTalhoes(map, talhoes, talhaoLayers, labelsLayer, bounds) {
     });
 }
 
-function configureDraw(map, drawnItems, talhoes) {
+function configureDraw(map, drawnItems, talhoes, talhaoLayers) {
     let drawMode = 'talhao';
     let exclusionTalhaoId = null;
+    let selectedTalhaoId = null;
+    let selectedLayer = null;
     let polygonDrawHandler = null;
     let exclusionDrawHandler = null;
     const drawControl = new L.Control.Draw({
@@ -220,6 +222,61 @@ function configureDraw(map, drawnItems, talhoes) {
         document.querySelector('.leaflet-draw-draw-polygon')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     };
 
+    const exclusionControl = createMapExclusionControl(map, () => {
+        if (selectedTalhaoId) {
+            startDraw('exclusao', selectedTalhaoId);
+        }
+    });
+
+    const selectTalhao = (talhaoId, layer = null) => {
+        const id = String(talhaoId || '');
+        const targetLayer = layer || talhaoLayers.get(id);
+        if (!id || !targetLayer) return;
+
+        if (selectedLayer && selectedLayer !== targetLayer && selectedLayer.__farmFortBaseStyle) {
+            selectedLayer.setStyle?.(selectedLayer.__farmFortBaseStyle);
+        }
+
+        selectedTalhaoId = id;
+        exclusionTalhaoId = id;
+        selectedLayer = targetLayer;
+        selectedLayer.setStyle?.({
+            color: '#00c49a',
+            weight: 4,
+            opacity: 1,
+            fillOpacity: Math.max(Number(selectedLayer.options?.fillOpacity || 0), 0.36),
+        });
+        selectedLayer.bringToFront?.();
+
+        document.querySelectorAll('[data-map-list-talhao]').forEach((item) => {
+            item.classList.toggle('is-selected', String(item.dataset.mapListTalhao) === id);
+        });
+        document.querySelectorAll('[data-map-talhao-select]').forEach((select) => {
+            select.value = id;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+
+        const polygonTarget = document.getElementById('polygonTalhaoId');
+        if (polygonTarget) {
+            polygonTarget.value = id;
+            polygonTarget.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        const talhao = talhoes.find((item) => String(item.id) === id);
+        exclusionControl.show(talhao?.nome || 'talhão selecionado');
+    };
+
+    talhaoLayers.forEach((layer, talhaoId) => {
+        layer.__farmFortBaseStyle = {
+            color: layer.options?.color,
+            weight: layer.options?.weight,
+            opacity: layer.options?.opacity,
+            fillColor: layer.options?.fillColor,
+            fillOpacity: layer.options?.fillOpacity,
+        };
+        layer.on('click', () => selectTalhao(talhaoId, layer));
+    });
+
     document.querySelector('.leaflet-draw-draw-polygon')?.addEventListener('click', () => {
         drawMode = 'talhao';
         exclusionTalhaoId = null;
@@ -227,14 +284,6 @@ function configureDraw(map, drawnItems, talhoes) {
 
     document.getElementById('btnDrawTalhaoTop')?.addEventListener('click', () => {
         startDraw('talhao');
-    });
-
-    document.getElementById('btnDrawExclusionTop')?.addEventListener('click', () => {
-        startDraw('exclusao');
-    });
-
-    document.querySelectorAll('[data-map-draw-exclusion]').forEach((button) => {
-        button.addEventListener('click', () => startDraw('exclusao', button.dataset.mapDrawExclusion));
     });
 
     document.getElementById('btnDrawPivoTop')?.addEventListener('click', () => {
@@ -251,6 +300,54 @@ function configureDraw(map, drawnItems, talhoes) {
         drawMode = 'talhao';
         exclusionTalhaoId = null;
     });
+
+    map.on(L.Draw.Event.DRAWSTART, () => {
+        exclusionControl.setActive(drawMode === 'exclusao');
+    });
+    map.on(L.Draw.Event.DRAWSTOP, () => {
+        exclusionControl.setActive(false);
+    });
+
+    return { selectTalhao };
+}
+
+function createMapExclusionControl(map, onClick) {
+    const control = L.control({ position: 'topleft' });
+    let container = null;
+    let button = null;
+
+    control.onAdd = () => {
+        container = L.DomUtil.create('div', 'leaflet-bar ff-map-exclusion-control');
+        container.hidden = true;
+        button = L.DomUtil.create('button', 'ff-map-exclusion-button', container);
+        button.type = 'button';
+        button.innerHTML = '<i class="bi bi-scissors" aria-hidden="true"></i>';
+        button.setAttribute('aria-label', 'Adicionar área excluída');
+        button.title = 'Adicionar área excluída';
+
+        L.DomEvent.disableClickPropagation(container);
+        L.DomEvent.disableScrollPropagation(container);
+        L.DomEvent.on(button, 'click', (event) => {
+            L.DomEvent.stop(event);
+            onClick();
+        });
+
+        return container;
+    };
+
+    control.addTo(map);
+
+    return {
+        show(talhaoNome) {
+            if (!container || !button) return;
+            container.hidden = false;
+            button.title = `Adicionar área excluída em ${talhaoNome}`;
+            button.setAttribute('aria-label', button.title);
+        },
+        setActive(active) {
+            button?.classList.toggle('is-active', Boolean(active));
+        },
+    };
 }
 
 function bindPolygonTargetSelector(talhoes) {
@@ -298,12 +395,14 @@ function bindMapActionForms() {
     });
 }
 
-function bindMapList(map, talhaoLayers) {
+function bindMapList(map, talhaoLayers, onSelectTalhao) {
     const MAP_MAX_ZOOM = 17;
     document.querySelectorAll('[data-map-focus-talhao]').forEach((button) => {
         button.addEventListener('click', () => {
             const layer = talhaoLayers.get(String(button.dataset.mapFocusTalhao));
             if (!layer) return;
+
+            onSelectTalhao?.(button.dataset.mapFocusTalhao, layer);
 
             if (typeof layer.getBounds === 'function') {
                 map.fitBounds(layer.getBounds().pad(0.35), { maxZoom: MAP_MAX_ZOOM });
@@ -316,6 +415,8 @@ function bindMapList(map, talhaoLayers) {
 
     document.querySelectorAll('[data-map-edit-talhao]').forEach((button) => {
         button.addEventListener('click', () => {
+            const layer = talhaoLayers.get(String(button.dataset.mapEditTalhao));
+            onSelectTalhao?.(button.dataset.mapEditTalhao, layer);
             const select = document.querySelector('[data-map-talhao-select]');
             if (select) {
                 select.value = button.dataset.mapEditTalhao;

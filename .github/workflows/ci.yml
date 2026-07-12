@@ -1,0 +1,93 @@
+name: Validacao FarmFort
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - homologacao/**
+
+permissions:
+  contents: read
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      mariadb:
+        image: mariadb:11.8
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: farmfort_testing
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      APP_ENV: testing
+      APP_KEY: base64:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+      APP_DEBUG: false
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: farmfort_testing
+      DB_USERNAME: root
+      DB_PASSWORD: root
+      CACHE_STORE: array
+      MAIL_MAILER: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+      NOMINATIM_ENABLED: false
+
+    steps:
+      - name: Baixar o codigo
+        uses: actions/checkout@v4
+
+      - name: Preparar PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, pdo_mysql, bcmath, intl, zip
+          coverage: none
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Instalar cliente MariaDB
+        run: sudo apt-get update && sudo apt-get install -y mariadb-client
+
+      - name: Validar Composer
+        run: composer validate --no-check-publish
+
+      - name: Instalar dependencias PHP
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Instalar dependencias frontend
+        run: npm ci
+
+      - name: Gerar frontend
+        run: npm run build
+
+      - name: Preparar banco compativel com producao
+        run: |
+          mariadb -h 127.0.0.1 -P 3306 -u root -proot -e "SET GLOBAL sql_mode='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION,ONLY_FULL_GROUP_BY';"
+          mariadb -h 127.0.0.1 -P 3306 -u root -proot farmfort_testing < database/schema/farmflow-schema.sql
+          php artisan db:seed --class=TestingBaselineSeeder --env=testing --force
+
+      - name: Conferir MariaDB e modo estrito
+        run: php artisan farmfort:verificar-banco --mariadb-version=11.8 --env=testing
+
+      - name: Executar testes
+        run: php artisan test
+
+      - name: Conferir rotas
+        run: php artisan route:list

@@ -14,6 +14,8 @@ use ZipArchive;
 
 class TalhaoService
 {
+    public function __construct(private readonly TalhaoRegiaoService $regiaoService) {}
+
     public function pagina(int $propriedadeId, Request $request): array
     {
         $filtros = $this->filtros($request);
@@ -109,12 +111,9 @@ class TalhaoService
         $areaTotal = (float)$talhoes->sum('area');
         $totalGasto = (float)$talhoes->sum('custo');
         $talhoesGeo = $talhoes->filter(fn ($talhao) => ($talhao['lat'] && $talhao['lng']) || count($talhao['points'] ?? []) >= 3)->count();
-        $regiao = trim((string)($propriedade->regiao_cotacao ?? ''))
-            ?: trim((string)($propriedade->municipio ?? ''))
-            ?: 'Regiao da fazenda';
-        if (!empty($propriedade->estado) && stripos($regiao, (string)$propriedade->estado) === false) {
-            $regiao = trim($regiao.' / '.$propriedade->estado, ' /');
-        }
+        $regiaoTalhoes = $this->regiaoService->calcular($talhoes, $propriedade);
+        $coordenadasRegiao = $regiaoTalhoes['coordenadas']
+            ?? number_format((float)($centro['lat'] ?? -15.7801), 6, '.', '').', '.number_format((float)($centro['lng'] ?? -47.9292), 6, '.', '');
 
         return [
             'activeModule' => 'talhoes',
@@ -129,8 +128,11 @@ class TalhaoService
                 'talhoes_geo' => $talhoesGeo,
                 'area_total' => $areaTotal,
                 'total_gasto' => $totalGasto,
-                'regiao' => $regiao,
-                'coordenadas' => number_format((float)($centro['lat'] ?? -15.7801), 6, '.', '').', '.number_format((float)($centro['lng'] ?? -47.9292), 6, '.', ''),
+                'regiao' => $regiaoTalhoes['regiao'],
+                'coordenadas' => $coordenadasRegiao,
+                'regiao_fonte' => $regiaoTalhoes['fonte'],
+                'regiao_area_ha' => $regiaoTalhoes['area_ha'],
+                'municipios_analisados' => $regiaoTalhoes['municipios_analisados'],
             ],
         ];
     }
@@ -1124,6 +1126,9 @@ class TalhaoService
         $points = $this->normalizarPontos($talhao->coordenadas_json ?? '');
         $lat = $points[0]['lat'] ?? ($talhao->latitude !== null ? (float)$talhao->latitude : null);
         $lng = $points[0]['lng'] ?? ($talhao->longitude !== null ? (float)$talhao->longitude : null);
+        $centro = count($points) >= 3 ? $this->centroide($points) : ['lat' => $lat, 'lng' => $lng];
+        $centroLat = $talhao->latitude !== null ? (float)$talhao->latitude : $centro['lat'];
+        $centroLng = $talhao->longitude !== null ? (float)$talhao->longitude : $centro['lng'];
         $tipo = $talhao->geometria_tipo ?: (count($points) >= 3 ? 'polygon' : 'point');
         $area = (float)$talhao->area;
         $exclusoes = $this->exclusoesTalhao($talhao);
@@ -1140,6 +1145,8 @@ class TalhaoService
             'area_excluida_formatada' => FarmFormat::decimal($talhao->area_excluida_ha ?? 0, 2).' ha',
             'lat' => $lat,
             'lng' => $lng,
+            'centro_lat' => $centroLat,
+            'centro_lng' => $centroLng,
             'tipo' => $tipo,
             'tipo_label' => match ($tipo) {
                 'polygon' => 'Polígono',

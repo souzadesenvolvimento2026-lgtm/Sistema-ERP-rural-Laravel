@@ -396,12 +396,17 @@ class ModuleDataService
             return collect();
         }
 
-        return DB::table('receitas')
+        $normalizadas = DB::table('receitas')
             ->where('propriedade_id', $propertyId)
             ->where('safra_id', $safraId)
             ->where('status', '!=', 'cancelado')
-            ->selectRaw("COALESCE(NULLIF(TRIM(comprador),''),'Sem comprador') as nome, COALESCE(SUM(valor_total),0) as total")
-            ->groupByRaw("COALESCE(NULLIF(TRIM(comprador),''),'Sem comprador')")
+            ->selectRaw("COALESCE(NULLIF(TRIM(comprador),''),'Sem comprador') as nome, valor_total");
+
+        return DB::query()
+            ->fromSub($normalizadas, 'receitas_normalizadas')
+            ->select('nome')
+            ->selectRaw('COALESCE(SUM(valor_total),0) as total')
+            ->groupBy('nome')
             ->orderByDesc('total')
             ->limit(6)
             ->get();

@@ -87,7 +87,8 @@ class AuthSessionController extends Controller
                 'ip' => request()->ip(),
                 'criado_em' => now(),
             ]);
-        } catch (\Throwable) {
+        } catch (\Throwable $exception) {
+            report($exception);
             // Auditoria nao deve impedir login ou logout.
         }
     }

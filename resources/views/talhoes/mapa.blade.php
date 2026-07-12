@@ -25,9 +25,6 @@
                 <button class="btn btn-info-outline" type="button" id="btnDrawPivoTop">
                     <i class="bi bi-record-circle"></i> Pivô
                 </button>
-                <button class="btn btn-warning" type="button" id="btnDrawExclusionTop">
-                    <i class="bi bi-scissors"></i> Área excluída
-                </button>
                 <a class="btn btn-success-outline" href="{{ route('talhoes.index') }}">
                     <i class="bi bi-upload"></i> Importar KML/KMZ/SHP
                 </a>
@@ -60,7 +57,12 @@
             <article class="ff-map-kpi">
                 <span>Região</span>
                 <strong>{{ $cards['regiao'] ?? 'Região da fazenda' }}</strong>
-                <small>{{ $cards['coordenadas'] ?? '-' }}</small>
+                <small>
+                    {{ $cards['coordenadas'] ?? '-' }}
+                    @if (!empty($cards['regiao_fonte']))
+                        &middot; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>
+                    @endif
+                </small>
             </article>
         </div>
 
@@ -85,9 +87,6 @@
                             </button>
                             <button class="map-list-edit" type="button" data-map-edit-talhao="{{ $talhao['id'] }}" title="Editar talhão">
                                 <i class="bi bi-pencil-square"></i>
-                            </button>
-                            <button class="map-list-exclusion" type="button" data-map-draw-exclusion="{{ $talhao['id'] }}" title="Adicionar área excluída">
-                                <i class="bi bi-scissors"></i>
                             </button>
                         </div>
                     @empty

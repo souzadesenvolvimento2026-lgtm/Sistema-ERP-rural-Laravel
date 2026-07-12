@@ -163,6 +163,7 @@ class TalhaoController extends Controller
         try {
             $service->atualizarDadosMapa($talhao, $this->propriedadeId(), $dados, session('usuario_id'));
         } catch (\Throwable $e) {
+            report($e);
             return redirect()->route('talhoes.mapa')->withErrors($e->getMessage());
         }
 
@@ -178,6 +179,7 @@ class TalhaoController extends Controller
         try {
             $service->salvarExclusao($talhao, $this->propriedadeId(), $dados['exclusao_json'], session('usuario_id'));
         } catch (\Throwable $e) {
+            report($e);
             return redirect()->route('talhoes.mapa')->withErrors($e->getMessage());
         }
 
@@ -189,6 +191,7 @@ class TalhaoController extends Controller
         try {
             $service->limparExclusoes($talhao, $this->propriedadeId(), session('usuario_id'));
         } catch (\Throwable $e) {
+            report($e);
             return redirect()->route('talhoes.mapa')->withErrors($e->getMessage());
         }
 
@@ -206,6 +209,7 @@ class TalhaoController extends Controller
         try {
             $service->salvarPivo($talhao, $this->propriedadeId(), $dados, session('usuario_id'));
         } catch (\Throwable $e) {
+            report($e);
             return redirect()->route('talhoes.mapa')->withErrors($e->getMessage());
         }
 
@@ -224,6 +228,7 @@ class TalhaoController extends Controller
         try {
             $service->criarPivoComoTalhao($this->propriedadeId(), $dados, session('usuario_id'));
         } catch (\Throwable $e) {
+            report($e);
             return redirect()->route('talhoes.mapa')->withErrors($e->getMessage());
         }
 
@@ -235,6 +240,7 @@ class TalhaoController extends Controller
         try {
             $service->removerPivo($talhao, $this->propriedadeId(), session('usuario_id'));
         } catch (\Throwable $e) {
+            report($e);
             return redirect()->route('talhoes.mapa')->withErrors($e->getMessage());
         }
 

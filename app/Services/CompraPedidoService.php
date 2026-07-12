@@ -792,7 +792,7 @@ class CompraPedidoService
 
         DB::table('categorias')->insert([
             'nome' => 'Pedidos Fiscais',
-            'tipo' => 'despesa',
+            'tipo' => 'outros',
             'cor' => '#0f8d4d',
             'ativo' => 1,
         ]);

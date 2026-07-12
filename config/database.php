@@ -59,6 +59,8 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
+            'dump_binary' => env('DB_DUMP_BINARY', 'mariadb-dump'),
+            'client_binary' => env('DB_CLIENT_BINARY', 'mariadb'),
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
@@ -79,6 +81,8 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
+            'dump_binary' => env('DB_DUMP_BINARY', 'mariadb-dump'),
+            'client_binary' => env('DB_CLIENT_BINARY', 'mariadb'),
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],

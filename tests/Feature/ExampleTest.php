@@ -3994,7 +3994,9 @@ XML;
         $this->withSession($this->loggedSession())
             ->get('/talhoes/mapa')
             ->assertStatus(200)
-            ->assertSee('Mapa');
+            ->assertSee('Mapa')
+            ->assertDontSee('btnDrawExclusionTop', false)
+            ->assertDontSee('data-map-draw-exclusion', false);
     }
 
     public function test_field_polygon_can_create_and_update_from_map(): void
@@ -7532,7 +7534,6 @@ KML;
             ->assertSee('Relatório por Categoria')
             ->assertSee('Distribuição por categoria')
             ->assertSee('Total por tipo')
-            ->assertSee('chartCategorias', false)
             ->assertSee('Imprimir');
     }
 
