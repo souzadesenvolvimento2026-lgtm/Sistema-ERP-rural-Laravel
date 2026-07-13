@@ -10547,6 +10547,370 @@ html[data-theme="dark"] .ff-bank-modal .modal-content {
   background: var(--ff-surface);
 }
 
+/* Propriedades / Fazendas - painel administrativo */
+.ff-property-page {
+  display: grid;
+  gap: 18px;
+}
+
+.ff-property-admin-card {
+  overflow: hidden;
+}
+
+.ff-property-admin-head {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  min-height: 62px;
+}
+
+.ff-property-admin-head h2 {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  margin: 0;
+}
+
+.ff-property-admin-head h2 i {
+  color: var(--ff-accent-strong);
+}
+
+.ff-property-toolbar,
+.ff-property-row-actions {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.ff-property-warning-btn {
+  border-color: color-mix(in srgb, var(--ff-warning) 45%, var(--ff-border)) !important;
+  color: var(--ff-warning) !important;
+}
+
+.ff-property-warning-btn.is-active,
+.ff-property-warning-btn:hover {
+  background: var(--ff-warning) !important;
+  border-color: var(--ff-warning) !important;
+  color: #111827 !important;
+}
+
+.ff-property-table-wrap {
+  overflow-x: auto;
+}
+
+.ff-property-table {
+  min-width: 1580px;
+}
+
+.ff-property-table th,
+.ff-property-table td {
+  padding: 11px 10px;
+  vertical-align: middle;
+}
+
+.ff-property-table th {
+  color: var(--ff-accent-strong);
+  font-size: 12px;
+  text-transform: none;
+}
+
+.ff-property-table td {
+  font-size: 13px;
+}
+
+.ff-property-table small,
+.ff-property-quote-cell small {
+  color: var(--ff-muted);
+  display: block;
+  font-size: 11px;
+  line-height: 1.35;
+  margin-top: 2px;
+}
+
+.ff-property-name-cell {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+  min-width: 180px;
+}
+
+.ff-property-name-cell strong {
+  color: var(--ff-text);
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.ff-property-badge {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 950;
+  line-height: 1;
+  min-height: 20px;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.ff-property-badge.is-active {
+  background: var(--ff-accent-soft);
+  color: var(--ff-accent-strong);
+}
+
+.ff-property-badge.is-inactive,
+.ff-property-badge.is-muted {
+  background: var(--ff-surface-3);
+  color: var(--ff-muted);
+}
+
+.ff-property-badge.is-plan {
+  background: color-mix(in srgb, #2563eb 13%, var(--ff-surface));
+  color: #2563eb;
+}
+
+.ff-property-quote-cell strong {
+  color: var(--ff-text);
+  display: block;
+  font-weight: 900;
+}
+
+.ff-property-modal .modal-content {
+  background: var(--ff-surface);
+  border-color: var(--ff-border-strong);
+  color: var(--ff-text);
+  overflow: hidden;
+}
+
+.ff-property-dialog {
+  max-width: min(94vw, 980px);
+  width: min(94vw, 980px);
+}
+
+.ff-property-status-dialog {
+  max-width: min(94vw, 560px);
+}
+
+.ff-property-modal .modal-header {
+  min-height: 66px;
+  padding: 16px 18px;
+}
+
+.ff-property-modal .modal-title {
+  color: #fff;
+  font-size: 20px;
+  font-weight: 950;
+}
+
+.ff-modal-header-danger {
+  background: #b91c1c;
+  color: #fff;
+}
+
+.ff-modal-header-danger .btn-close {
+  filter: invert(1);
+}
+
+.ff-property-modal .modal-body {
+  max-height: min(76vh, 780px);
+  overflow-y: auto;
+  padding: 18px;
+}
+
+.ff-property-modal .modal-footer {
+  background: color-mix(in srgb, var(--ff-surface-2) 74%, transparent);
+  padding: 14px 18px;
+}
+
+.ff-property-form-grid {
+  display: grid;
+  gap: 14px 16px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.ff-property-field {
+  display: grid;
+  gap: 7px;
+}
+
+.ff-property-field.span-2 { grid-column: span 2; }
+.ff-property-field.span-3 { grid-column: span 3; }
+.ff-property-field.span-6,
+.ff-property-switch.span-6,
+.ff-property-note.span-6 { grid-column: 1 / -1; }
+
+.ff-property-field span,
+.ff-property-section-label,
+.ff-property-switch label span {
+  color: var(--ff-text);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.ff-property-field input,
+.ff-property-field select,
+.ff-property-field textarea,
+.ff-property-new-user-row input,
+.ff-property-new-user-row select,
+.ff-property-user-row input,
+.ff-property-user-row select {
+  background: var(--ff-surface);
+  border: 1px solid var(--ff-border-strong);
+  border-radius: 8px;
+  color: var(--ff-text);
+  min-height: 40px;
+  padding: 8px 12px;
+  width: 100%;
+}
+
+.ff-property-field input:focus,
+.ff-property-field select:focus,
+.ff-property-new-user-row input:focus,
+.ff-property-new-user-row select:focus,
+.ff-property-user-row input:focus,
+.ff-property-user-row select:focus {
+  border-color: var(--ff-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ff-accent) 18%, transparent);
+  outline: none;
+}
+
+.ff-property-field small,
+.ff-property-switch small,
+.ff-property-new-users small {
+  color: var(--ff-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ff-property-switch {
+  display: grid;
+  gap: 5px;
+}
+
+.ff-property-switch label {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+}
+
+.ff-property-note,
+.ff-property-danger-note {
+  border: 1px solid color-mix(in srgb, var(--ff-accent) 22%, var(--ff-border));
+  border-radius: 8px;
+  color: var(--ff-text);
+  line-height: 1.5;
+  padding: 14px 16px;
+}
+
+.ff-property-note {
+  background: color-mix(in srgb, var(--ff-accent) 8%, var(--ff-surface));
+}
+
+.ff-property-danger-note {
+  background: var(--ff-danger-soft);
+  border-color: color-mix(in srgb, var(--ff-danger) 35%, var(--ff-border));
+}
+
+.ff-property-users-block {
+  border-top: 1px solid var(--ff-border);
+  margin-top: 18px;
+  padding-top: 16px;
+}
+
+.ff-property-users-block h6 {
+  color: var(--ff-accent-strong);
+  font-size: 14px;
+  font-weight: 950;
+  margin: 0 0 12px;
+}
+
+.ff-property-linked-users,
+.ff-property-user-columns {
+  display: grid;
+  gap: 12px;
+}
+
+.ff-property-user-row {
+  background: color-mix(in srgb, var(--ff-surface-2) 86%, transparent);
+  border: 1px solid var(--ff-border);
+  border-radius: 10px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1.25fr 1.4fr 1fr 1fr;
+  padding: 12px;
+}
+
+.ff-property-user-row label {
+  display: grid;
+  gap: 6px;
+}
+
+.ff-property-user-row label span {
+  color: var(--ff-muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.ff-property-user-columns {
+  grid-template-columns: minmax(280px, .8fr) minmax(420px, 1.2fr);
+  margin-top: 14px;
+}
+
+.ff-property-new-users {
+  display: grid;
+  gap: 8px;
+}
+
+.ff-property-new-user-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1.2fr .85fr .95fr;
+}
+
+.ff-property-empty-users {
+  color: var(--ff-muted);
+  font-size: 13px;
+  margin: 0;
+}
+
+html[data-theme="dark"] .ff-property-badge.is-plan {
+  color: #8ab6ff;
+}
+
+html[data-theme="dark"] .ff-property-field input,
+html[data-theme="dark"] .ff-property-field select,
+html[data-theme="dark"] .ff-property-field textarea,
+html[data-theme="dark"] .ff-property-new-user-row input,
+html[data-theme="dark"] .ff-property-new-user-row select,
+html[data-theme="dark"] .ff-property-user-row input,
+html[data-theme="dark"] .ff-property-user-row select {
+  background: var(--ff-surface-2);
+}
+
+@media (max-width: 980px) {
+  .ff-property-admin-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ff-property-user-columns {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .ff-property-form-grid,
+  .ff-property-user-row,
+  .ff-property-new-user-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ff-property-field.span-2,
+  .ff-property-field.span-3 {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 1180px) {
   .ff-bank-grid {
     grid-template-columns: 1fr;

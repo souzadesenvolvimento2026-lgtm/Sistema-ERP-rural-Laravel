@@ -36,11 +36,19 @@ class PropriedadeController extends Controller
     {
         $dados = $request->validate($this->validationRules());
 
-        $service->criar($dados, $request->file('kml_area'), session('usuario_id'));
+        try {
+            $service->criar($dados, $request->file('kml_area'), session('usuario_id'));
+        } catch (RuntimeException $exception) {
+            report($exception);
+
+            return back()
+                ->withInput()
+                ->withErrors($exception->getMessage());
+        }
 
         return redirect()
             ->route('propriedades.index')
-            ->with('success', 'Propriedade criada pelo Laravel.');
+            ->with('success', 'Propriedade criada.');
     }
 
     public function update(Request $request, int $propriedade, PropriedadeService $service): RedirectResponse
@@ -62,9 +70,21 @@ class PropriedadeController extends Controller
             ->with('success', 'Propriedade atualizada.');
     }
 
-    public function toggleStatus(int $propriedade, PropriedadeService $service): RedirectResponse
+    public function toggleStatus(Request $request, int $propriedade, PropriedadeService $service): RedirectResponse
     {
-        $ativo = $service->alternarStatus($propriedade);
+        $dados = $request->validate([
+            'admin_password' => ['required', 'string'],
+        ]);
+
+        try {
+            $ativo = $service->alternarStatus($propriedade, $dados['admin_password'], session('usuario_id'));
+        } catch (RuntimeException $exception) {
+            report($exception);
+
+            return back()
+                ->withInput()
+                ->withErrors($exception->getMessage());
+        }
 
         return redirect()
             ->route('propriedades.index', ['status' => $ativo ? 'ativas' : 'inativas'])
@@ -88,6 +108,20 @@ class PropriedadeController extends Controller
             'regiao_cotacao' => ['nullable', 'string', 'max:160'],
             'aprovador_usuario_id' => ['nullable', 'integer'],
             'kml_area' => ['nullable', 'file', 'mimes:kml,kmz,shp,zip'],
+            'usuarios_existentes' => ['nullable', 'array'],
+            'usuarios_existentes.*' => ['nullable', 'integer'],
+            'usuarios_vinculados' => ['nullable', 'array'],
+            'usuarios_vinculados.*.id' => ['nullable', 'integer'],
+            'usuarios_vinculados.*.nome' => ['nullable', 'string', 'max:150'],
+            'usuarios_vinculados.*.email' => ['nullable', 'email', 'max:190'],
+            'usuarios_vinculados.*.senha' => ['nullable', 'string', 'min:6'],
+            'usuarios_vinculados.*.perfil' => ['nullable', 'string', 'max:50'],
+            'novos_usuarios' => ['nullable', 'array', 'max:3'],
+            'novos_usuarios.*.nome' => ['nullable', 'string', 'max:150'],
+            'novos_usuarios.*.email' => ['nullable', 'email', 'max:190'],
+            'novos_usuarios.*.senha' => ['nullable', 'string', 'min:6'],
+            'novos_usuarios.*.perfil' => ['nullable', 'string', 'max:50'],
+            'modal_id' => ['nullable', 'string', 'max:80'],
         ];
     }
 }
