@@ -259,6 +259,25 @@ class TalhaoService
             abort_if(! $talhao, 404);
             $this->assertMapMutationAllowed($talhao, $propriedadeId, 'exclusao_json');
 
+            $geometrias = $this->geometriasTalhao($talhao);
+            if (count($geometrias) > 1) {
+                $salvou = $this->salvarExclusaoEmGeometriaComposta($talhao, $propriedadeId, $geometrias, $exclusion);
+                if (! $salvou) {
+                    return;
+                }
+
+                $this->auditarObrigatorio(
+                    $usuarioId,
+                    'criar_exclusao_talhao',
+                    'talhoes',
+                    $talhaoId,
+                    $propriedadeId,
+                    'Area excluida adicionada ao talhao '.$talhao->nome,
+                );
+
+                return;
+            }
+
             try {
                 $outer = $this->geometry->normalizeRing($this->pontosTalhao($talhao));
             } catch (InvalidPolygon $exception) {
@@ -322,6 +341,38 @@ class TalhaoService
                 ->first();
             abort_if(! $talhao, 404);
             $this->assertMapMutationAllowed($talhao, $propriedadeId, 'exclusao_json');
+
+            $geometrias = $this->geometriasTalhao($talhao);
+            if (count($geometrias) > 1) {
+                foreach ($geometrias as $indice => $geometria) {
+                    $geometrias[$indice]['exclusions'] = [];
+                }
+
+                [$coordenadasJson, $exclusoesJson] = $this->serializarGeometrias($geometrias);
+                $areas = $this->areasGeometrias($geometrias);
+
+                DB::table('talhoes')
+                    ->where('id', $talhaoId)
+                    ->where('propriedade_id', $propriedadeId)
+                    ->update([
+                        'coordenadas_json' => $coordenadasJson,
+                        'exclusoes_json' => $exclusoesJson,
+                        'area' => $areas['liquida'],
+                        'area_bruta' => $areas['bruta'],
+                        'area_excluida_ha' => 0,
+                    ]);
+
+                $this->auditarObrigatorio(
+                    $usuarioId,
+                    'limpar_exclusoes_talhao',
+                    'talhoes',
+                    $talhaoId,
+                    $propriedadeId,
+                    'Areas excluidas removidas do talhao '.$talhao->nome,
+                );
+
+                return;
+            }
 
             $outer = $this->pontosTalhao($talhao);
             $area = count($outer) >= 3 ? $this->areaHa($outer) : (float) ($talhao->area ?? 0);
@@ -583,10 +634,23 @@ class TalhaoService
                 'descricao' => $this->descricaoComNota($destino->descricao, $notaDestino),
             ];
 
+            $geometrias = $this->geometriasParaUnificacao(collect([$destino])->merge($origens));
+            if ($geometrias !== []) {
+                [$coordenadasJson, $exclusoesJson] = $this->serializarGeometrias($geometrias);
+                $centro = $this->centroideGeometrias($geometrias);
+                $payloadDestino['geometria_tipo'] = 'polygon';
+                $payloadDestino['coordenadas_json'] = $coordenadasJson;
+                $payloadDestino['exclusoes_json'] = $exclusoesJson;
+                $payloadDestino['latitude'] = $centro['lat'];
+                $payloadDestino['longitude'] = $centro['lng'];
+            }
+
             if ($somarArea) {
                 $payloadDestino['area'] = (float) ($destino->area ?? 0) + $origens->sum(fn ($talhao) => (float) ($talhao->area ?? 0));
                 $payloadDestino['area_bruta'] = (float) ($destino->area_bruta ?? $destino->area ?? 0)
                     + $origens->sum(fn ($talhao) => (float) ($talhao->area_bruta ?? $talhao->area ?? 0));
+                $payloadDestino['area_excluida_ha'] = (float) ($destino->area_excluida_ha ?? 0)
+                    + $origens->sum(fn ($talhao) => (float) ($talhao->area_excluida_ha ?? 0));
             }
 
             DB::table('talhoes')
@@ -1376,12 +1440,15 @@ class TalhaoService
 
     private function talhaoMapa($talhao): array
     {
-        $points = $this->normalizarPontos($talhao->coordenadas_json ?? '');
-        $lat = $points[0]['lat'] ?? ($talhao->latitude !== null ? (float) $talhao->latitude : null);
-        $lng = $points[0]['lng'] ?? ($talhao->longitude !== null ? (float) $talhao->longitude : null);
+        $geometrias = $this->geometriasTalhao($talhao);
+        $points = $geometrias[0]['points'] ?? $this->normalizarPontos($talhao->coordenadas_json ?? '');
+        $centro = $geometrias !== [] ? $this->centroideGeometrias($geometrias) : null;
+        $lat = $talhao->latitude !== null ? (float) $talhao->latitude : ($centro['lat'] ?? ($points[0]['lat'] ?? null));
+        $lng = $talhao->longitude !== null ? (float) $talhao->longitude : ($centro['lng'] ?? ($points[0]['lng'] ?? null));
         $tipo = $talhao->geometria_tipo ?: (count($points) >= 3 ? 'polygon' : 'point');
         $area = (float) $talhao->area;
         $exclusoes = $this->exclusoesTalhao($talhao);
+        $geometriasCount = count($geometrias);
         $downloadUrl = route('talhoes.exportar-talhao', ['talhao' => (int) $talhao->id]);
 
         return [
@@ -1397,13 +1464,15 @@ class TalhaoService
             'lng' => $lng,
             'tipo' => $tipo,
             'tipo_label' => match ($tipo) {
-                'polygon' => 'Polígono',
+                'polygon' => $geometriasCount > 1 ? 'Poligono composto' : 'Polígono',
                 'line' => 'Linha',
                 'point' => 'Ponto',
                 default => 'Manual',
             },
-            'tem_geometria' => ($lat !== null && $lng !== null) || count($points) >= 2,
+            'tem_geometria' => ($lat !== null && $lng !== null) || count($points) >= 2 || $geometriasCount > 0,
             'points' => $points,
+            'geometries' => $geometrias,
+            'geometrias_count' => $geometriasCount,
             'exclusoes' => $exclusoes,
             'exclusoes_count' => count($exclusoes),
             'pivo_ativo' => (int) ($talhao->pivo_ativo ?? 0) === 1,
@@ -1429,6 +1498,31 @@ class TalhaoService
             return [];
         }
 
+        if (isset($decoded['geometries']) && is_array($decoded['geometries'])) {
+            $firstGeometry = $decoded['geometries'][0] ?? [];
+
+            return $this->normalizarListaPontos(is_array($firstGeometry) ? ($firstGeometry['points'] ?? []) : []);
+        }
+
+        if (isset($decoded['points']) && is_array($decoded['points'])) {
+            return $this->normalizarListaPontos($decoded['points']);
+        }
+
+        if (! $this->pareceListaPontos($decoded)) {
+            foreach ($decoded as $item) {
+                if (is_array($item) && $this->pareceListaPontos($item)) {
+                    return $this->normalizarListaPontos($item);
+                }
+            }
+
+            return [];
+        }
+
+        return $this->normalizarListaPontos($decoded);
+    }
+
+    private function normalizarListaPontos(array $decoded): array
+    {
         $points = [];
         foreach ($decoded as $point) {
             if (! is_array($point)) {
@@ -1444,6 +1538,19 @@ class TalhaoService
         return $points;
     }
 
+    private function pareceListaPontos(array $decoded): bool
+    {
+        foreach ($decoded as $point) {
+            return is_array($point)
+                && (
+                    (isset($point['lat'], $point['lng']) && is_numeric($point['lat']) && is_numeric($point['lng']))
+                    || (isset($point[0], $point[1]) && is_numeric($point[0]) && is_numeric($point[1]))
+                );
+        }
+
+        return false;
+    }
+
     private function pontosTalhao($talhao): array
     {
         $points = $this->normalizarPontos($talhao->coordenadas_json ?? '');
@@ -1454,9 +1561,71 @@ class TalhaoService
         return $points;
     }
 
+    private function geometriasTalhao($talhao): array
+    {
+        return $this->normalizarGeometrias(
+            $talhao->coordenadas_json ?? '',
+            $this->exclusoesJsonRings($talhao->exclusoes_json ?? null),
+        );
+    }
+
+    private function normalizarGeometrias($json, array $fallbackExclusoes = []): array
+    {
+        $decoded = is_string($json) ? json_decode($json, true) : $json;
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $candidatas = [];
+        if (isset($decoded['geometries']) && is_array($decoded['geometries'])) {
+            $candidatas = $decoded['geometries'];
+        } elseif (isset($decoded['points']) && is_array($decoded['points'])) {
+            $candidatas = [$decoded];
+        } elseif ($this->pareceListaPontos($decoded)) {
+            $candidatas = [['points' => $decoded, 'exclusions' => $fallbackExclusoes]];
+        } else {
+            foreach ($decoded as $item) {
+                if (is_array($item) && (isset($item['points']) || $this->pareceListaPontos($item))) {
+                    $candidatas[] = isset($item['points'])
+                        ? $item
+                        : ['points' => $item, 'exclusions' => []];
+                }
+            }
+        }
+
+        $geometrias = [];
+        foreach ($candidatas as $candidata) {
+            if (! is_array($candidata)) {
+                continue;
+            }
+
+            $points = $this->normalizarListaPontos($candidata['points'] ?? $candidata);
+            if (count($points) < 3) {
+                continue;
+            }
+
+            $geometrias[] = [
+                'points' => $points,
+                'exclusions' => $this->exclusoesJsonRings($candidata['exclusions'] ?? []),
+            ];
+        }
+
+        return $geometrias;
+    }
+
     private function exclusoesTalhao($talhao): array
     {
-        $decoded = is_string($talhao->exclusoes_json ?? null) ? json_decode($talhao->exclusoes_json, true) : [];
+        $geometrias = $this->geometriasTalhao($talhao);
+        if (count($geometrias) > 1) {
+            return $this->flattenExclusoesGeometrias($geometrias);
+        }
+
+        return $this->exclusoesJsonRings($talhao->exclusoes_json ?? null);
+    }
+
+    private function exclusoesJsonRings($json): array
+    {
+        $decoded = is_string($json) ? json_decode($json, true) : $json;
         if (! is_array($decoded)) {
             return [];
         }
@@ -1474,6 +1643,10 @@ class TalhaoService
 
     private function exclusoesTalhaoEstritas($talhao): array
     {
+        if (count($this->geometriasTalhao($talhao)) > 1) {
+            throw new RuntimeException('Talhao composto deve ser ajustado pelo editor de areas excluidas.');
+        }
+
         if ($talhao->exclusoes_json === null || trim((string) $talhao->exclusoes_json) === '') {
             return [];
         }
@@ -1492,6 +1665,150 @@ class TalhaoService
 
             throw new RuntimeException('As áreas excluídas existentes estão corrompidas.', previous: $exception);
         }
+    }
+
+    private function geometriasParaUnificacao(Collection $talhoes): array
+    {
+        $geometrias = [];
+        foreach ($talhoes as $talhao) {
+            foreach ($this->geometriasTalhao($talhao) as $geometria) {
+                $geometrias[] = $geometria;
+            }
+        }
+
+        return $geometrias;
+    }
+
+    private function serializarGeometrias(array $geometrias): array
+    {
+        $geometrias = array_values(array_filter($geometrias, fn (array $geometria) => count($geometria['points'] ?? []) >= 3));
+        if ($geometrias === []) {
+            return [null, null];
+        }
+
+        if (count($geometrias) === 1) {
+            return [
+                json_encode($geometrias[0]['points'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                ($geometrias[0]['exclusions'] ?? []) !== []
+                    ? json_encode($geometrias[0]['exclusions'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                    : null,
+            ];
+        }
+
+        return [
+            json_encode([
+                'type' => 'MultiPolygon',
+                'geometries' => array_map(fn (array $geometria) => [
+                    'points' => array_values($geometria['points']),
+                    'exclusions' => array_values($geometria['exclusions'] ?? []),
+                ], $geometrias),
+            ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            null,
+        ];
+    }
+
+    private function centroideGeometrias(array $geometrias): array
+    {
+        $points = [];
+        foreach ($geometrias as $geometria) {
+            $points = array_merge($points, $geometria['points'] ?? []);
+        }
+
+        if ($points === []) {
+            return ['lat' => null, 'lng' => null];
+        }
+
+        return [
+            'lat' => array_sum(array_column($points, 'lat')) / count($points),
+            'lng' => array_sum(array_column($points, 'lng')) / count($points),
+        ];
+    }
+
+    private function flattenExclusoesGeometrias(array $geometrias): array
+    {
+        $exclusoes = [];
+        foreach ($geometrias as $geometria) {
+            foreach (($geometria['exclusions'] ?? []) as $ring) {
+                if (count($ring) >= 3) {
+                    $exclusoes[] = $ring;
+                }
+            }
+        }
+
+        return $exclusoes;
+    }
+
+    private function areasGeometrias(array $geometrias): array
+    {
+        $areas = ['bruta' => 0.0, 'excluida' => 0.0, 'liquida' => 0.0];
+        foreach ($geometrias as $geometria) {
+            $points = $geometria['points'] ?? [];
+            if (count($points) < 3) {
+                continue;
+            }
+
+            try {
+                $breakdown = $this->geometry->areaBreakdown(
+                    $this->geometry->normalizeRing($points),
+                    array_map(fn (array $ring) => $this->geometry->normalizeRing($ring), $geometria['exclusions'] ?? []),
+                );
+            } catch (InvalidPolygon $exception) {
+                $bruta = $this->areaHa($points);
+                $breakdown = ['bruta' => $bruta, 'excluida' => 0.0, 'liquida' => $bruta];
+            }
+
+            $areas['bruta'] += (float) $breakdown['bruta'];
+            $areas['excluida'] += (float) $breakdown['excluida'];
+            $areas['liquida'] += (float) $breakdown['liquida'];
+        }
+
+        return [
+            'bruta' => round($areas['bruta'], 2),
+            'excluida' => round($areas['excluida'], 2),
+            'liquida' => round($areas['liquida'], 2),
+        ];
+    }
+
+    private function salvarExclusaoEmGeometriaComposta($talhao, int $propriedadeId, array $geometrias, array $exclusion): bool
+    {
+        foreach ($geometrias as $indice => $geometria) {
+            try {
+                $outer = $this->geometry->normalizeRing($geometria['points'] ?? []);
+                $existingRings = array_map(
+                    fn (array $ring) => $this->geometry->normalizeRing($ring),
+                    $geometria['exclusions'] ?? [],
+                );
+                $this->geometry->areaBreakdown($outer, $existingRings);
+                $rings = $this->geometry->appendExclusion($outer, $existingRings, $exclusion);
+            } catch (InvalidPolygon $exception) {
+                continue;
+            }
+
+            if ($rings === $existingRings) {
+                return false;
+            }
+
+            $geometrias[$indice]['exclusions'] = $rings;
+            [$coordenadasJson, $exclusoesJson] = $this->serializarGeometrias($geometrias);
+            $areas = $this->areasGeometrias($geometrias);
+
+            DB::table('talhoes')
+                ->where('id', (int) $talhao->id)
+                ->where('propriedade_id', $propriedadeId)
+                ->update([
+                    'coordenadas_json' => $coordenadasJson,
+                    'exclusoes_json' => $exclusoesJson,
+                    'area' => $areas['liquida'],
+                    'area_bruta' => $areas['bruta'],
+                    'area_excluida_ha' => $areas['excluida'],
+                ]);
+
+            return true;
+        }
+
+        throw ValidationException::withMessages([
+            'exclusao_json' => 'A area excluida precisa ficar dentro de uma das partes do talhao unificado.',
+        ]);
     }
 
     private function tipoGeo($talhao, array $points): string
@@ -1543,19 +1860,15 @@ class TalhaoService
     private function kmlGeometry($talhao, array $points, string $type): string
     {
         if ($type === 'polygon') {
-            if ($points[0] !== end($points)) {
-                $points[] = $points[0];
+            $geometrias = $this->geometriasTalhao($talhao);
+            if (count($geometrias) > 1) {
+                return '<MultiGeometry>'.implode('', array_map(
+                    fn (array $geometria) => $this->kmlPolygonGeometry($geometria['points'], $geometria['exclusions'] ?? []),
+                    $geometrias
+                )).'</MultiGeometry>';
             }
 
-            $inner = '';
-            foreach ($this->exclusoesTalhao($talhao) as $ring) {
-                if ($ring[0] !== end($ring)) {
-                    $ring[] = $ring[0];
-                }
-                $inner .= '<innerBoundaryIs><LinearRing><coordinates>'.$this->kmlCoordinates($ring).'</coordinates></LinearRing></innerBoundaryIs>';
-            }
-
-            return '<Polygon><outerBoundaryIs><LinearRing><coordinates>'.$this->kmlCoordinates($points).'</coordinates></LinearRing></outerBoundaryIs>'.$inner.'</Polygon>';
+            return $this->kmlPolygonGeometry($points, $this->exclusoesTalhao($talhao));
         }
 
         if ($type === 'line') {
@@ -1563,6 +1876,23 @@ class TalhaoService
         }
 
         return '<Point><coordinates>'.$this->kmlCoordinates([$points[0]]).'</coordinates></Point>';
+    }
+
+    private function kmlPolygonGeometry(array $points, array $exclusions = []): string
+    {
+        if ($points[0] !== end($points)) {
+            $points[] = $points[0];
+        }
+
+        $inner = '';
+        foreach ($exclusions as $ring) {
+            if ($ring[0] !== end($ring)) {
+                $ring[] = $ring[0];
+            }
+            $inner .= '<innerBoundaryIs><LinearRing><coordinates>'.$this->kmlCoordinates($ring).'</coordinates></LinearRing></innerBoundaryIs>';
+        }
+
+        return '<Polygon><outerBoundaryIs><LinearRing><coordinates>'.$this->kmlCoordinates($points).'</coordinates></LinearRing></outerBoundaryIs>'.$inner.'</Polygon>';
     }
 
     private function pivoPlacemark($talhao): string
@@ -1619,16 +1949,34 @@ class TalhaoService
         abort_if(! $type || ! $points, 422, 'Este talhao nao possui geometria para exportar.');
 
         if ($type === 'polygon') {
-            if ($points[0] !== end($points)) {
-                $points[] = $points[0];
-            }
             $shapeType = 5;
-            $rings = [$points];
-            foreach ($this->exclusoesTalhao($talhao) as $ring) {
-                if ($ring[0] !== end($ring)) {
-                    $ring[] = $ring[0];
+            $rings = [];
+            $geometrias = $this->geometriasTalhao($talhao);
+            if (count($geometrias) > 1) {
+                foreach ($geometrias as $geometria) {
+                    $outer = $geometria['points'];
+                    if ($outer[0] !== end($outer)) {
+                        $outer[] = $outer[0];
+                    }
+                    $rings[] = $outer;
+                    foreach (($geometria['exclusions'] ?? []) as $ring) {
+                        if ($ring[0] !== end($ring)) {
+                            $ring[] = $ring[0];
+                        }
+                        $rings[] = $ring;
+                    }
                 }
-                $rings[] = $ring;
+            } else {
+                if ($points[0] !== end($points)) {
+                    $points[] = $points[0];
+                }
+                $rings[] = $points;
+                foreach ($this->exclusoesTalhao($talhao) as $ring) {
+                    if ($ring[0] !== end($ring)) {
+                        $ring[] = $ring[0];
+                    }
+                    $rings[] = $ring;
+                }
             }
             $shapePoints = array_merge(...$rings);
         } elseif ($type === 'line') {

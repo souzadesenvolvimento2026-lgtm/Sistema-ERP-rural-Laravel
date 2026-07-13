@@ -24,7 +24,9 @@
                 <strong><i class="bi bi-intersect"></i> Unificar / corrigir talhões</strong>
                 <span>Use quando dois ou mais talhões foram cadastrados separados e precisam virar um só.</span>
             </div>
-            <a class="btn btn-warning" href="#talhoesUnificacao"><i class="bi bi-intersect"></i> Abrir unificação</a>
+            <button class="btn btn-warning" type="button" data-bs-toggle="modal" data-bs-target="#talhoesUnificacaoModal">
+                <i class="bi bi-intersect"></i> Abrir unificação
+            </button>
         </section>
 
         <section class="panel ff-talhao-list-panel">
@@ -33,7 +35,9 @@
                 <div class="actions">
                     <a class="btn btn-outline-primary" href="{{ route('talhoes.mapa') }}"><i class="bi bi-globe-americas"></i> Visualizar mapa</a>
                     <a class="btn btn-success-outline" href="{{ route('talhoes.exportar-kml') }}"><i class="bi bi-download"></i> Gerar KML <span class="visually-hidden">Exportar KML</span></a>
-                    <a class="btn btn-warning" href="#talhoesUnificacao"><i class="bi bi-intersect"></i> Unificar talhões</a>
+                    <button class="btn btn-warning" type="button" data-bs-toggle="modal" data-bs-target="#talhoesUnificacaoModal">
+                        <i class="bi bi-intersect"></i> Unificar talhões
+                    </button>
                     <button class="btn primary" type="button" data-bs-toggle="modal" data-bs-target="#talhaoCreateModal">
                         <i class="bi bi-plus-lg"></i> Novo Talhão
                     </button>
@@ -56,10 +60,7 @@
             @include('talhoes.partials.tabela')
         </section>
 
-        <details id="talhoesUnificacao" class="ff-talhao-drawer">
-            <summary><i class="bi bi-intersect"></i> Abrir formulário de unificação</summary>
-            @include('talhoes.partials.unificar')
-        </details>
+        @include('talhoes.partials.unificar')
 
         <details class="ff-talhao-drawer">
             <summary><i class="bi bi-upload"></i> Importar arquivo geoespacial</summary>

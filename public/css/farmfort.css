@@ -9608,6 +9608,70 @@ html[data-theme="dark"] .ff-financial-form-modal textarea {
   font-weight: 700;
 }
 
+.ff-talhao-unify-modal .modal-content {
+  overflow: hidden;
+}
+
+.ff-talhao-unify-alert {
+  margin-bottom: 16px;
+  border-color: #f4c152;
+  background: #fff3cd;
+  color: #704d05;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ff-talhao-unify-list {
+  max-height: 255px;
+  overflow: auto;
+  display: grid;
+  gap: 0;
+  padding: 10px;
+  border: 1px solid var(--ff-border);
+  border-radius: 8px;
+  background: var(--ff-surface);
+}
+
+.ff-talhao-unify-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 4px;
+  cursor: pointer;
+}
+
+.ff-talhao-unify-option + .ff-talhao-unify-option {
+  border-top: 1px solid color-mix(in srgb, var(--ff-border) 70%, transparent);
+}
+
+.ff-talhao-unify-option strong,
+.ff-talhao-unify-option small {
+  display: block;
+}
+
+.ff-talhao-unify-option strong {
+  color: var(--ff-text);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.ff-talhao-unify-option small {
+  margin-top: 2px;
+  color: var(--ff-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ff-talhao-unify-sum {
+  margin-top: 14px;
+}
+
+html[data-theme="dark"] .ff-talhao-unify-alert {
+  border-color: rgba(245, 158, 11, .45);
+  background: rgba(245, 158, 11, .14);
+  color: #ffd68a;
+}
+
 .ff-talhao-list-panel .panel-head {
   min-height: 52px;
 }

@@ -86,13 +86,16 @@ function renderTalhoes(map, talhoes, talhaoLayers, labelsLayer, bounds) {
 
     talhoes.forEach((talhao) => {
         let layer = null;
+        const polygonColor = colorByType.polygon;
+        const geometrias = Array.isArray(talhao.geometries) && talhao.geometries.length
+            ? talhao.geometries
+            : (
+                talhao.points && talhao.points.length >= 3
+                    ? [{ points: talhao.points, exclusions: talhao.exclusoes || [] }]
+                    : []
+            );
 
-        if (talhao.points && talhao.points.length >= 3) {
-            const outer = talhao.points.map((point) => [point.lat, point.lng]);
-            const holes = (talhao.exclusoes || [])
-                .filter((ring) => Array.isArray(ring) && ring.length >= 3)
-                .map((ring) => ring.map((point) => [point.lat, point.lng]));
-            const polygonColor = colorByType.polygon;
+        if (geometrias.length) {
             const baseStyle = {
                 color: polygonColor,
                 weight: 2,
@@ -101,33 +104,41 @@ function renderTalhoes(map, talhoes, talhaoLayers, labelsLayer, bounds) {
                 fillOpacity: 0.28,
                 fillRule: 'evenodd',
             };
-            layer = L.polygon([outer, ...holes], baseStyle).addTo(map);
-            layer.ffBaseStyle = baseStyle;
-            layer.bindPopup(popupHtml(talhao));
-            layer.getBounds().isValid() && bounds.extend(layer.getBounds());
+            const parts = [];
 
-            holes.forEach((ring) => {
-                L.polygon(ring, {
-                    color: polygonColor,
-                    fill: false,
-                    fillOpacity: 0,
-                    weight: 2,
-                    className: 'ff-map-exclusion-outline',
-                    interactive: false,
-                }).addTo(map);
+            geometrias.forEach((geometria) => {
+                if (!Array.isArray(geometria.points) || geometria.points.length < 3) return;
+
+                const outer = geometria.points.map((point) => [point.lat, point.lng]);
+                const holes = (geometria.exclusions || [])
+                    .filter((ring) => Array.isArray(ring) && ring.length >= 3)
+                    .map((ring) => ring.map((point) => [point.lat, point.lng]));
+                const polygonPart = L.polygon([outer, ...holes], baseStyle);
+                polygonPart.ffBaseStyle = baseStyle;
+                parts.push(polygonPart);
             });
 
-            const labelPoint = layer.getBounds().getCenter();
-            L.marker(labelPoint, {
-                opacity: 0,
-                interactive: false,
-                keyboard: false,
-            }).bindTooltip(labelHtml(talhao.nome, polygonColor), {
-                permanent: true,
-                direction: 'center',
-                className: 'ff-talhao-map-label',
-                opacity: 1,
-            }).addTo(labelsLayer);
+            if (parts.length) {
+                layer = L.featureGroup(parts).addTo(map);
+                layer.ffBaseStyle = baseStyle;
+                layer.bindPopup(popupHtml(talhao));
+                const layerBounds = layer.getBounds();
+                layerBounds.isValid() && bounds.extend(layerBounds);
+
+                const labelPoint = talhao.lat && talhao.lng
+                    ? L.latLng(talhao.lat, talhao.lng)
+                    : layerBounds.getCenter();
+                L.marker(labelPoint, {
+                    opacity: 0,
+                    interactive: false,
+                    keyboard: false,
+                }).bindTooltip(labelHtml(talhao.nome, polygonColor), {
+                    permanent: true,
+                    direction: 'center',
+                    className: 'ff-talhao-map-label',
+                    opacity: 1,
+                }).addTo(labelsLayer);
+            }
         } else if (talhao.lat && talhao.lng) {
             const baseStyle = {
                 radius: 8,
@@ -292,6 +303,10 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
     function startEdit() {
         if (!selectedTalhao || !selectedLayer || !selectedTalhao.can_edit_geometry) return;
         if (!Array.isArray(selectedTalhao.points) || selectedTalhao.points.length < 3) return;
+        if (Number(selectedTalhao.geometrias_count || 1) > 1) {
+            alert('Este talhao unificado possui mais de um poligono. Para redesenhar o contorno, ajuste os talhoes separadamente ou crie um novo desenho unico.');
+            return;
+        }
         if (!discardPendingChanges()) return;
 
         const snapshot = selectedTalhao.points.map((point) => ({
@@ -392,7 +407,8 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
 
     function syncToolbar() {
         const hasPolygon = Boolean(selectedTalhao?.points?.length >= 3);
-        const canEdit = hasPolygon && selectedTalhao?.can_edit_geometry === true;
+        const isComposite = Number(selectedTalhao?.geometrias_count || 1) > 1;
+        const canEdit = hasPolygon && !isComposite && selectedTalhao?.can_edit_geometry === true;
         const canExclude = hasPolygon && selectedTalhao?.can_add_exclusion === true;
         const busy = isEditing || activeDrawing || hasDraft;
 
@@ -527,17 +543,35 @@ function createSelectionStatusControl(map) {
 }
 
 function applySelectedStyle(layer, selected) {
-    if (!layer?.setStyle) return;
+    if (!layer) return;
     const baseStyle = layer.ffBaseStyle || {};
-    layer.setStyle(selected
+    setLayerStyle(layer, selected
         ? { ...baseStyle, color: '#00d4aa', weight: Math.max(3, Number(baseStyle.weight || 2) + 1), fillOpacity: 0.38 }
         : baseStyle);
-    if (selected) layer.bringToFront?.();
+    if (selected) bringLayerToFront(layer);
 }
 
 function dimSelectedLayer(layer) {
-    if (!layer?.setStyle) return;
-    layer.setStyle({ ...(layer.ffBaseStyle || {}), opacity: 0.28, fillOpacity: 0.08 });
+    if (!layer) return;
+    setLayerStyle(layer, { ...(layer.ffBaseStyle || {}), opacity: 0.28, fillOpacity: 0.08 });
+}
+
+function setLayerStyle(layer, style) {
+    if (layer?.setStyle) {
+        layer.setStyle(style);
+        return;
+    }
+
+    layer?.eachLayer?.((child) => setLayerStyle(child, style));
+}
+
+function bringLayerToFront(layer) {
+    if (layer?.bringToFront) {
+        layer.bringToFront();
+        return;
+    }
+
+    layer?.eachLayer?.((child) => bringLayerToFront(child));
 }
 
 function markSelectedListItem(talhaoId) {
