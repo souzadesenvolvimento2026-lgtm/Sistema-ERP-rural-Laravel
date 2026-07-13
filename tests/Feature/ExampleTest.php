@@ -204,7 +204,8 @@ class ExampleTest extends TestCase
         $this->withSession($this->loggedSession())
             ->get('/dashboard')
             ->assertStatus(200)
-            ->assertSee('Dashboard');
+            ->assertSee('Dashboard')
+            ->assertSee('/assets/img/farmfort-favicon.png', false);
     }
 
     public function test_legacy_php_pages_redirect_to_laravel_routes(): void

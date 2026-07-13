@@ -5,6 +5,7 @@
 const FARMFLOW_THEME_KEY = 'farmflow-theme';
 const FARMFLOW_SUPPORT_SOUND_KEY = 'farmflow-support-sound';
 const FARMFLOW_SUPPORT_REPEAT_ALERT_MS = 30000;
+const FARMFLOW_SUPPORT_FAVICON_BLINK_MS = 900;
 let farmFlowSupportAudioContext = null;
 let farmFlowOriginalTitle = document.title;
 let farmFlowSupportTitleTimer = null;
@@ -620,6 +621,7 @@ function supportSetBrowserTabAlert(count, source) {
   const alertTitle = `(${totalUnread}) Nova mensagem - FarmFort`;
   document.title = farmFlowSupportTitleShowAlert ? alertTitle : farmFlowOriginalTitle;
   supportSetAlertFavicon(farmFlowSupportTitleShowAlert);
+  farmFlowSupportTitleShowAlert = !farmFlowSupportTitleShowAlert;
   if (!farmFlowSupportTitleTimer) {
     farmFlowSupportTitleTimer = setInterval(() => {
       const activeTotal = Object.values(farmFlowSupportAlertCounts)
@@ -636,7 +638,7 @@ function supportSetBrowserTabAlert(count, source) {
       document.title = farmFlowSupportTitleShowAlert ? activeTitle : farmFlowOriginalTitle;
       supportSetAlertFavicon(farmFlowSupportTitleShowAlert);
       farmFlowSupportTitleShowAlert = !farmFlowSupportTitleShowAlert;
-    }, 1200);
+    }, FARMFLOW_SUPPORT_FAVICON_BLINK_MS);
   }
 }
 
@@ -1945,4 +1947,3 @@ document.addEventListener('DOMContentLoaded', function () {
     }, 4000);
   }
 });
-
