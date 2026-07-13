@@ -166,48 +166,48 @@
                     <thead>
                     <tr>
                         <th>
-                            <button type="button" class="ff-table-filter-trigger" data-ff-filter-trigger data-column="0" data-title="Data">
-                                <span>Data</span><i class="bi bi-funnel"></i>
+                            <button type="button" class="ff-table-sort-trigger" data-ff-sort-trigger data-column="0" data-type="date" data-default-direction="desc" aria-label="Ordenar por data">
+                                <span>Data</span><i class="bi bi-chevron-expand" data-ff-sort-icon></i>
                             </button>
                         </th>
                         <th>
-                            <button type="button" class="ff-table-filter-trigger" data-ff-filter-trigger data-column="1" data-title="Tipo">
-                                <span>Tipo</span><i class="bi bi-funnel"></i>
+                            <button type="button" class="ff-table-sort-trigger" data-ff-sort-trigger data-column="1" data-type="text" data-default-direction="asc" aria-label="Ordenar por tipo">
+                                <span>Tipo</span><i class="bi bi-chevron-expand" data-ff-sort-icon></i>
                             </button>
                         </th>
                         <th>
-                            <button type="button" class="ff-table-filter-trigger" data-ff-filter-trigger data-column="2" data-title="Descrição">
-                                <span>Descrição</span><i class="bi bi-funnel"></i>
+                            <button type="button" class="ff-table-sort-trigger" data-ff-sort-trigger data-column="2" data-type="text" data-default-direction="asc" aria-label="Ordenar por descrição">
+                                <span>Descrição</span><i class="bi bi-chevron-expand" data-ff-sort-icon></i>
                             </button>
                         </th>
                         <th>
-                            <button type="button" class="ff-table-filter-trigger" data-ff-filter-trigger data-column="3" data-title="Pessoa">
-                                <span>Pessoa</span><i class="bi bi-funnel"></i>
+                            <button type="button" class="ff-table-sort-trigger" data-ff-sort-trigger data-column="3" data-type="text" data-default-direction="asc" aria-label="Ordenar por pessoa">
+                                <span>Pessoa</span><i class="bi bi-chevron-expand" data-ff-sort-icon></i>
                             </button>
                         </th>
                         <th>
-                            <button type="button" class="ff-table-filter-trigger" data-ff-filter-trigger data-column="4" data-title="Safra/Categoria">
-                                <span>Safra/Categoria</span><i class="bi bi-funnel"></i>
+                            <button type="button" class="ff-table-sort-trigger" data-ff-sort-trigger data-column="4" data-type="text" data-default-direction="asc" aria-label="Ordenar por safra e categoria">
+                                <span>Safra/Categoria</span><i class="bi bi-chevron-expand" data-ff-sort-icon></i>
                             </button>
                         </th>
                         <th>
-                            <button type="button" class="ff-table-filter-trigger" data-ff-filter-trigger data-column="5" data-title="Conta">
-                                <span>Conta</span><i class="bi bi-funnel"></i>
+                            <button type="button" class="ff-table-sort-trigger" data-ff-sort-trigger data-column="5" data-type="text" data-default-direction="asc" aria-label="Ordenar por conta">
+                                <span>Conta</span><i class="bi bi-chevron-expand" data-ff-sort-icon></i>
                             </button>
                         </th>
                         <th>
-                            <button type="button" class="ff-table-filter-trigger" data-ff-filter-trigger data-column="6" data-title="Valor">
-                                <span>Valor</span><i class="bi bi-funnel"></i>
+                            <button type="button" class="ff-table-sort-trigger" data-ff-sort-trigger data-column="6" data-type="number" data-default-direction="desc" aria-label="Ordenar por valor">
+                                <span>Valor</span><i class="bi bi-chevron-expand" data-ff-sort-icon></i>
                             </button>
                         </th>
                         <th>
-                            <button type="button" class="ff-table-filter-trigger" data-ff-filter-trigger data-column="7" data-title="Previsto">
-                                <span>Previsto</span><i class="bi bi-funnel"></i>
+                            <button type="button" class="ff-table-sort-trigger" data-ff-sort-trigger data-column="7" data-type="date" data-default-direction="desc" aria-label="Ordenar por previsto">
+                                <span>Previsto</span><i class="bi bi-chevron-expand" data-ff-sort-icon></i>
                             </button>
                         </th>
                         <th>
-                            <button type="button" class="ff-table-filter-trigger" data-ff-filter-trigger data-column="8" data-title="Status financeiro">
-                                <span>Status financeiro</span><i class="bi bi-funnel"></i>
+                            <button type="button" class="ff-table-sort-trigger" data-ff-sort-trigger data-column="8" data-type="text" data-default-direction="asc" aria-label="Ordenar por status financeiro">
+                                <span>Status financeiro</span><i class="bi bi-chevron-expand" data-ff-sort-icon></i>
                             </button>
                         </th>
                         <th class="text-end">Ações</th>
@@ -221,25 +221,25 @@
                             'ff-row-overdue' => $row->is_overdue,
                             'ff-row-pending' => in_array($row->status, ['pendente', 'vencido'], true),
                         ])>
-                            <td data-order="{{ $row->data_sort }}" data-ff-filter-value="{{ FarmFormat::date($row->data) }} {{ $row->data_sort }}">{{ FarmFormat::date($row->data) }}</td>
-                            <td data-ff-filter-value="{{ $row->tipo_label }}"><span class="badge {{ $row->type_tone }}">{{ $row->tipo_label }}</span></td>
-                            <td data-ff-filter-value="{{ trim(($row->descricao ?? '').' '.($row->descricao_extra ?? '')) }}">
+                            <td data-order="{{ $row->data_sort }}" data-ff-sort-value="{{ $row->data_sort ?: $row->data }}">{{ FarmFormat::date($row->data) }}</td>
+                            <td data-ff-sort-value="{{ $row->tipo_label }}"><span class="badge {{ $row->type_tone }}">{{ $row->tipo_label }}</span></td>
+                            <td data-ff-sort-value="{{ trim(($row->descricao ?? '').' '.($row->descricao_extra ?? '')) }}">
                                 <strong>{{ $row->descricao }}</strong>
                                 @if ($row->descricao_extra)
                                     <small class="d-block">{{ $row->descricao_extra }}</small>
                                 @endif
                             </td>
-                            <td data-ff-filter-value="{{ trim(($row->pessoa ?? '').' '.($row->pessoa_extra ?? '')) }}">
+                            <td data-ff-sort-value="{{ trim(($row->pessoa ?? '').' '.($row->pessoa_extra ?? '')) }}">
                                 {{ $row->pessoa }}
                                 @if ($row->pessoa_extra)
                                     <small class="d-block">{{ $row->pessoa_extra }}</small>
                                 @endif
                             </td>
-                            <td data-ff-filter-value="{{ $row->safra_categoria ?: '-' }}">{{ $row->safra_categoria ?: '-' }}</td>
-                            <td data-ff-filter-value="{{ $row->conta }}">{{ $row->conta }}</td>
-                            <td class="{{ $row->value_tone }}" data-ff-filter-value="{{ $fmtMoney($row->valor) }} {{ $row->valor }}">{{ $fmtMoney($row->valor) }}</td>
-                            <td data-ff-filter-value="{{ FarmFormat::date($row->previsto) }} {{ $row->previsto }}">{{ FarmFormat::date($row->previsto) }}</td>
-                            <td data-ff-filter-value="{{ trim(($row->status_label ?? '').' '.($row->status_detail ?? '')) }}">
+                            <td data-ff-sort-value="{{ $row->safra_categoria ?: '-' }}">{{ $row->safra_categoria ?: '-' }}</td>
+                            <td data-ff-sort-value="{{ $row->conta }}">{{ $row->conta }}</td>
+                            <td class="{{ $row->value_tone }}" data-ff-sort-value="{{ $row->valor }}">{{ $fmtMoney($row->valor) }}</td>
+                            <td data-ff-sort-value="{{ $row->previsto ?: $row->data }}">{{ FarmFormat::date($row->previsto) }}</td>
+                            <td data-ff-sort-value="{{ trim(($row->status_label ?? '').' '.($row->status_detail ?? '')) }}">
                                 <span class="pill {{ $row->status_tone }}">{{ $row->status_label }}</span>
                                 @if ($row->status_detail)
                                     <small class="d-block {{ $row->is_rejected ? 'text-danger' : 'text-warning' }}">{{ $row->status_detail }}</small>
@@ -306,26 +306,6 @@
                 </table>
             </div>
 
-            <div class="ff-table-filter-popover" data-ff-table-filter-popover hidden>
-                <div class="ff-table-filter-head">
-                    <strong data-ff-filter-title>Filtrar</strong>
-                    <button type="button" data-ff-filter-close aria-label="Fechar filtro">
-                        <i class="bi bi-x-lg"></i>
-                    </button>
-                </div>
-                <label class="ff-table-filter-field">
-                    <span>Buscar nesta coluna</span>
-                    <input type="search" data-ff-filter-input placeholder="Digite para filtrar...">
-                </label>
-                <div class="ff-table-filter-actions">
-                    <button type="button" class="btn btn-sm btn-outline-secondary" data-ff-filter-clear>Limpar</button>
-                    <button type="button" class="btn btn-sm btn-farmflow" data-ff-filter-apply>Aplicar</button>
-                </div>
-            </div>
-
-            <div class="ff-table-filter-empty" data-ff-table-filter-empty hidden>
-                Nenhum lançamento encontrado para os filtros do cabeçalho.
-            </div>
         </section>
 
         <div class="grid two mt-4">
@@ -341,23 +321,18 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const table = document.querySelector('[data-ff-ledger-table]');
-            const popover = document.querySelector('[data-ff-table-filter-popover]');
-            const emptyMessage = document.querySelector('[data-ff-table-filter-empty]');
+            const tbody = table?.querySelector('tbody');
 
-            if (!table || !popover) {
+            if (!table || !tbody) {
                 return;
             }
 
-            const triggers = Array.from(table.querySelectorAll('[data-ff-filter-trigger]'));
+            const triggers = Array.from(table.querySelectorAll('[data-ff-sort-trigger]'));
             const rows = Array.from(table.querySelectorAll('tbody tr')).filter((row) => !row.hasAttribute('data-ff-ledger-empty'));
-            const title = popover.querySelector('[data-ff-filter-title]');
-            const input = popover.querySelector('[data-ff-filter-input]');
-            const applyButton = popover.querySelector('[data-ff-filter-apply]');
-            const clearButton = popover.querySelector('[data-ff-filter-clear]');
-            const closeButton = popover.querySelector('[data-ff-filter-close]');
-            const filters = new Map();
-            let activeColumn = null;
-            let activeTrigger = null;
+            let activeSort = {
+                column: null,
+                direction: null,
+            };
 
             const normalize = (value) => String(value || '')
                 .normalize('NFD')
@@ -365,145 +340,89 @@
                 .toLowerCase()
                 .trim();
 
-            const getCellValue = (row, column) => {
+            const getCellValue = (row, column, type) => {
                 const cell = row.children[column];
 
                 if (!cell) {
                     return '';
                 }
 
-                return cell.getAttribute('data-ff-filter-value') || cell.textContent || '';
+                const value = cell.getAttribute('data-ff-sort-value') || cell.getAttribute('data-order') || cell.textContent || '';
+
+                if (type === 'number') {
+                    return Number(String(value).replace(/\./g, '').replace(',', '.')) || 0;
+                }
+
+                if (type === 'date') {
+                    return String(value || '0000-00-00');
+                }
+
+                return normalize(value);
             };
 
-            const refreshRows = () => {
-                let visible = 0;
+            const compareValues = (first, second, type) => {
+                if (type === 'number') {
+                    return first - second;
+                }
 
-                rows.forEach((row) => {
-                    const matches = Array.from(filters.entries()).every(([column, value]) => {
-                        if (!value) {
-                            return true;
-                        }
+                if (type === 'date') {
+                    return String(first).localeCompare(String(second));
+                }
 
-                        return normalize(getCellValue(row, column)).includes(normalize(value));
-                    });
+                return String(first).localeCompare(String(second), 'pt-BR', {
+                    numeric: true,
+                    sensitivity: 'base',
+                });
+            };
 
-                    row.hidden = !matches;
+            const updateHeaderState = (trigger, direction) => {
+                triggers.forEach((item) => {
+                    const icon = item.querySelector('[data-ff-sort-icon]');
+                    item.classList.toggle('is-active', item === trigger);
+                    item.dataset.direction = item === trigger ? direction : '';
+                    item.setAttribute('aria-sort', item === trigger ? (direction === 'asc' ? 'ascending' : 'descending') : 'none');
 
-                    if (matches) {
-                        visible += 1;
+                    if (icon) {
+                        icon.className = 'bi ' + (item === trigger
+                            ? (direction === 'asc' ? 'bi-sort-up' : 'bi-sort-down')
+                            : 'bi-chevron-expand');
                     }
                 });
-
-                triggers.forEach((trigger) => {
-                    const column = Number(trigger.dataset.column);
-                    trigger.classList.toggle('is-active', filters.has(column) && Boolean(filters.get(column)));
-                });
-
-                if (emptyMessage) {
-                    emptyMessage.hidden = rows.length === 0 || visible > 0;
-                }
             };
 
-            const closePopover = () => {
-                popover.hidden = true;
-                activeColumn = null;
-                activeTrigger = null;
-            };
+            const sortByColumn = (trigger) => {
+                const column = Number(trigger.dataset.column);
+                const type = trigger.dataset.type || 'text';
+                const previousDirection = activeSort.column === column ? activeSort.direction : null;
+                const direction = previousDirection
+                    ? (previousDirection === 'asc' ? 'desc' : 'asc')
+                    : (trigger.dataset.defaultDirection || 'asc');
+                const factor = direction === 'asc' ? 1 : -1;
 
-            const positionPopover = (trigger) => {
-                const rect = trigger.getBoundingClientRect();
-                const width = Math.min(320, window.innerWidth - 24);
-                let left = rect.left;
+                rows
+                    .slice()
+                    .sort((firstRow, secondRow) => {
+                        const first = getCellValue(firstRow, column, type);
+                        const second = getCellValue(secondRow, column, type);
+                        const result = compareValues(first, second, type);
 
-                if (left + width > window.innerWidth - 12) {
-                    left = window.innerWidth - width - 12;
-                }
+                        if (result !== 0) {
+                            return result * factor;
+                        }
 
-                popover.style.width = `${width}px`;
-                popover.style.left = `${Math.max(12, left)}px`;
-                popover.style.top = `${rect.bottom + 8}px`;
-            };
+                        return rows.indexOf(firstRow) - rows.indexOf(secondRow);
+                    })
+                    .forEach((row) => tbody.appendChild(row));
 
-            const openPopover = (trigger) => {
-                activeColumn = Number(trigger.dataset.column);
-                activeTrigger = trigger;
-                title.textContent = `Filtrar ${trigger.dataset.title || ''}`.trim();
-                input.value = filters.get(activeColumn) || '';
-                popover.hidden = false;
-                positionPopover(trigger);
-                input.focus();
-                input.select();
+                activeSort = { column, direction };
+                updateHeaderState(trigger, direction);
             };
 
             triggers.forEach((trigger) => {
                 trigger.addEventListener('click', (event) => {
                     event.preventDefault();
-                    event.stopPropagation();
-
-                    if (!popover.hidden && activeTrigger === trigger) {
-                        closePopover();
-                        return;
-                    }
-
-                    openPopover(trigger);
+                    sortByColumn(trigger);
                 });
-            });
-
-            applyButton.addEventListener('click', () => {
-                if (activeColumn === null) {
-                    return;
-                }
-
-                const value = input.value.trim();
-
-                if (value) {
-                    filters.set(activeColumn, value);
-                } else {
-                    filters.delete(activeColumn);
-                }
-
-                refreshRows();
-                closePopover();
-            });
-
-            clearButton.addEventListener('click', () => {
-                if (activeColumn !== null) {
-                    filters.delete(activeColumn);
-                }
-
-                input.value = '';
-                refreshRows();
-                closePopover();
-            });
-
-            closeButton.addEventListener('click', closePopover);
-
-            input.addEventListener('keydown', (event) => {
-                if (event.key === 'Enter') {
-                    event.preventDefault();
-                    applyButton.click();
-                }
-
-                if (event.key === 'Escape') {
-                    event.preventDefault();
-                    closePopover();
-                }
-            });
-
-            document.addEventListener('click', (event) => {
-                if (popover.hidden) {
-                    return;
-                }
-
-                if (!popover.contains(event.target) && !event.target.closest('[data-ff-filter-trigger]')) {
-                    closePopover();
-                }
-            });
-
-            window.addEventListener('resize', () => {
-                if (!popover.hidden && activeTrigger) {
-                    positionPopover(activeTrigger);
-                }
             });
         });
     </script>

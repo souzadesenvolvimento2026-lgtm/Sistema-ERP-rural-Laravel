@@ -7608,7 +7608,7 @@ html[data-theme="dark"] .ff-or-chart-filter button.active {
   font-size: 11px;
 }
 
-.ff-table-filter-trigger {
+.ff-table-sort-trigger {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -7625,118 +7625,31 @@ html[data-theme="dark"] .ff-or-chart-filter button.active {
   cursor: pointer;
 }
 
-.ff-table-filter-trigger i {
+.ff-table-sort-trigger i {
   color: color-mix(in srgb, var(--ff-accent) 56%, var(--ff-muted));
-  font-size: 12px;
+  font-size: 13px;
   opacity: 0.62;
   transition: color 0.16s ease, opacity 0.16s ease, transform 0.16s ease;
 }
 
-.ff-table-filter-trigger:hover,
-.ff-table-filter-trigger:focus-visible,
-.ff-table-filter-trigger.is-active {
+.ff-table-sort-trigger:hover,
+.ff-table-sort-trigger:focus-visible,
+.ff-table-sort-trigger.is-active {
   color: var(--ff-accent-strong);
 }
 
-.ff-table-filter-trigger:hover i,
-.ff-table-filter-trigger:focus-visible i,
-.ff-table-filter-trigger.is-active i {
+.ff-table-sort-trigger:hover i,
+.ff-table-sort-trigger:focus-visible i,
+.ff-table-sort-trigger.is-active i {
   color: var(--ff-accent);
   opacity: 1;
   transform: translateY(-1px);
 }
 
-.ff-table-filter-trigger.is-active {
+.ff-table-sort-trigger.is-active {
   text-decoration: underline;
   text-decoration-thickness: 2px;
   text-underline-offset: 4px;
-}
-
-.ff-table-filter-popover {
-  position: fixed;
-  z-index: 1085;
-  padding: 12px;
-  border: 1px solid var(--ff-border);
-  border-radius: 14px;
-  background: var(--ff-surface);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
-}
-
-.ff-table-filter-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-
-.ff-table-filter-head strong {
-  color: var(--ff-text);
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.ff-table-filter-head button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--ff-border);
-  border-radius: 9px;
-  background: var(--ff-surface-2);
-  color: var(--ff-muted);
-  cursor: pointer;
-}
-
-.ff-table-filter-field {
-  display: grid;
-  gap: 6px;
-  margin: 0;
-}
-
-.ff-table-filter-field span {
-  color: var(--ff-muted);
-  font-size: 11px;
-  font-weight: 900;
-  text-transform: uppercase;
-}
-
-.ff-table-filter-field input {
-  width: 100%;
-  min-height: 38px;
-  border: 1px solid var(--ff-border);
-  border-radius: 10px;
-  background: var(--ff-body);
-  color: var(--ff-text);
-  font-size: 13px;
-  font-weight: 700;
-  outline: none;
-  padding: 8px 10px;
-}
-
-.ff-table-filter-field input:focus {
-  border-color: var(--ff-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ff-accent) 18%, transparent);
-}
-
-.ff-table-filter-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.ff-table-filter-empty {
-  margin-top: 12px;
-  padding: 14px;
-  border: 1px dashed var(--ff-border);
-  border-radius: 12px;
-  background: var(--ff-surface);
-  color: var(--ff-muted);
-  font-size: 13px;
-  font-weight: 800;
-  text-align: center;
 }
 
 .ff-lancamentos-table td {
