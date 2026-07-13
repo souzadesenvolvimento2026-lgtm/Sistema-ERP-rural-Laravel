@@ -20,7 +20,7 @@ Este repositório contém a versão Laravel do sistema ERP rural, com módulos d
 
 ## Validação local
 
-Consulte antes de alterar o projeto:
+Consulte antes de alterar o projeto. O padrão de arquitetura é obrigatório para código novo e para refatorações progressivas por módulo:
 
 - [Arquitetura e limites entre camadas](docs/architecture.md)
 - [Testes e gates de qualidade](docs/testing.md)

@@ -9,6 +9,16 @@ Este arquivo se aplica a todo o repositório. As regras abaixo são obrigatória
 - Não executar `push`, merge, deploy, migration ou qualquer alteração de estado em produção sem solicitação expressa e sem cumprir todos os gates deste documento.
 - Preservar alterações locais existentes e não misturar mudanças não relacionadas no mesmo commit.
 
+## Arquitetura obrigatória
+
+- Seguir o padrão documentado em `docs/architecture.md`.
+- Blade deve ser somente apresentação: telas, campos, tabelas, modais e estados visuais.
+- Controllers devem ficar finos: receber HTTP, validar entrada, autorizar, chamar Service/Use Case e retornar resposta.
+- Regras de negócio devem ficar em Service/Domain.
+- Acesso ao banco deve caminhar para Repository/Model, preferencialmente organizado por módulo.
+- Não refatorar o sistema inteiro de uma vez apenas por estética. A separação deve ser progressiva por módulo/tela alterada, preservando comportamento e testes.
+- Código novo ou alteração relevante não deve aumentar acoplamento entre View, Controller, regra de negócio e banco.
+
 ## Dependências e lockfiles
 
 - `composer.lock` e `package-lock.json` são arquivos obrigatórios e devem permanecer versionados.
