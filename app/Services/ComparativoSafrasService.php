@@ -110,7 +110,7 @@ class ComparativoSafrasService
         return array_merge(
             ['Categoria'],
             $dados['safras']->map(fn ($safra) => $safra->descricao.' ('.$unidade.')')->all(),
-            ['Media ('.$unidade.')']
+            ['Média ('.$unidade.')']
         );
     }
 
@@ -213,7 +213,7 @@ class ComparativoSafrasService
         $grupos = [
             'custo' => ['nome' => 'Custo', 'safras' => [], 'categorias' => []],
             'despesa' => ['nome' => 'Despesa', 'safras' => [], 'categorias' => []],
-            'receita' => ['nome' => 'Preco Medio de Vendas', 'safras' => $precos, 'categorias' => []],
+            'receita' => ['nome' => 'Preço Médio de Vendas', 'safras' => $precos, 'categorias' => []],
         ];
 
         if (!$safraIds) {
@@ -263,7 +263,7 @@ class ComparativoSafrasService
         }
 
         $grupos['receita']['categorias']['preco_medio_venda'] = [
-            'nome' => 'Preco Medio de Venda',
+            'nome' => 'Preço Médio de Venda',
             'safras' => $precos,
             'total' => array_sum($precos),
             'tipo' => 'preco',
@@ -293,18 +293,57 @@ class ComparativoSafrasService
 
     private function linhas(array $grupos, Collection $safras, array $areas, array $precos, string $modo): Collection
     {
-        return collect($grupos)->flatMap(function (array $grupo) use ($safras, $areas, $precos, $modo) {
-            $linhas = collect([$this->linha($grupo['nome'], $grupo['safras'], $safras, $areas, $precos, $modo, true, false)]);
+        return collect($grupos)->flatMap(function (array $grupo, string $grupoKey) use ($safras, $areas, $precos, $modo) {
+            $categorias = collect($grupo['categorias']);
+            $linhas = collect([
+                $this->linha(
+                    $grupo['nome'],
+                    $grupo['safras'],
+                    $safras,
+                    $areas,
+                    $precos,
+                    $modo,
+                    true,
+                    false,
+                    $grupoKey,
+                    null,
+                    $categorias->isNotEmpty()
+                ),
+            ]);
 
-            foreach ($grupo['categorias'] as $categoria) {
-                $linhas->push($this->linha($categoria['nome'], $categoria['safras'], $safras, $areas, $precos, $modo, false, ($categoria['tipo'] ?? '') === 'preco'));
+            foreach ($categorias as $categoriaKey => $categoria) {
+                $linhas->push($this->linha(
+                    $categoria['nome'],
+                    $categoria['safras'],
+                    $safras,
+                    $areas,
+                    $precos,
+                    $modo,
+                    false,
+                    ($categoria['tipo'] ?? '') === 'preco',
+                    $grupoKey.'-'.$this->domKey((string)$categoriaKey),
+                    $grupoKey,
+                    false
+                ));
             }
 
             return $linhas;
         })->values();
     }
 
-    private function linha(string $nome, array $valores, Collection $safras, array $areas, array $precos, string $modo, bool $grupo, bool $preco): object
+    private function linha(
+        string $nome,
+        array $valores,
+        Collection $safras,
+        array $areas,
+        array $precos,
+        string $modo,
+        bool $grupo,
+        bool $preco,
+        string $key,
+        ?string $parentKey,
+        bool $temFilhos
+    ): object
     {
         $celulas = [];
         $media = [];
@@ -321,6 +360,9 @@ class ComparativoSafrasService
         return (object)[
             'nome' => $nome,
             'grupo' => $grupo,
+            'key' => $this->domKey($key),
+            'parent_key' => $parentKey ? $this->domKey($parentKey) : null,
+            'tem_filhos' => $temFilhos,
             'valores' => $celulas,
             'media' => number_format($media ? array_sum($media) / count($media) : 0, 2, ',', '.'),
         ];
@@ -357,5 +399,10 @@ class ComparativoSafrasService
         $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $texto);
         $texto = strtolower($ascii !== false ? $ascii : $texto);
         return trim((string)preg_replace('/[^a-z0-9]+/', ' ', $texto));
+    }
+
+    private function domKey(string $texto): string
+    {
+        return str_replace(' ', '-', $this->slug($texto));
     }
 }
