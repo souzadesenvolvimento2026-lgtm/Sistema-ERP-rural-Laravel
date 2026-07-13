@@ -7580,6 +7580,18 @@ html[data-theme="dark"] .ff-or-chart-filter button.active {
   margin-bottom: 18px;
 }
 
+.ff-finance-summary-cards .stat.danger strong {
+  color: var(--ff-danger);
+}
+
+.ff-finance-summary-cards .stat.success strong {
+  color: var(--ff-accent);
+}
+
+.ff-finance-summary-cards .stat.warning strong {
+  color: var(--ff-warning);
+}
+
 .ff-finance-quickbar {
   margin-bottom: 14px;
 }
