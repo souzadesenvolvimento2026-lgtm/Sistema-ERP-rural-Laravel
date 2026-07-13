@@ -10049,3 +10049,274 @@ html[data-theme="dark"] #talhaoMap .ff-map-context-toolbar .ff-map-tool,
 html[data-theme="dark"] #talhaoMap .ff-map-selection-status {
   background: color-mix(in srgb, var(--ff-surface) 88%, transparent);
 }
+
+/* Contas bancárias - Financeiro */
+.ff-bank-page {
+  display: grid;
+  gap: 24px;
+}
+
+.ff-bank-toolbar,
+.ff-bank-panel-actions,
+.ff-bank-toolbar-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.ff-bank-toolbar {
+  justify-content: space-between;
+}
+
+.ff-bank-toolbar h1 {
+  margin: 0;
+}
+
+.ff-bank-total-card {
+  background: var(--ff-surface);
+  border: 1px solid var(--ff-border);
+  border-left: 5px solid var(--ff-accent);
+  border-radius: 8px;
+  box-shadow: var(--ff-shadow-sm);
+  display: grid;
+  gap: 3px;
+  max-width: 540px;
+  min-height: 112px;
+  padding: 22px 24px;
+}
+
+.ff-bank-total-card span,
+.ff-bank-total-card small {
+  color: var(--ff-muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.ff-bank-total-card strong {
+  font-size: clamp(24px, 3vw, 34px);
+  font-weight: 950;
+  letter-spacing: -.03em;
+  line-height: 1.05;
+}
+
+.ff-bank-grid {
+  align-items: start;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(560px, 1.35fr) minmax(360px, .95fr);
+}
+
+.ff-bank-panel {
+  overflow: hidden;
+}
+
+.ff-bank-panel .panel-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  min-height: 58px;
+}
+
+.ff-bank-panel .panel-head h2 {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+}
+
+.ff-bank-panel .panel-head i {
+  color: var(--ff-accent-strong);
+}
+
+.ff-bank-table-wrap {
+  overflow-x: auto;
+}
+
+.ff-bank-table {
+  min-width: 760px;
+}
+
+.ff-bank-transfer-table {
+  min-width: 560px;
+}
+
+.ff-bank-table th,
+.ff-bank-table td {
+  padding: 11px 12px;
+  vertical-align: middle;
+}
+
+.ff-bank-table th {
+  color: var(--ff-accent-strong);
+  font-size: 12px;
+  text-transform: none;
+}
+
+.ff-bank-table td strong,
+.ff-bank-table td small {
+  display: block;
+}
+
+.ff-bank-table td strong {
+  color: var(--ff-text);
+  font-weight: 900;
+}
+
+.ff-bank-table td small {
+  color: var(--ff-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  margin-top: 2px;
+}
+
+.ff-bank-table .is-positive {
+  color: var(--ff-accent-strong) !important;
+}
+
+.ff-bank-table .is-negative,
+.ff-bank-total-card .is-negative {
+  color: var(--ff-danger) !important;
+}
+
+.ff-bank-total-card .is-positive {
+  color: var(--ff-accent-strong) !important;
+}
+
+.ff-bank-row-actions {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.ff-bank-row-actions form {
+  display: inline-flex;
+  margin: 0;
+}
+
+.ff-icon-action {
+  --ff-action-color: #2563eb;
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--ff-action-color);
+  border-radius: 7px;
+  color: var(--ff-action-color);
+  display: inline-flex;
+  font-size: 13px;
+  height: 28px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  text-decoration: none;
+  transition: background-color .15s ease, color .15s ease, transform .15s ease, opacity .15s ease;
+  width: 32px;
+}
+
+.ff-icon-action:hover,
+.ff-icon-action:focus-visible {
+  background: var(--ff-action-color);
+  border-color: var(--ff-action-color);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.ff-icon-action:hover i,
+.ff-icon-action:focus-visible i {
+  color: #fff;
+}
+
+.ff-icon-action.is-transfer {
+  --ff-action-color: var(--ff-accent-strong);
+}
+
+.ff-icon-action.is-danger {
+  --ff-action-color: #ef4444;
+}
+
+.ff-icon-action:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+  transform: none;
+}
+
+.ff-bank-modal .modal-content {
+  border-color: var(--ff-border-strong);
+  background: var(--ff-surface);
+  color: var(--ff-text);
+}
+
+.ff-bank-account-dialog {
+  width: min(94vw, 760px);
+  max-width: min(94vw, 760px);
+}
+
+.ff-bank-transfer-dialog {
+  width: min(94vw, 640px);
+  max-width: min(94vw, 640px);
+}
+
+.ff-bank-form-grid {
+  display: grid;
+  gap: 14px 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ff-bank-form-grid .span-2 {
+  grid-column: 1 / -1;
+}
+
+.ff-bank-modal .ff-field {
+  display: grid;
+  gap: 6px;
+}
+
+.ff-bank-modal .ff-field span {
+  color: var(--ff-text);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ff-bank-modal .ff-field small {
+  color: var(--ff-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ff-bank-invert-button {
+  border-color: var(--ff-border) !important;
+  background: var(--ff-surface-2) !important;
+  color: var(--ff-text) !important;
+}
+
+.ff-bank-invert-button:hover {
+  border-color: var(--ff-accent) !important;
+  color: var(--ff-accent-strong) !important;
+}
+
+html[data-theme="dark"] .ff-bank-total-card,
+html[data-theme="dark"] .ff-bank-panel,
+html[data-theme="dark"] .ff-bank-modal .modal-content {
+  background: var(--ff-surface);
+}
+
+@media (max-width: 1180px) {
+  .ff-bank-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .ff-bank-toolbar,
+  .ff-bank-panel .panel-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ff-bank-toolbar-actions,
+  .ff-bank-panel-actions {
+    flex-wrap: wrap;
+  }
+
+  .ff-bank-form-grid {
+    grid-template-columns: 1fr;
+  }
+}

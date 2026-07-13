@@ -39,4 +39,11 @@ class ProfileAccessTest extends TestCase
         $this->assertTrue($this->access->hasGlobalPropertyAccess('colaborador_sistema'));
         $this->assertFalse($this->access->hasGlobalPropertyAccess('gestor_propriedade'));
     }
+
+    public function test_financial_profile_can_manage_property_finance_like_property_manager(): void
+    {
+        $this->assertTrue($this->access->canManagePropertyFinance('gestor_propriedade'));
+        $this->assertTrue($this->access->canManagePropertyFinance('financeiro'));
+        $this->assertFalse($this->access->canManagePropertyFinance('visualizador'));
+    }
 }

@@ -87,6 +87,8 @@ Route::post('/financeiro/lancamentos', [FinanceiroLancamentoController::class, '
 Route::get('/financeiro/contas', [ContaBancariaController::class, 'index'])->name('financeiro.contas.index');
 Route::post('/financeiro/contas', [ContaBancariaController::class, 'store'])->name('financeiro.contas.store');
 Route::post('/financeiro/contas/transferencias', [ContaBancariaController::class, 'transfer'])->name('financeiro.contas.transfer');
+Route::get('/financeiro/contas/transferencias/{transferencia}/editar', [ContaBancariaController::class, 'editTransfer'])->name('financeiro.contas.transfer.edit');
+Route::put('/financeiro/contas/transferencias/{transferencia}', [ContaBancariaController::class, 'updateTransfer'])->name('financeiro.contas.transfer.update');
 Route::get('/financeiro/contas/{conta}/editar', [ContaBancariaController::class, 'edit'])->name('financeiro.contas.edit');
 Route::put('/financeiro/contas/{conta}', [ContaBancariaController::class, 'update'])->name('financeiro.contas.update');
 Route::post('/financeiro/contas/{conta}/alternar-status', [ContaBancariaController::class, 'toggleStatus'])->name('financeiro.contas.toggle-status');

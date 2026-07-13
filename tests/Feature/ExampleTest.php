@@ -3092,6 +3092,90 @@ XML;
         }
     }
 
+    public function test_bank_transfer_can_be_edited_considering_previous_transfer_value(): void
+    {
+        DB::beginTransaction();
+
+        try {
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
+            $userId = $this->userId();
+            $this->assertGreaterThan(0, $propertyId);
+            $this->assertGreaterThan(0, $userId);
+
+            DB::table('contas')->insert([
+                'propriedade_id' => $propertyId,
+                'nome' => 'Conta origem edicao transferencia Laravel',
+                'tipo' => 'conta_corrente',
+                'banco' => 'Banco Origem',
+                'saldo_inicial' => 100,
+                'ativo' => 1,
+            ]);
+            $origemId = (int) DB::getPdo()->lastInsertId();
+
+            DB::table('contas')->insert([
+                'propriedade_id' => $propertyId,
+                'nome' => 'Conta destino edicao transferencia Laravel',
+                'tipo' => 'conta_corrente',
+                'banco' => 'Banco Destino',
+                'saldo_inicial' => 0,
+                'ativo' => 1,
+            ]);
+            $destinoId = (int) DB::getPdo()->lastInsertId();
+
+            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $userId))
+                ->post('/financeiro/contas/transferencias', [
+                    'origem' => $origemId,
+                    'destino' => $destinoId,
+                    'valor' => '80,00',
+                    'data_transferencia' => '2026-07-09',
+                    'descricao' => 'Transferencia original Laravel',
+                ])
+                ->assertRedirect('/financeiro/contas');
+
+            $transferenciaId = (int) DB::table('transferencias')
+                ->where('propriedade_id', $propertyId)
+                ->where('conta_origem_id', $origemId)
+                ->where('conta_destino_id', $destinoId)
+                ->value('id');
+
+            $this->assertGreaterThan(0, $transferenciaId);
+
+            $this->withSession($this->loggedSession(propertyId: $propertyId, userId: $userId))
+                ->put('/financeiro/contas/transferencias/'.$transferenciaId, [
+                    'origem' => $origemId,
+                    'destino' => $destinoId,
+                    'valor' => '90,00',
+                    'data_transferencia' => '2026-07-10',
+                    'descricao' => 'Transferencia editada Laravel',
+                ])
+                ->assertRedirect('/financeiro/contas');
+
+            $this->assertDatabaseHas('transferencias', [
+                'id' => $transferenciaId,
+                'valor' => '90.00',
+                'data_transferencia' => '2026-07-10',
+                'descricao' => 'Transferencia editada Laravel',
+            ]);
+
+            $this->assertDatabaseHas('logs_auditoria', [
+                'usuario_id' => $userId,
+                'acao' => 'editar_transferencia_contas',
+                'tabela' => 'transferencias',
+                'registro_id' => $transferenciaId,
+                'propriedade_id' => $propertyId,
+            ]);
+
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
+                ->get('/financeiro/contas')
+                ->assertStatus(200)
+                ->assertSee('R$ 10,00')
+                ->assertSee('R$ 90,00')
+                ->assertSee('Transferencia editada Laravel');
+        } finally {
+            DB::rollBack();
+        }
+    }
+
     public function test_bank_movement_can_be_created_reconciled_and_ignored(): void
     {
         DB::beginTransaction();
