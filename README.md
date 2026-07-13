@@ -24,6 +24,7 @@ Consulte antes de alterar o projeto:
 
 - [Arquitetura e limites entre camadas](docs/architecture.md)
 - [Testes e gates de qualidade](docs/testing.md)
+- [Lançamentos financeiros do legado](docs/financeiro-lancamentos-legado.md)
 - [Política obrigatória de produção](AGENTS.md)
 
 Com o MariaDB de testes configurado na mesma versão da produção, execute:
