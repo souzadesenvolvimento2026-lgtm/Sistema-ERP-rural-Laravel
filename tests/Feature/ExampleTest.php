@@ -9414,6 +9414,16 @@ XML;
             ->assertDontSee('data-support-endpoint="/pages/ajax/suporte_chat.php"', false);
     }
 
+    public function test_chat_alerts_do_not_request_system_notifications(): void
+    {
+        $script = file_get_contents(public_path('js/farmfort.js'));
+
+        $this->assertIsString($script);
+        $this->assertStringNotContainsString('Notification.requestPermission', $script);
+        $this->assertStringNotContainsString('new Notification', $script);
+        $this->assertStringNotContainsString('supportRequestNotificationPermission', $script);
+    }
+
     public function test_legacy_ajax_support_routes_are_served_by_laravel(): void
     {
         $propertyId = app(FarmContext::class)->propertyId();

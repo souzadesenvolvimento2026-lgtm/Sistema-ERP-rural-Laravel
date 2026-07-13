@@ -416,22 +416,6 @@ function supportSoundEnabled() {
   return localStorage.getItem(FARMFLOW_SUPPORT_SOUND_KEY) !== '0';
 }
 
-function supportNotificationPermission() {
-  if (!('Notification' in window)) return 'unsupported';
-  return Notification.permission || 'default';
-}
-
-function supportRequestNotificationPermission() {
-  if (!('Notification' in window)) return Promise.resolve('unsupported');
-  if (Notification.permission !== 'default') return Promise.resolve(Notification.permission);
-  return Notification.requestPermission().catch(() => 'denied');
-}
-
-function supportNotificationIcon() {
-  const icon = document.querySelector('link[data-farmfort-favicon="primary"], link[rel="icon"]');
-  return icon ? icon.href : '';
-}
-
 function supportFaviconLink() {
   let link = document.querySelector('link[data-farmfort-favicon="primary"], link[rel~="icon"]');
   if (!link) {
@@ -477,35 +461,14 @@ function supportSetAlertFavicon(active) {
   link.href = active ? supportAlertFaviconHref() : farmFlowOriginalFaviconHref;
 }
 
-function supportNotifyIfBackground(title, body, options) {
-  const isBackground = document.hidden || !document.hasFocus();
-  if (!isBackground || !('Notification' in window) || Notification.permission !== 'granted') return;
-
-  try {
-    const notification = new Notification(title || 'Nova mensagem - FarmFort', {
-      body: body || 'Você recebeu uma nova mensagem.',
-      icon: supportNotificationIcon(),
-      tag: options?.tag || 'farmflow-chat',
-      renotify: true
-    });
-    notification.onclick = () => {
-      window.focus();
-      notification.close();
-    };
-    setTimeout(() => notification.close(), 9000);
-  } catch (e) {}
-}
-
 function supportAlertNewMessage(options) {
   const alert = options || {};
   if (alert.count) supportSetBrowserTabAlert(alert.count, alert.source || alert.tag || 'global');
   supportPlayTone();
-  supportNotifyIfBackground(alert.title, alert.body, alert);
 }
 
 function supportUpdateSoundButtons(scope) {
   const enabled = supportSoundEnabled();
-  const permission = supportNotificationPermission();
   const buttons = (scope || document).querySelectorAll('[data-support-sound]');
   buttons.forEach(button => {
     button.classList.toggle('btn-farmflow', enabled);
@@ -515,13 +478,7 @@ function supportUpdateSoundButtons(scope) {
       ? 'Som ativado. Clique para desativar os alertas sonoros.'
       : 'Som desativado. Clique para ativar os alertas sonoros.');
     button.innerHTML = `<i class="bi ${enabled ? 'bi-volume-up-fill' : 'bi-volume-mute-fill'} me-1"></i>${enabled ? 'Som ativado' : 'Som desativado'}`;
-    if (permission === 'denied') {
-      button.setAttribute('data-notification-status', 'bloqueada');
-    } else if (permission === 'granted') {
-      button.setAttribute('data-notification-status', 'permitida');
-    } else {
-      button.setAttribute('data-notification-status', 'pendente');
-    }
+    button.removeAttribute('data-notification-status');
   });
 }
 
@@ -536,7 +493,6 @@ function supportBindSoundButtons(scope) {
       if (nextEnabled) {
         supportPrimeAudio();
         supportPlayTone();
-        supportRequestNotificationPermission().then(() => supportUpdateSoundButtons(document));
       }
     });
   });
@@ -1023,7 +979,6 @@ function initSupportClient(root) {
 
   toggle?.addEventListener('click', () => {
     supportPrimeAudio();
-    if (supportSoundEnabled()) supportRequestNotificationPermission().then(() => supportUpdateSoundButtons(document));
     panel.hidden ? openPanel() : closePanel();
   });
   close?.addEventListener('click', closePanel);
@@ -1428,7 +1383,6 @@ function initSupportAdmin(root) {
 
   toggle?.addEventListener('click', () => {
     supportPrimeAudio();
-    if (supportSoundEnabled()) supportRequestNotificationPermission().then(() => supportUpdateSoundButtons(document));
     if (panel?.hidden) {
       openPanel();
       loadThreads(true);
