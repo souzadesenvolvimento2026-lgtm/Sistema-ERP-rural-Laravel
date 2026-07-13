@@ -22,7 +22,9 @@
         </div>
         <div class="actions">
             <a class="btn" href="{{ route('financeiro.relatorio-lancamentos.index') }}"><i class="bi bi-download"></i> Gerar relatório</a>
-            <a class="btn primary" href="{{ route('financeiro.lancamentos.create') }}"><i class="bi bi-plus-lg"></i> Novo Lançamento</a>
+            <button class="btn primary" type="button" data-bs-toggle="modal" data-bs-target="#financeiroNovoLancamentoModal">
+                <i class="bi bi-plus-lg"></i> Novo Lançamento
+            </button>
         </div>
     </div>
 
@@ -97,7 +99,9 @@
                 <a class="btn btn-sm btn-outline-secondary" href="{{ route('financeiro.contas.index') }}"><i class="bi bi-bank"></i> Bancos</a>
                 <a class="btn btn-sm btn-outline-secondary" href="{{ route('financeiro.relatorio-lancamentos.index') }}"><i class="bi bi-download"></i> Gerar relatório</a>
             </div>
-            <a class="btn primary" href="{{ route('financeiro.lancamentos.create') }}"><i class="bi bi-plus-lg"></i> Novo Lançamento</a>
+            <button class="btn primary" type="button" data-bs-toggle="modal" data-bs-target="#financeiroNovoLancamentoModal">
+                <i class="bi bi-plus-lg"></i> Novo Lançamento
+            </button>
         </div>
         <div class="table-wrap">
             <table>
@@ -148,4 +152,6 @@
         @include('financeiro.partials.agenda')
         @include('financeiro.partials.contas')
     </div>
+
+    @include('financeiro.partials.novo-lancamento-modal')
 @endsection

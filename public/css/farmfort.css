@@ -8509,6 +8509,104 @@ body.ff-map-fixed-body .ff-map-hidden-forms {
   color: #fff;
 }
 
+.ff-financial-launch-dialog {
+  width: min(94vw, 540px);
+}
+
+.ff-financial-launch-modal .modal-body {
+  padding: 18px;
+}
+
+.ff-financial-launch-help {
+  margin: 0 0 14px;
+  color: var(--ff-muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.ff-financial-launch-options {
+  display: grid;
+  gap: 10px;
+}
+
+.ff-financial-launch-option {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 70px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--ff-accent) 16%, var(--ff-border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ff-accent-soft) 72%, var(--ff-surface));
+  color: var(--ff-text);
+  text-decoration: none;
+  transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+
+.ff-financial-launch-option:hover,
+.ff-financial-launch-option:focus {
+  border-color: var(--ff-accent);
+  background: color-mix(in srgb, var(--ff-accent-soft) 88%, var(--ff-surface));
+  color: var(--ff-text);
+  box-shadow: 0 14px 28px rgba(3, 98, 62, .16);
+  transform: translateY(-1px);
+}
+
+.ff-financial-launch-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  font-size: 22px;
+  background: var(--ff-surface);
+}
+
+.ff-financial-launch-option-expense .ff-financial-launch-icon {
+  color: var(--ff-danger);
+  background: var(--ff-danger-soft);
+}
+
+.ff-financial-launch-option-income .ff-financial-launch-icon {
+  color: var(--ff-accent);
+  background: var(--ff-accent-soft);
+}
+
+.ff-financial-launch-option-transfer .ff-financial-launch-icon {
+  color: #7c5cff;
+  background: color-mix(in srgb, #7c5cff 18%, var(--ff-surface));
+}
+
+.ff-financial-launch-option-invoice .ff-financial-launch-icon {
+  color: var(--ff-info);
+  background: var(--ff-info-soft);
+}
+
+.ff-financial-launch-text {
+  display: grid;
+  gap: 2px;
+}
+
+.ff-financial-launch-text strong {
+  color: var(--ff-text);
+  font-size: 16px;
+  line-height: 1.2;
+  font-weight: 900;
+}
+
+.ff-financial-launch-text small {
+  color: var(--ff-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.ff-financial-launch-chevron {
+  color: var(--ff-muted);
+  font-size: 20px;
+}
+
 .modal .row {
   --bs-gutter-x: .9rem;
   --bs-gutter-y: .75rem;
