@@ -72,6 +72,10 @@ Route::post('/chat-interno/offline', [ChatInternoController::class, 'offline'])-
 Route::get('/chat-interno/anexos/{anexo}', [ChatInternoController::class, 'anexo'])->name('chat-interno.anexo');
 Route::get('/chat-interno/{usuario}/mensagens', [ChatInternoController::class, 'mensagens'])->name('chat-interno.mensagens');
 Route::post('/chat-interno/{usuario}/mensagens', [ChatInternoController::class, 'enviar'])->name('chat-interno.enviar');
+Route::match(['get', 'post'], '/ajax/chat-interno', [LegacyAjaxController::class, 'chatInterno'])->name('ajax.chat-interno');
+Route::get('/ajax/chat-anexo', [LegacyAjaxController::class, 'chatAnexo'])->name('ajax.chat-anexo');
+Route::match(['get', 'post'], '/ajax/suporte-chat', [LegacyAjaxController::class, 'suporteChat'])->name('ajax.suporte-chat');
+Route::get('/ajax/suporte-anexo', [LegacyAjaxController::class, 'suporteAnexo'])->name('ajax.suporte-anexo');
 Route::match(['get', 'post'], '/pages/ajax/chat_interno.php', [LegacyAjaxController::class, 'chatInterno'])->name('legacy.ajax.chat-interno');
 Route::get('/pages/ajax/chat_anexo.php', [LegacyAjaxController::class, 'chatAnexo'])->name('legacy.ajax.chat-anexo');
 Route::match(['get', 'post'], '/pages/ajax/suporte_chat.php', [LegacyAjaxController::class, 'suporteChat'])->name('legacy.ajax.suporte-chat');

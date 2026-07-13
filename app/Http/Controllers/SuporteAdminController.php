@@ -19,7 +19,7 @@ class SuporteAdminController extends Controller
 
         return view('suporte.admin.index', [
             ...$service->pagina(),
-            'suporteEndpoint' => url('/pages/ajax/suporte_chat.php'),
+            'suporteEndpoint' => '/ajax/suporte-chat',
             'profile' => (string) session('perfil', ''),
         ]);
     }

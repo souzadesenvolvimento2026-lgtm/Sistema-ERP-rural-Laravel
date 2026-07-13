@@ -9387,6 +9387,32 @@ XML;
             ->assertJson(['ok' => true]);
     }
 
+    public function test_nginx_safe_ajax_chat_routes_are_served_by_laravel(): void
+    {
+        $propertyId = app(FarmContext::class)->propertyId();
+
+        $this->withSession($this->loggedSession(propertyId: $propertyId))
+            ->get('/ajax/chat-interno?action=peers')
+            ->assertStatus(200)
+            ->assertJson(['ok' => true]);
+
+        $this->withSession($this->loggedSession(propertyId: $propertyId))
+            ->get('/ajax/suporte-chat?action=client_boot')
+            ->assertStatus(200)
+            ->assertJson(['ok' => true]);
+    }
+
+    public function test_support_widget_uses_nginx_safe_ajax_routes(): void
+    {
+        $this->withSession($this->loggedSession())
+            ->get('/dashboard')
+            ->assertStatus(200)
+            ->assertSee('data-chat-endpoint="/ajax/chat-interno"', false)
+            ->assertSee('data-support-endpoint="/ajax/suporte-chat"', false)
+            ->assertDontSee('data-chat-endpoint="/pages/ajax/chat_interno.php"', false)
+            ->assertDontSee('data-support-endpoint="/pages/ajax/suporte_chat.php"', false);
+    }
+
     public function test_legacy_ajax_support_routes_are_served_by_laravel(): void
     {
         $propertyId = app(FarmContext::class)->propertyId();
