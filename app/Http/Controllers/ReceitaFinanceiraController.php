@@ -25,6 +25,7 @@ class ReceitaFinanceiraController extends Controller
             $service->salvarComprador(app(FarmContext::class)->propertyId(), $request->validate([
                 'nome' => ['required', 'string', 'max:150'],
                 'documento' => ['nullable', 'string', 'max:30'],
+                'return_route' => ['nullable', 'in:financeiro.index,financeiro.receitas.index'],
             ]));
         } catch (RuntimeException $exception) {
             report($exception);
@@ -33,7 +34,7 @@ class ReceitaFinanceiraController extends Controller
         }
 
         return redirect()
-            ->route('financeiro.receitas.index')
+            ->route($request->input('return_route', 'financeiro.receitas.index'))
             ->with('success', 'Comprador cadastrado com sucesso.');
     }
 

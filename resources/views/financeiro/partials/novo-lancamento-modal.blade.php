@@ -8,6 +8,7 @@
     $safrasLancamento = $asCollection($opcoesLancamento['safras'] ?? []);
     $talhoesLancamento = $asCollection($opcoesLancamento['talhoes'] ?? []);
     $produtoresLancamento = $asCollection($opcoesLancamento['produtores'] ?? []);
+    $patrimoniosLancamento = $asCollection($opcoesLancamento['patrimonios'] ?? []);
     $contasTransferencia = $asCollection($contas ?? []);
     $safraPadraoId = old('safra_id', optional($safrasLancamento->first())->id);
     $formasPagamento = [
@@ -119,7 +120,7 @@
 
                     <label class="ff-financial-field">
                         <span>Categoria *</span>
-                        <select name="categoria_id" required>
+                        <select name="categoria_id" required data-ff-category-select>
                             <option value="">Selecione...</option>
                             @foreach ($categoriasLancamento as $categoria)
                                 <option value="{{ $categoria->id }}" @selected(old('categoria_id') == $categoria->id)>
@@ -131,10 +132,10 @@
 
                     <label class="ff-financial-field">
                         <span>Subcategoria</span>
-                        <select name="subcategoria_id">
+                        <select name="subcategoria_id" data-ff-subcategory-select>
                             <option value="">Selecione...</option>
                             @foreach ($subcategoriasLancamento as $subcategoria)
-                                <option value="{{ $subcategoria->id }}" @selected(old('subcategoria_id') == $subcategoria->id)>
+                                <option value="{{ $subcategoria->id }}" data-parent="{{ $subcategoria->categoria_pai_id }}" @selected(old('subcategoria_id') == $subcategoria->id)>
                                     {{ $subcategoria->nome }}
                                 </option>
                             @endforeach
@@ -155,8 +156,13 @@
 
                     <label class="ff-financial-field">
                         <span>Patrimônio</span>
-                        <select disabled>
-                            <option>Não vincular</option>
+                        <select name="maquina_id">
+                            <option value="">Não vincular</option>
+                            @foreach ($patrimoniosLancamento as $patrimonio)
+                                <option value="{{ $patrimonio->id }}" @selected(old('maquina_id') == $patrimonio->id)>
+                                    {{ $patrimonio->nome }}{{ $patrimonio->marca_modelo ? ' - '.$patrimonio->marca_modelo : '' }}
+                                </option>
+                            @endforeach
                         </select>
                         <small>Use quando a despesa for de máquina/equipamento.</small>
                     </label>
@@ -188,6 +194,28 @@
                     <label class="ff-financial-field">
                         <span>Fornecedor</span>
                         <input name="pessoa" value="{{ old('pessoa') }}" maxlength="150" placeholder="Nome do fornecedor">
+                    </label>
+
+                    <label class="ff-financial-field ff-quantity-field">
+                        <span>Quantidade</span>
+                        <input name="quantidade" value="{{ old('quantidade') }}" inputmode="decimal" placeholder="0">
+                    </label>
+
+                    <label class="ff-financial-field ff-quantity-field">
+                        <span>Unidade</span>
+                        <select name="unidade">
+                            <option value="">Não informar</option>
+                            <option value="sc" @selected(old('unidade') === 'sc')>Sacas</option>
+                            <option value="L" @selected(old('unidade') === 'L')>Litro</option>
+                            <option value="kg" @selected(old('unidade') === 'kg')>Kg</option>
+                            <option value="t" @selected(old('unidade') === 't')>Tonelada</option>
+                            <option value="un" @selected(old('unidade') === 'un')>Unidade</option>
+                        </select>
+                    </label>
+
+                    <label class="ff-financial-field ff-quantity-field">
+                        <span>Valor Unitário (R$)</span>
+                        <input name="preco_unitario" value="{{ old('preco_unitario') }}" inputmode="decimal" placeholder="0,00">
                     </label>
 
                     <label class="ff-financial-field">
@@ -296,18 +324,21 @@
                         <span>Tipo de receita</span>
                         <div class="ff-financial-segmented">
                             <label>
-                                <input type="radio" name="tipo_receita_visual" checked>
+                                <input type="radio" name="tipo_receita" value="graos" checked data-ff-income-type>
                                 <span><i class="bi bi-basket"></i> Receita de Grãos</span>
                             </label>
                             <label>
-                                <input type="radio" name="tipo_receita_visual">
+                                <input type="radio" name="tipo_receita" value="outras" data-ff-income-type>
                                 <span><i class="bi bi-receipt"></i> Outras Receitas</span>
                             </label>
                         </div>
                     </div>
 
                     <label class="ff-financial-field">
-                        <span>Comprador</span>
+                        <span class="ff-financial-label-action">
+                            Comprador
+                            <button type="button" data-ff-financial-open="#financeiroCompradorModal">Cadastrar</button>
+                        </span>
                         <select name="comprador_id">
                             <option value="">Selecione...</option>
                             @foreach ($compradoresLancamento as $comprador)
@@ -320,7 +351,7 @@
 
                     <label class="ff-financial-field">
                         <span>Categoria</span>
-                        <select name="categoria_id">
+                        <select name="categoria_id" data-ff-category-select>
                             <option value="">Sem categoria</option>
                             @foreach ($categoriasLancamento as $categoria)
                                 <option value="{{ $categoria->id }}" @selected(old('categoria_id') == $categoria->id)>
@@ -332,10 +363,10 @@
 
                     <label class="ff-financial-field">
                         <span>Subcategoria</span>
-                        <select name="subcategoria_id">
+                        <select name="subcategoria_id" data-ff-subcategory-select>
                             <option value="">Sem subcategoria</option>
                             @foreach ($subcategoriasLancamento as $subcategoria)
-                                <option value="{{ $subcategoria->id }}" @selected(old('subcategoria_id') == $subcategoria->id)>
+                                <option value="{{ $subcategoria->id }}" data-parent="{{ $subcategoria->categoria_pai_id }}" @selected(old('subcategoria_id') == $subcategoria->id)>
                                     {{ $subcategoria->nome }}
                                 </option>
                             @endforeach
@@ -383,30 +414,30 @@
                         </select>
                     </label>
 
-                    <label class="ff-financial-field">
+                    <label class="ff-financial-field" data-ff-grain-field>
                         <span>Sacas vendidas</span>
                         <input name="quantidade" value="{{ old('quantidade', '0') }}" inputmode="decimal">
                     </label>
 
-                    <label class="ff-financial-field">
+                    <label class="ff-financial-field" data-ff-grain-field>
                         <span>Unidade</span>
                         <input name="unidade" value="{{ old('unidade', 'sc') }}" maxlength="30">
                     </label>
 
-                    <label class="ff-financial-field">
+                    <label class="ff-financial-field" data-ff-grain-field>
                         <span>Valor por saca</span>
                         <input name="preco_unitario" value="{{ old('preco_unitario') }}" inputmode="decimal" placeholder="0,00">
                     </label>
 
                     <label class="ff-financial-field">
                         <span>Valor Total *</span>
-                        <input name="valor_total" value="{{ old('valor_total') }}" inputmode="decimal" placeholder="0,00">
+                        <input name="valor_total" value="{{ old('valor_total') }}" inputmode="decimal" required placeholder="0,00">
                         <small>Calculado automaticamente pelas sacas quando vazio.</small>
                     </label>
 
                     <label class="ff-financial-field">
                         <span>Data Recebimento</span>
-                        <input type="date" name="data_vencimento" value="{{ old('data_vencimento') }}">
+                        <input type="date" name="data_recebimento" value="{{ old('data_recebimento') }}">
                     </label>
 
                     <label class="ff-financial-field">
@@ -428,6 +459,48 @@
                 <button type="button" class="btn" data-bs-dismiss="modal">Cancelar</button>
                 <button type="submit" class="btn primary">
                     <i class="bi bi-shield-check"></i> Salvar
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade ff-financial-form-modal" id="financeiroCompradorModal" tabindex="-1" aria-labelledby="financeiroCompradorModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered ff-financial-buyer-dialog">
+        <form method="POST" action="{{ route('financeiro.receitas.compradores.store') }}" class="modal-content ff-financial-form-content">
+            @csrf
+            <input type="hidden" name="return_route" value="financeiro.index">
+
+            <div class="modal-header modal-header-green ff-financial-form-header">
+                <button type="button" class="ff-financial-back-button" data-ff-financial-open="#financeiroReceitaModal" aria-label="Voltar">
+                    <i class="bi bi-arrow-left"></i>
+                </button>
+                <div class="ff-financial-form-title">
+                    <h5 class="modal-title" id="financeiroCompradorModalLabel">
+                        <i class="bi bi-building-add"></i> Cadastrar comprador
+                    </h5>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="ff-financial-form-grid">
+                    <label class="ff-financial-field ff-span-2">
+                        <span>Nome do comprador *</span>
+                        <input name="nome" maxlength="150" required placeholder="Ex: Bunge">
+                    </label>
+
+                    <label class="ff-financial-field">
+                        <span>Documento</span>
+                        <input name="documento" maxlength="30" placeholder="Opcional">
+                    </label>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn" data-ff-financial-open="#financeiroReceitaModal">Cancelar</button>
+                <button type="submit" class="btn primary">
+                    <i class="bi bi-shield-check"></i> Salvar comprador
                 </button>
             </div>
         </form>
@@ -567,8 +640,12 @@
 
                     const target = bootstrap.Modal.getOrCreateInstance(targetEl);
                     const showTarget = () => target.show();
+                    const currentEl = button.closest('.modal.show');
 
-                    if (pickerEl?.classList.contains('show') && picker) {
+                    if (currentEl && currentEl !== targetEl) {
+                        currentEl.addEventListener('hidden.bs.modal', showTarget, { once: true });
+                        bootstrap.Modal.getOrCreateInstance(currentEl).hide();
+                    } else if (pickerEl?.classList.contains('show') && picker) {
                         pickerEl.addEventListener('hidden.bs.modal', showTarget, { once: true });
                         picker.hide();
                     } else {
@@ -598,6 +675,89 @@
                 origem.value = destino.value;
                 destino.value = origemValue;
             });
+
+            const parseMoney = (value) => {
+                const normalized = String(value || '')
+                    .replace(/\s+/g, '')
+                    .replace(/\./g, '')
+                    .replace(',', '.');
+
+                const parsed = Number.parseFloat(normalized);
+                return Number.isFinite(parsed) ? parsed : 0;
+            };
+
+            const formatMoney = (value) => value.toLocaleString('pt-BR', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            });
+
+            const filterSubcategories = (categorySelect) => {
+                const form = categorySelect.closest('form');
+                const subcategorySelect = form?.querySelector('[data-ff-subcategory-select]');
+                if (!subcategorySelect) return;
+
+                const categoryId = categorySelect.value || '';
+                Array.from(subcategorySelect.options).forEach((option) => {
+                    if (!option.value) {
+                        option.hidden = false;
+                        return;
+                    }
+
+                    const visible = option.dataset.parent === categoryId;
+                    option.hidden = !visible;
+                    if (!visible && option.selected) {
+                        subcategorySelect.value = '';
+                    }
+                });
+            };
+
+            document.querySelectorAll('[data-ff-category-select]').forEach((categorySelect) => {
+                filterSubcategories(categorySelect);
+                categorySelect.addEventListener('change', () => filterSubcategories(categorySelect));
+            });
+
+            const calculateFormTotal = (form) => {
+                const quantity = parseMoney(form.querySelector('[name="quantidade"]')?.value);
+                const unitValue = parseMoney(form.querySelector('[name="preco_unitario"]')?.value);
+                const total = form.querySelector('[name="valor_total"]');
+
+                if (total && quantity > 0 && unitValue > 0) {
+                    total.value = formatMoney(quantity * unitValue);
+                }
+            };
+
+            document.querySelectorAll('.ff-financial-form-modal form').forEach((form) => {
+                form.querySelectorAll('[name="quantidade"], [name="preco_unitario"]').forEach((input) => {
+                    input.addEventListener('input', () => calculateFormTotal(form));
+                });
+            });
+
+            const updateIncomeType = () => {
+                const modal = document.getElementById('financeiroReceitaModal');
+                const type = modal?.querySelector('[data-ff-income-type]:checked')?.value || 'graos';
+                const isGrain = type === 'graos';
+
+                modal?.querySelectorAll('[data-ff-grain-field]').forEach((field) => {
+                    field.hidden = !isGrain;
+                });
+
+                if (!isGrain && modal) {
+                    const quantity = modal.querySelector('[name="quantidade"]');
+                    const unitValue = modal.querySelector('[name="preco_unitario"]');
+                    const unit = modal.querySelector('[name="unidade"]');
+                    if (quantity) quantity.value = '';
+                    if (unitValue) unitValue.value = '';
+                    if (unit) unit.value = '';
+                } else if (modal) {
+                    const unit = modal.querySelector('[name="unidade"]');
+                    if (unit && !unit.value) unit.value = 'sc';
+                }
+            };
+
+            document.querySelectorAll('[data-ff-income-type]').forEach((input) => {
+                input.addEventListener('change', updateIncomeType);
+            });
+            updateIncomeType();
         });
     </script>
 @endpush

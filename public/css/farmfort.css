@@ -8632,6 +8632,10 @@ body.ff-map-fixed-body .ff-map-hidden-forms {
   width: min(94vw, 520px);
 }
 
+.ff-financial-buyer-dialog {
+  width: min(94vw, 560px);
+}
+
 .ff-financial-form-content {
   max-height: min(92vh, 860px);
 }
@@ -8713,6 +8717,24 @@ body.ff-map-fixed-body .ff-map-hidden-forms {
   color: #2d3748 !important;
   font-size: 12px;
   font-weight: 900;
+}
+
+.ff-financial-label-action {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ff-financial-label-action button {
+  border: 0;
+  background: transparent;
+  color: #0284c7;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .ff-financial-field input,

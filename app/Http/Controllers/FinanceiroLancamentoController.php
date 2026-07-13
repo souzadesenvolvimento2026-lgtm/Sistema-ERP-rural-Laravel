@@ -9,6 +9,7 @@ use App\Support\FarmContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use Throwable;
 
 class FinanceiroLancamentoController extends Controller
 {
@@ -33,6 +34,7 @@ class FinanceiroLancamentoController extends Controller
             'pessoa' => ['nullable', 'string', 'max:150'],
             'categoria_id' => ['required_if:tipo,despesa', 'nullable', 'integer'],
             'subcategoria_id' => ['nullable', 'integer'],
+            'maquina_id' => ['nullable', 'integer'],
             'conta_id' => ['nullable', 'integer'],
             'safra_id' => ['nullable', 'integer'],
             'talhao_id' => ['nullable', 'integer'],
@@ -40,18 +42,31 @@ class FinanceiroLancamentoController extends Controller
             'quantidade' => ['nullable', 'string'],
             'unidade' => ['nullable', 'string', 'max:30'],
             'preco_unitario' => ['nullable', 'string'],
-            'valor_total' => ['required_if:tipo,despesa', 'nullable', 'string'],
+            'valor_total' => ['required', 'string'],
             'data_lancamento' => ['required', 'date'],
             'data_vencimento' => ['nullable', 'date'],
+            'data_recebimento' => ['nullable', 'date'],
             'forma_pagamento' => ['nullable', 'in:dinheiro,pix,boleto,cheque,transferencia,cartao'],
             'numero_parcelas' => ['nullable', 'integer', 'min:1', 'max:36'],
             'baixado' => ['nullable', 'boolean'],
+            'tipo_receita' => ['nullable', 'in:graos,outras'],
+            'nota_fiscal' => ['nullable', 'string', 'max:50'],
+            'comprovante' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:5120'],
             'observacoes' => ['nullable', 'string'],
             'return_route' => ['nullable', 'in:financeiro.index'],
         ]);
 
         $dados['baixado'] = (bool) ($dados['baixado'] ?? false);
-        $service->criar($dados, app(FarmContext::class)->propertyId(), session('usuario_id'));
+
+        try {
+            $service->criar($dados, app(FarmContext::class)->propertyId(), session('usuario_id'), $request->file('comprovante'));
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return back()
+                ->withInput()
+                ->withErrors($exception->getMessage());
+        }
 
         return redirect()
             ->route($dados['return_route'] ?? 'financeiro.index')
