@@ -46,8 +46,8 @@ final class FarmfortLayoutComposer
             'loggedUserId' => $userId,
             'canHandleSupport' => $this->access->canHandleSupport($profile),
             'canUseClientChat' => $this->access->canUseClientSupport($profile, $userId),
-            'suporteEndpoint' => url('/pages/ajax/suporte_chat.php'),
-            'chatInternoEndpoint' => url('/pages/ajax/chat_interno.php'),
+            'suporteEndpoint' => '/pages/ajax/suporte_chat.php',
+            'chatInternoEndpoint' => '/pages/ajax/chat_interno.php',
         ]);
     }
 

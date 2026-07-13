@@ -749,7 +749,12 @@ function initInternalChat(root) {
 
   function loadPeers(playAlert) {
     return supportFetch(endpoint, 'peers').then(data => {
-      if (!data.ok) return;
+      if (!data.ok) {
+        if (usersBox) {
+          usersBox.innerHTML = `<div class="ff-support-empty">${supportEscape(data.erro || 'Não foi possível carregar os usuários da propriedade.')}</div>`;
+        }
+        return;
+      }
       const previousUnread = peers.reduce((sum, peer) => sum + Number(peer.unread || 0), 0);
       peers = data.peers || [];
       const totalUnread = Number(data.total_unread || 0);
@@ -1940,5 +1945,4 @@ document.addEventListener('DOMContentLoaded', function () {
     }, 4000);
   }
 });
-
 

@@ -7332,11 +7332,18 @@ html[data-theme="dark"] .ff-or-chart-filter button.active {
   line-height: 1.1;
 }
 
-.stat strong.danger {
+.stat strong.danger,
+.stats .stat.danger strong {
   color: var(--ff-danger);
 }
 
-.stat strong.warning {
+.stat strong.success,
+.stats .stat.success strong {
+  color: var(--ff-accent);
+}
+
+.stat strong.warning,
+.stats .stat.warning strong {
   color: var(--ff-warning);
 }
 
