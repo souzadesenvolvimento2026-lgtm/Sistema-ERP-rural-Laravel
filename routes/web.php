@@ -285,7 +285,7 @@ Route::get('/pages/{legacy}', function (Request $request, string $legacy) {
         'comparativo_safras.php' => '/relatorios/comparativo-safras',
         'contas.php' => '/financeiro/contas',
         'contratos.php' => '/estoque-producao/contratos',
-        'despesas.php' => '/financeiro/despesas',
+        'despesas.php' => '/financeiro',
         'documentos.php' => '/fiscal/documentos',
         'dre.php' => '/relatorios/dre',
         'entrada_nf.php' => '/fiscal/entrada-nf',
