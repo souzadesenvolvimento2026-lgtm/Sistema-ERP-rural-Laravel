@@ -59,6 +59,7 @@ class ContaBancariaController extends Controller
             'valor' => ['required', 'string'],
             'data_transferencia' => ['nullable', 'date'],
             'descricao' => ['nullable', 'string', 'max:255'],
+            'return_route' => ['nullable', 'in:financeiro.index,financeiro.contas.index'],
         ]);
 
         try {
@@ -72,7 +73,7 @@ class ContaBancariaController extends Controller
         }
 
         return redirect()
-            ->route('financeiro.contas.index')
+            ->route($dados['return_route'] ?? 'financeiro.contas.index')
             ->with('success', 'Transferencia registrada.');
     }
 

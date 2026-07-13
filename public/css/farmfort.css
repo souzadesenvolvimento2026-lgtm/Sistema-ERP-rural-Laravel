@@ -8513,13 +8513,26 @@ body.ff-map-fixed-body .ff-map-hidden-forms {
   width: min(94vw, 540px);
 }
 
+.ff-financial-launch-modal .modal-content,
+.ff-financial-form-modal .modal-content {
+  background: #fff;
+  color: #263142;
+}
+
+.ff-financial-launch-modal .modal-body,
+.ff-financial-form-modal .modal-body,
+.ff-financial-form-modal .modal-footer {
+  background: #fff;
+  color: #263142;
+}
+
 .ff-financial-launch-modal .modal-body {
   padding: 18px;
 }
 
 .ff-financial-launch-help {
   margin: 0 0 14px;
-  color: var(--ff-muted);
+  color: #5f6b7a;
   font-size: 14px;
   line-height: 1.45;
 }
@@ -8534,21 +8547,25 @@ body.ff-map-fixed-body .ff-map-hidden-forms {
   grid-template-columns: 44px 1fr auto;
   align-items: center;
   gap: 12px;
+  width: 100%;
   min-height: 70px;
   padding: 12px 14px;
-  border: 1px solid color-mix(in srgb, var(--ff-accent) 16%, var(--ff-border));
+  border: 1px solid #d4e5dd;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--ff-accent-soft) 72%, var(--ff-surface));
-  color: var(--ff-text);
+  background: #edf8f4;
+  color: #263142;
+  font: inherit;
+  text-align: left;
   text-decoration: none;
+  cursor: pointer;
   transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease, transform .18s ease;
 }
 
 .ff-financial-launch-option:hover,
 .ff-financial-launch-option:focus {
   border-color: var(--ff-accent);
-  background: color-mix(in srgb, var(--ff-accent-soft) 88%, var(--ff-surface));
-  color: var(--ff-text);
+  background: #e4f4ee;
+  color: #263142;
   box-shadow: 0 14px 28px rgba(3, 98, 62, .16);
   transform: translateY(-1px);
 }
@@ -8561,7 +8578,7 @@ body.ff-map-fixed-body .ff-map-hidden-forms {
   height: 44px;
   border-radius: 14px;
   font-size: 22px;
-  background: var(--ff-surface);
+  background: #fff;
 }
 
 .ff-financial-launch-option-expense .ff-financial-launch-icon {
@@ -8576,7 +8593,7 @@ body.ff-map-fixed-body .ff-map-hidden-forms {
 
 .ff-financial-launch-option-transfer .ff-financial-launch-icon {
   color: #7c5cff;
-  background: color-mix(in srgb, #7c5cff 18%, var(--ff-surface));
+  background: #ede9ff;
 }
 
 .ff-financial-launch-option-invoice .ff-financial-launch-icon {
@@ -8590,21 +8607,217 @@ body.ff-map-fixed-body .ff-map-hidden-forms {
 }
 
 .ff-financial-launch-text strong {
-  color: var(--ff-text);
+  color: #263142;
   font-size: 16px;
   line-height: 1.2;
   font-weight: 900;
 }
 
 .ff-financial-launch-text small {
-  color: var(--ff-muted);
+  color: #5f6b7a;
   font-size: 12px;
   line-height: 1.35;
 }
 
 .ff-financial-launch-chevron {
-  color: var(--ff-muted);
+  color: #7a8594;
   font-size: 20px;
+}
+
+.ff-financial-form-dialog {
+  width: min(96vw, 820px);
+}
+
+.ff-financial-transfer-dialog {
+  width: min(94vw, 520px);
+}
+
+.ff-financial-form-content {
+  max-height: min(92vh, 860px);
+}
+
+.ff-financial-form-header {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 10px 14px;
+}
+
+.ff-financial-back-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, .78);
+  border-radius: 7px;
+  background: transparent;
+  color: #fff;
+  font-size: 18px;
+}
+
+.ff-financial-back-button:hover,
+.ff-financial-back-button:focus {
+  background: rgba(255, 255, 255, .15);
+}
+
+.ff-financial-form-title {
+  display: grid;
+  gap: 1px;
+}
+
+.ff-financial-form-title span {
+  color: rgba(255, 255, 255, .88);
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: .04em;
+}
+
+.ff-financial-form-title .modal-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 20px;
+}
+
+.ff-financial-form-modal .modal-body {
+  overflow: auto;
+  padding: 18px 12px 14px;
+}
+
+.ff-financial-form-modal .modal-footer {
+  border-top: 1px solid #dce3ea;
+}
+
+.ff-financial-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 13px 16px;
+}
+
+.ff-transfer-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ff-financial-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ff-financial-field > span,
+.ff-financial-form-modal label > span {
+  color: #2d3748 !important;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ff-financial-field input,
+.ff-financial-field select,
+.ff-financial-field textarea {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid #d8e0e8;
+  border-radius: 7px;
+  background: #fff;
+  color: #2f3947;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.ff-financial-field textarea {
+  min-height: 56px;
+}
+
+.ff-financial-field input[type="file"] {
+  padding: 5px 8px;
+}
+
+.ff-financial-field input:disabled,
+.ff-financial-field select:disabled {
+  background: #f2f5f8;
+  color: #647184;
+}
+
+.ff-financial-field small {
+  color: #718096;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ff-span-2 {
+  grid-column: span 2;
+}
+
+.ff-span-3 {
+  grid-column: 1 / -1;
+}
+
+.ff-financial-segmented {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid #cfd8df;
+  border-radius: 7px;
+}
+
+.ff-financial-segmented label {
+  margin: 0;
+}
+
+.ff-financial-segmented input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ff-financial-segmented span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 7px 12px;
+  background: #fff;
+  color: #2f3947;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.ff-financial-segmented input:checked + span {
+  background: var(--ff-accent);
+  color: #fff !important;
+}
+
+.ff-transfer-invert {
+  width: auto;
+  min-height: 34px !important;
+  padding: 6px 10px !important;
+}
+
+.ff-transfer-help {
+  padding: 15px 16px;
+  border: 1px solid #b7decf;
+  border-radius: 7px;
+  background: #e9f7f1;
+  color: #3d4a59;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+  .ff-financial-form-grid,
+  .ff-transfer-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ff-span-2,
+  .ff-span-3 {
+    grid-column: 1 / -1;
+  }
 }
 
 .modal .row {

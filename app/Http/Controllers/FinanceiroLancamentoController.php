@@ -47,13 +47,14 @@ class FinanceiroLancamentoController extends Controller
             'numero_parcelas' => ['nullable', 'integer', 'min:1', 'max:36'],
             'baixado' => ['nullable', 'boolean'],
             'observacoes' => ['nullable', 'string'],
+            'return_route' => ['nullable', 'in:financeiro.index'],
         ]);
 
         $dados['baixado'] = (bool) ($dados['baixado'] ?? false);
         $service->criar($dados, app(FarmContext::class)->propertyId(), session('usuario_id'));
 
         return redirect()
-            ->route('modules.show', ['module' => 'financeiro'])
+            ->route($dados['return_route'] ?? 'financeiro.index')
             ->with('success', 'Lançamento financeiro criado pelo Laravel.');
     }
 }
