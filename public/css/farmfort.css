@@ -8513,17 +8513,28 @@ body.ff-map-fixed-body .ff-map-hidden-forms {
   width: min(94vw, 540px);
 }
 
-.ff-financial-launch-modal .modal-content,
 .ff-financial-form-modal .modal-content {
   background: #fff;
   color: #263142;
 }
 
-.ff-financial-launch-modal .modal-body,
 .ff-financial-form-modal .modal-body,
 .ff-financial-form-modal .modal-footer {
   background: #fff;
   color: #263142;
+}
+
+.ff-financial-launch-modal .modal-content {
+  overflow: hidden;
+  border: 1px solid #2f5261;
+  background: #172331;
+  color: #eaf4f2;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, .42);
+}
+
+.ff-financial-launch-modal .modal-body {
+  background: #172331;
+  color: #d9e7ea;
 }
 
 .ff-financial-launch-modal .modal-body {
@@ -8532,7 +8543,7 @@ body.ff-map-fixed-body .ff-map-hidden-forms {
 
 .ff-financial-launch-help {
   margin: 0 0 14px;
-  color: #5f6b7a;
+  color: #aebdca;
   font-size: 14px;
   line-height: 1.45;
 }
@@ -8550,10 +8561,10 @@ body.ff-map-fixed-body .ff-map-hidden-forms {
   width: 100%;
   min-height: 70px;
   padding: 12px 14px;
-  border: 1px solid #d4e5dd;
+  border: 1px solid #2d4d57;
   border-radius: 10px;
-  background: #edf8f4;
-  color: #263142;
+  background: #1b3431;
+  color: #ecfdf5;
   font: inherit;
   text-align: left;
   text-decoration: none;
@@ -8563,10 +8574,10 @@ body.ff-map-fixed-body .ff-map-hidden-forms {
 
 .ff-financial-launch-option:hover,
 .ff-financial-launch-option:focus {
-  border-color: var(--ff-accent);
-  background: #e4f4ee;
-  color: #263142;
-  box-shadow: 0 14px 28px rgba(3, 98, 62, .16);
+  border-color: #68d7bf;
+  background: #21423b;
+  color: #fff;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, .26);
   transform: translateY(-1px);
 }
 
@@ -8578,27 +8589,27 @@ body.ff-map-fixed-body .ff-map-hidden-forms {
   height: 44px;
   border-radius: 14px;
   font-size: 22px;
-  background: #fff;
+  background: #0f2530;
 }
 
 .ff-financial-launch-option-expense .ff-financial-launch-icon {
-  color: var(--ff-danger);
-  background: var(--ff-danger-soft);
+  color: #ff6b78;
+  background: #3a1e27;
 }
 
 .ff-financial-launch-option-income .ff-financial-launch-icon {
-  color: var(--ff-accent);
-  background: var(--ff-accent-soft);
+  color: #28dda3;
+  background: #103d32;
 }
 
 .ff-financial-launch-option-transfer .ff-financial-launch-icon {
-  color: #7c5cff;
-  background: #ede9ff;
+  color: #9b79ff;
+  background: #292550;
 }
 
 .ff-financial-launch-option-invoice .ff-financial-launch-icon {
-  color: var(--ff-info);
-  background: var(--ff-info-soft);
+  color: #29b7ff;
+  background: #0f3145;
 }
 
 .ff-financial-launch-text {
@@ -8607,20 +8618,20 @@ body.ff-map-fixed-body .ff-map-hidden-forms {
 }
 
 .ff-financial-launch-text strong {
-  color: #263142;
+  color: #f5fffb;
   font-size: 16px;
   line-height: 1.2;
   font-weight: 900;
 }
 
 .ff-financial-launch-text small {
-  color: #5f6b7a;
+  color: #aebdca;
   font-size: 12px;
   line-height: 1.35;
 }
 
 .ff-financial-launch-chevron {
-  color: #7a8594;
+  color: #9fb7c5;
   font-size: 20px;
 }
 
@@ -8853,6 +8864,11 @@ body.ff-map-fixed-body .ff-map-hidden-forms {
   color: var(--ff-muted) !important;
 }
 
+.ff-financial-launch-modal .ff-financial-launch-text small,
+.ff-financial-launch-modal .ff-financial-launch-help {
+  color: #aebdca !important;
+}
+
 .ff-talhao-create-modal .modal-content {
   border-color: #d7dee8;
   background: #fff;
@@ -8977,6 +8993,27 @@ html[data-theme="dark"] .ff-talhao-create-modal select:disabled,
 html[data-theme="dark"] .ff-talhao-create-modal input:disabled {
   color: #344256;
   background: #f8fafc;
+}
+
+html[data-theme="dark"] .ff-financial-launch-modal .modal-content,
+html[data-theme="dark"] .ff-financial-launch-modal .modal-body {
+  background: #172331;
+  color: #d9e7ea;
+}
+
+html[data-theme="dark"] .ff-financial-form-modal .modal-content,
+html[data-theme="dark"] .ff-financial-form-modal .modal-body,
+html[data-theme="dark"] .ff-financial-form-modal .modal-footer {
+  background: #fff;
+  color: #263142;
+}
+
+html[data-theme="dark"] .ff-financial-form-modal input,
+html[data-theme="dark"] .ff-financial-form-modal select,
+html[data-theme="dark"] .ff-financial-form-modal textarea {
+  border-color: #d8e0e8;
+  background: #fff;
+  color: #2f3947;
 }
 
 @media (max-width: 576px) {
