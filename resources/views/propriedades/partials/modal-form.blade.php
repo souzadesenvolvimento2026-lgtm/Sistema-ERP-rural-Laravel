@@ -5,7 +5,12 @@
     $field = function (string $name, $fallback = '') use ($useOld) {
         return $useOld ? old($name, $fallback) : $fallback;
     };
+    $planLimits = ['basico' => 3, 'avancado' => 5, 'premium' => 10];
     $planoAtual = $field('plano', $isEdit ? $propriedade->plano_key : 'basico');
+    $perfilSessao = (string) session('perfil', '');
+    $criadorContaNoPlano = ! $isEdit && ! in_array($perfilSessao, ['administrador_sistema', 'gerencia_sistema', 'colaborador_sistema'], true);
+    $usuariosAtuais = $isEdit ? (int) ($propriedade->usuarios_total ?? $linkedUsers->count()) : ($criadorContaNoPlano ? 1 : 0);
+    $limiteAtual = $planLimits[$planoAtual] ?? 3;
     $pecuariaAtiva = (string) $field('pecuaria_ativa', $isEdit && $propriedade->pecuaria_ativa ? '1' : '0') === '1';
     $aprovadorAtual = (int) $field('aprovador_usuario_id', $isEdit ? ($propriedade->aprovador_usuario_id ?? 0) : 0);
 @endphp
@@ -60,7 +65,7 @@
 
                     <label class="ff-property-field span-6">
                         <span>Plano da propriedade</span>
-                        <select name="plano" required>
+                        <select name="plano" required data-property-plan-select>
                             @foreach ($planOptions as $value => $label)
                                 <option value="{{ $value }}" @selected($planoAtual === $value)>{{ $label }}</option>
                             @endforeach
@@ -150,35 +155,49 @@
                         <p class="ff-property-empty-users">Nenhum usuário vinculado diretamente ainda.</p>
                     @endif
 
-                    <div class="ff-property-user-columns">
-                        <label class="ff-property-field">
-                            <span>Vincular usuários existentes</span>
-                            <select name="usuarios_existentes[]" multiple size="5">
-                                @foreach (($usuariosDisponiveis ?? collect()) as $usuario)
-                                    @php $jaVinculado = $linkedUsers->contains('id', (int) $usuario->id); @endphp
-                                    <option value="{{ $usuario->id }}" @disabled($jaVinculado)>
-                                        {{ $usuario->nome }} — {{ $usuario->email }} — {{ \App\Support\FarmFormat::statusLabel($usuario->perfil) }}{{ $jaVinculado ? ' (já vinculado)' : '' }}
-                                    </option>
-                                @endforeach
-                            </select>
-                            <small>Use Ctrl para selecionar mais de um usuário.</small>
-                        </label>
+                    <div
+                        class="ff-property-add-users"
+                        data-property-users-add
+                        data-current-users="{{ $usuariosAtuais }}"
+                        data-plan-limit="{{ $limiteAtual }}"
+                    >
+                        <div class="ff-property-add-users-head">
+                            <div>
+                                <span class="ff-property-section-label">Adicionar mais usuário</span>
+                                <small data-property-user-limit-text>
+                                    Esta propriedade usa {{ $usuariosAtuais }}/{{ $limiteAtual }} usuários do plano {{ $planOptions[$planoAtual] ?? 'Básico - até 3 usuários' }}.
+                                </small>
+                            </div>
+                            <button class="btn small" type="button" data-property-add-user>
+                                <i class="bi bi-person-plus"></i> Adicionar mais usuário
+                            </button>
+                        </div>
+
+                        <div class="ff-property-plan-message" data-property-user-message @if ($usuariosAtuais < $limiteAtual) hidden @endif>
+                            Limite de usuários do plano atingido. Para adicionar outro usuário, aumente o plano da propriedade ou remova/inative um usuário vinculado.
+                        </div>
 
                         <div class="ff-property-new-users">
-                            <span class="ff-property-section-label">Adicionar até 3 novos usuários</span>
                             @for ($i = 0; $i < 3; $i++)
-                                <div class="ff-property-new-user-row">
-                                    <input name="novos_usuarios[{{ $i }}][nome]" placeholder="Nome">
-                                    <input type="email" name="novos_usuarios[{{ $i }}][email]" placeholder="E-mail">
+                                @php
+                                    $novoPrefixo = "novos_usuarios.$i";
+                                    $novoNome = $useOld ? old($novoPrefixo.'.nome', '') : '';
+                                    $novoEmail = $useOld ? old($novoPrefixo.'.email', '') : '';
+                                    $novoPerfil = $useOld ? old($novoPrefixo.'.perfil', 'visualizador') : 'visualizador';
+                                    $linhaVisivel = trim($novoNome.$novoEmail) !== '';
+                                @endphp
+                                <div class="ff-property-new-user-row" data-property-user-row @if (! $linhaVisivel) hidden @endif>
+                                    <input name="novos_usuarios[{{ $i }}][nome]" value="{{ $novoNome }}" placeholder="Nome">
+                                    <input type="email" name="novos_usuarios[{{ $i }}][email]" value="{{ $novoEmail }}" placeholder="E-mail">
                                     <input type="password" name="novos_usuarios[{{ $i }}][senha]" autocomplete="new-password" placeholder="Senha">
                                     <select name="novos_usuarios[{{ $i }}][perfil]">
                                         @foreach ($perfisUsuario as $perfil => $label)
-                                            <option value="{{ $perfil }}" @selected($perfil === 'visualizador')>{{ $label }}</option>
+                                            <option value="{{ $perfil }}" @selected($perfil === $novoPerfil)>{{ $label }}</option>
                                         @endforeach
                                     </select>
                                 </div>
                             @endfor
-                            <small>Se o e-mail já existir, o usuário será apenas vinculado à propriedade. Se for novo, a senha é obrigatória.</small>
+                            <small>Não listamos usuários de outras propriedades. Se você informar um e-mail já existente, ele será vinculado sem expor a lista global. Se for novo, a senha é obrigatória.</small>
                         </div>
                     </div>
                 </div>

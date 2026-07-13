@@ -94,7 +94,6 @@ class PropriedadeService
                 ['label' => 'Usuários vinculados', 'value' => (string) $rows->sum('usuarios_total'), 'tone' => 'warning'],
             ],
             'aprovadores' => self::aprovadores(),
-            'usuariosDisponiveis' => $this->usuariosDisponiveis(),
             'perfisUsuario' => self::USER_PROFILES,
             'planOptions' => self::PLAN_OPTIONS,
             'canCreateProperty' => $canCreateProperty,
@@ -378,19 +377,9 @@ class PropriedadeService
             ->groupBy('propriedade_id');
     }
 
-    private function usuariosDisponiveis(): Collection
-    {
-        return DB::table('usuarios')
-            ->where('ativo', 1)
-            ->whereNotIn('perfil', self::SYSTEM_PROFILES)
-            ->orderBy('nome')
-            ->get(['id', 'nome', 'email', 'perfil']);
-    }
-
     private function processarUsuarios(int $propriedadeId, array $dados, ?int $usuarioLogadoId): void
     {
         $this->atualizarUsuariosVinculados($propriedadeId, $dados['usuarios_vinculados'] ?? [], $usuarioLogadoId);
-        $this->vincularUsuariosExistentes($propriedadeId, $dados['usuarios_existentes'] ?? [], $usuarioLogadoId);
         $this->criarOuVincularNovosUsuarios($propriedadeId, $dados['novos_usuarios'] ?? [], $usuarioLogadoId);
     }
 
@@ -454,45 +443,6 @@ class PropriedadeService
         }
     }
 
-    private function vincularUsuariosExistentes(int $propriedadeId, mixed $usuariosIds, ?int $usuarioLogadoId): void
-    {
-        if (! is_array($usuariosIds)) {
-            return;
-        }
-
-        $ids = collect($usuariosIds)
-            ->map(fn ($id) => (int) $id)
-            ->filter()
-            ->unique()
-            ->values();
-
-        if ($ids->isEmpty()) {
-            return;
-        }
-
-        $usuarios = DB::table('usuarios')
-            ->whereIn('id', $ids->all())
-            ->where('ativo', 1)
-            ->whereNotIn('perfil', self::SYSTEM_PROFILES)
-            ->get(['id', 'nome', 'email']);
-
-        foreach ($usuarios as $usuario) {
-            DB::table('usuario_propriedades')->updateOrInsert([
-                'usuario_id' => (int) $usuario->id,
-                'propriedade_id' => $propriedadeId,
-            ]);
-
-            $this->auditar(
-                $usuarioLogadoId,
-                'vincular_usuario_propriedade',
-                'usuario_propriedades',
-                (int) $usuario->id,
-                $propriedadeId,
-                'Usuário vinculado à propriedade: '.$usuario->nome.' ('.$usuario->email.')'
-            );
-        }
-    }
-
     private function criarOuVincularNovosUsuarios(int $propriedadeId, mixed $usuarios, ?int $usuarioLogadoId): void
     {
         if (! is_array($usuarios)) {
@@ -516,9 +466,13 @@ class PropriedadeService
 
             $usuarioExistente = DB::table('usuarios')
                 ->where('email', $email)
-                ->first(['id', 'nome', 'email']);
+                ->first(['id', 'nome', 'email', 'perfil', 'ativo']);
 
             if ($usuarioExistente) {
+                if ((int) $usuarioExistente->ativo !== 1 || in_array((string) $usuarioExistente->perfil, self::SYSTEM_PROFILES, true)) {
+                    throw new RuntimeException('O e-mail '.$email.' pertence a um usuário indisponível para vínculo nesta propriedade.');
+                }
+
                 DB::table('usuario_propriedades')->updateOrInsert([
                     'usuario_id' => (int) $usuarioExistente->id,
                     'propriedade_id' => $propriedadeId,

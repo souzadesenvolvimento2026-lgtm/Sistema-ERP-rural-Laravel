@@ -10826,7 +10826,8 @@ html[data-theme="dark"] .ff-bank-modal .modal-content {
 }
 
 .ff-property-linked-users,
-.ff-property-user-columns {
+.ff-property-user-columns,
+.ff-property-add-users {
   display: grid;
   gap: 12px;
 }
@@ -10855,6 +10856,36 @@ html[data-theme="dark"] .ff-bank-modal .modal-content {
 .ff-property-user-columns {
   grid-template-columns: minmax(280px, .8fr) minmax(420px, 1.2fr);
   margin-top: 14px;
+}
+
+.ff-property-add-users {
+  background: color-mix(in srgb, var(--ff-accent) 5%, var(--ff-surface));
+  border: 1px solid color-mix(in srgb, var(--ff-accent) 16%, var(--ff-border));
+  border-radius: 10px;
+  margin-top: 14px;
+  padding: 12px;
+}
+
+.ff-property-add-users-head {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.ff-property-add-users-head > div {
+  display: grid;
+  gap: 3px;
+}
+
+.ff-property-plan-message {
+  background: var(--ff-warning-soft);
+  border: 1px solid color-mix(in srgb, var(--ff-warning) 35%, var(--ff-border));
+  border-radius: 8px;
+  color: var(--ff-warning);
+  font-size: 12px;
+  font-weight: 900;
+  padding: 10px 12px;
 }
 
 .ff-property-new-users {
@@ -10894,8 +10925,13 @@ html[data-theme="dark"] .ff-property-user-row select {
     flex-direction: column;
   }
 
-  .ff-property-user-columns {
+  .ff-property-user-columns,
+  .ff-property-add-users-head {
     align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ff-property-user-columns {
     grid-template-columns: 1fr;
   }
 

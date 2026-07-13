@@ -124,7 +124,6 @@
             'propriedade' => null,
             'linkedUsers' => collect(),
             'aprovadores' => $aprovadores,
-            'usuariosDisponiveis' => $usuariosDisponiveis,
             'perfisUsuario' => $perfisUsuario,
             'planOptions' => $planOptions,
         ])
@@ -140,7 +139,6 @@
                 'propriedade' => $row,
                 'linkedUsers' => $row->usuarios_vinculados,
                 'aprovadores' => $aprovadores,
-                'usuariosDisponiveis' => $usuariosDisponiveis,
                 'perfisUsuario' => $perfisUsuario,
                 'planOptions' => $planOptions,
             ])
@@ -156,6 +154,64 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const modalId = @json(old('modal_id'));
+            document.querySelectorAll('[data-property-users-add]').forEach((box) => {
+                const addButton = box.querySelector('[data-property-add-user]');
+                const rows = Array.from(box.querySelectorAll('[data-property-user-row]'));
+                const message = box.querySelector('[data-property-user-message]');
+                const limitText = box.querySelector('[data-property-user-limit-text]');
+                const form = box.closest('form');
+                const planSelect = form?.querySelector('[data-property-plan-select]');
+                const currentUsers = Number(box.dataset.currentUsers || 0);
+                const planLabels = {
+                    basico: 'Básico - até 3 usuários',
+                    avancado: 'Avançado - até 5 usuários',
+                    premium: 'Premium - até 10 usuários',
+                };
+                const planLimits = { basico: 3, avancado: 5, premium: 10 };
+
+                const visibleRows = () => rows.filter((row) => !row.hidden).length;
+                const planKey = () => planSelect?.value || 'basico';
+                const currentLimit = () => planLimits[planKey()] || 3;
+
+                const updateLimitText = () => {
+                    const limit = currentLimit();
+                    box.dataset.planLimit = String(limit);
+                    if (limitText) {
+                        limitText.textContent = `Esta propriedade usa ${currentUsers}/${limit} usuários do plano ${planLabels[planKey()] || planLabels.basico}.`;
+                    }
+                    if (message && currentUsers + visibleRows() < limit) {
+                        message.hidden = true;
+                    }
+                };
+
+                addButton?.addEventListener('click', () => {
+                    updateLimitText();
+                    const limit = currentLimit();
+                    if (currentUsers + visibleRows() >= limit) {
+                        if (message) {
+                            message.textContent = `Limite de usuários do plano atingido (${currentUsers + visibleRows()}/${limit}). Aumente o plano da propriedade ou remova/inative um usuário vinculado.`;
+                            message.hidden = false;
+                        }
+                        return;
+                    }
+
+                    const nextRow = rows.find((row) => row.hidden);
+                    if (!nextRow) {
+                        if (message) {
+                            message.textContent = 'Este formulário permite adicionar até 3 usuários por vez. Salve e abra novamente para adicionar mais.';
+                            message.hidden = false;
+                        }
+                        return;
+                    }
+
+                    nextRow.hidden = false;
+                    nextRow.querySelector('input')?.focus();
+                });
+
+                planSelect?.addEventListener('change', updateLimitText);
+                updateLimitText();
+            });
+
             if (!modalId) return;
 
             const modalEl = document.getElementById(modalId);
