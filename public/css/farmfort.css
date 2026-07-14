@@ -8565,6 +8565,11 @@ button:disabled {
   font-variant-numeric: tabular-nums;
 }
 
+.ff-map-drawing-circle,
+.ff-map-drawing-circle .leaflet-interactive {
+  cursor: crosshair !important;
+}
+
 .ff-map-modal-inline {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

@@ -114,6 +114,7 @@ class TalhaoMapUiTest extends TestCase
         $this->assertStringContainsString('.ff-map-hidden-forms { display: contents; }', $css);
         $this->assertStringContainsString('.ff-map-modal-section[hidden]', $css);
         $this->assertStringContainsString('.ff-map-pivo-measurements', $css);
+        $this->assertStringContainsString('.ff-map-drawing-circle', $css);
         $this->assertStringNotContainsString('[data-pivo-panel]', $css);
 
         foreach (['public/js/talhao-mapa.js', 'public/js/talhao-mapa-modal.js'] as $script) {
@@ -123,9 +124,15 @@ class TalhaoMapUiTest extends TestCase
             $this->assertStringContainsString("startPivo: (targetMode = 'existing') => startDraw('pivo', { targetMode })", $javascript);
             $this->assertStringContainsString("document.getElementById('btnDrawPivoTop')?.addEventListener('click', () => {", $javascript);
             $this->assertStringContainsString("startDraw('pivo', { targetMode: 'new' });", $javascript);
+            $this->assertStringContainsString('function startPivoCircleDraw(', $javascript);
+            $this->assertStringContainsString('L.circle(state.center', $javascript);
+            $this->assertStringContainsString('function finishPivoCircleDraw(', $javascript);
+            $this->assertStringContainsString('function pivoCircleStyle()', $javascript);
             $this->assertStringContainsString('function handlePivoCreated(', $javascript);
             $this->assertStringContainsString("modalEl.dataset.pivoMode = mode", $javascript);
             $this->assertStringContainsString("document.querySelector('[data-exclusion-clear-form]')", $javascript);
+            $this->assertStringNotContainsString('L.Draw.Circle', $javascript);
+            $this->assertStringNotContainsString('pivoDrawHandler', $javascript);
             $this->assertStringNotContainsString('data-pivo-panel', $javascript);
             $this->assertStringNotContainsString('scrollIntoView', $javascript);
         }

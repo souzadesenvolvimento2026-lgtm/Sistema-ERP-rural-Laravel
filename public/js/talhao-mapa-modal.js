@@ -75,9 +75,15 @@ function translateLeafletDraw() {
     L.drawLocal.draw.toolbar.undo.title = 'Remover último ponto';
     L.drawLocal.draw.toolbar.undo.text = 'Remover último ponto';
     L.drawLocal.draw.toolbar.buttons.polygon = 'Desenhar novo talhão';
+    if (L.drawLocal.draw.toolbar.buttons.circle !== undefined) {
+        L.drawLocal.draw.toolbar.buttons.circle = 'Desenhar pivô circular';
+    }
     L.drawLocal.draw.handlers.polygon.tooltip.start = 'Clique para iniciar o polígono.';
     L.drawLocal.draw.handlers.polygon.tooltip.cont = 'Clique para continuar o polígono.';
     L.drawLocal.draw.handlers.polygon.tooltip.end = 'Clique no primeiro ponto para finalizar.';
+    if (L.drawLocal.draw.handlers.circle?.tooltip) {
+        L.drawLocal.draw.handlers.circle.tooltip.start = 'Clique e arraste para desenhar o círculo do pivô.';
+    }
     L.drawLocal.draw.handlers.polyline.error = '<strong>Erro:</strong> as linhas não podem se cruzar.';
 }
 
@@ -180,6 +186,7 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
     let activeDrawing = false;
     let hasDraft = false;
     let isEditing = false;
+    let pivoCircleState = null;
 
     const drawControl = new L.Control.Draw({
         edit: false,
@@ -213,21 +220,6 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
             shapeOptions: { color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.18, dashArray: '6 5' },
         })
         : null;
-    const pivoDrawHandler = L.Draw && L.Draw.Circle
-        ? new L.Draw.Circle(map, {
-            showRadius: true,
-            metric: true,
-            feet: false,
-            nautic: false,
-            shapeOptions: {
-                color: '#8edfd0',
-                weight: 2,
-                fillColor: '#8edfd0',
-                fillOpacity: 0.2,
-            },
-        })
-        : null;
-
     const selectionStatus = createSelectionStatusControl(map);
     const contextToolbar = createMapContextToolbar(map, {
         edit: startEdit,
@@ -301,23 +293,19 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
             }
         }
 
+        if (mode === 'pivo') {
+            startPivoCircleDraw(options);
+            return;
+        }
+
         if (!discardPendingChanges()) return;
 
         drawMode = mode;
         exclusionTalhaoId = mode === 'exclusao' ? String(selectedTalhao.id) : null;
-        pivoTalhaoId = mode === 'pivo' && options.targetMode === 'existing' && selectedTalhao
-            ? String(selectedTalhao.id)
-            : null;
+        pivoTalhaoId = null;
         activeDrawHandler = mode === 'exclusao'
             ? exclusionDrawHandler
-            : (mode === 'pivo' ? pivoDrawHandler : polygonDrawHandler);
-
-        if (mode === 'pivo' && !activeDrawHandler) {
-            drawMode = 'talhao';
-            pivoTalhaoId = null;
-            alert('A ferramenta de desenho de pivô não está disponível neste navegador.');
-            return;
-        }
+            : polygonDrawHandler;
 
         if (activeDrawHandler) {
             activeDrawHandler.enable();
@@ -325,6 +313,121 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
         }
 
         defaultPolygonButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }
+
+    function startPivoCircleDraw(options = {}) {
+        if (!discardPendingChanges()) return;
+
+        pivoTalhaoId = options.targetMode === 'existing' && selectedTalhao
+            ? String(selectedTalhao.id)
+            : null;
+        activeDrawHandler?.disable?.();
+        defaultPolygonHandler?.disable?.();
+        cleanupPivoCircleDraw(false);
+
+        drawMode = 'pivo';
+        activeDrawing = true;
+        hasDraft = false;
+        draftItems.clearLayers();
+        map.dragging?.disable?.();
+        map.getContainer()?.classList.add('ff-map-drawing-circle');
+        selectionStatus.update(
+            selectedTalhao,
+            'Clique, arraste e solte para desenhar o círculo do pivô.',
+        );
+
+        const state = {
+            center: null,
+            layer: null,
+            started: false,
+            options,
+            onMouseDown(event) {
+                const button = event.originalEvent?.button ?? 0;
+                if (button !== 0) return;
+
+                state.started = true;
+                state.center = event.latlng;
+                state.layer = L.circle(state.center, {
+                    ...pivoCircleStyle(),
+                    radius: 1,
+                }).addTo(draftItems);
+                if (event.originalEvent) {
+                    L.DomEvent.preventDefault(event.originalEvent);
+                }
+            },
+            onMouseMove(event) {
+                if (!state.started || !state.layer || !state.center) return;
+
+                state.layer.setRadius(Math.max(1, map.distance(state.center, event.latlng)));
+            },
+            onMouseUp(event) {
+                if (!state.started || !state.layer || !state.center) return;
+
+                const radius = Math.max(1, map.distance(state.center, event.latlng));
+                state.layer.setRadius(radius);
+
+                if (radius < 5) {
+                    draftItems.removeLayer(state.layer);
+                    state.layer = null;
+                    state.center = null;
+                    state.started = false;
+                    selectionStatus.update(selectedTalhao, 'Arraste para abrir o raio do pivô.');
+                    return;
+                }
+
+                finishPivoCircleDraw(state.layer, state.options);
+            },
+            onKeyDown(event) {
+                if (event.key === 'Escape') {
+                    revertCurrent(false);
+                }
+            },
+        };
+
+        pivoCircleState = state;
+        map.on('mousedown', state.onMouseDown);
+        map.on('mousemove', state.onMouseMove);
+        map.on('mouseup', state.onMouseUp);
+        document.addEventListener('keydown', state.onKeyDown);
+        syncToolbar();
+    }
+
+    function finishPivoCircleDraw(layer, options = {}) {
+        cleanupPivoCircleDraw(true);
+        draftItems.clearLayers();
+        draftItems.addLayer(layer);
+        layer.setStyle?.(pivoCircleStyle());
+        hasDraft = true;
+        activeDrawing = false;
+
+        handlePivoCreated(layer, {
+            mode: 'pivo',
+            pivoTalhaoId,
+            talhoes,
+            cancelDraft: () => revertCurrent(false),
+            openPivoModal: options.openPivoModal,
+        });
+
+        drawMode = 'talhao';
+        pivoTalhaoId = null;
+        syncToolbar();
+    }
+
+    function cleanupPivoCircleDraw(keepLayer = false) {
+        if (!pivoCircleState) return;
+
+        map.off('mousedown', pivoCircleState.onMouseDown);
+        map.off('mousemove', pivoCircleState.onMouseMove);
+        map.off('mouseup', pivoCircleState.onMouseUp);
+        document.removeEventListener('keydown', pivoCircleState.onKeyDown);
+        map.dragging?.enable?.();
+        map.getContainer()?.classList.remove('ff-map-drawing-circle');
+
+        if (!keepLayer && pivoCircleState.layer) {
+            draftItems.removeLayer(pivoCircleState.layer);
+        }
+
+        pivoCircleState = null;
     }
 
     function startEdit() {
@@ -378,6 +481,7 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
     function revertCurrent(showFeedback) {
         activeDrawHandler?.disable?.();
         defaultPolygonHandler?.disable?.();
+        cleanupPivoCircleDraw(false);
         activeDrawHandler = null;
         activeDrawing = false;
 
@@ -1223,17 +1327,21 @@ function handlePivoCreated(layer, context = {}) {
         return;
     }
 
-    layer.setStyle?.({
-        color: '#8edfd0',
-        weight: 2,
-        fillColor: '#8edfd0',
-        fillOpacity: 0.2,
-    });
+    layer.setStyle?.(pivoCircleStyle());
 
     context.openPivoModal?.(context.pivoTalhaoId || null, {
         ...draft,
         cancelDraft: context.cancelDraft,
     });
+}
+
+function pivoCircleStyle() {
+    return {
+        color: '#8edfd0',
+        weight: 2,
+        fillColor: '#8edfd0',
+        fillOpacity: 0.2,
+    };
 }
 
 function circleDraftData(layer) {
