@@ -129,6 +129,7 @@ class TalhaoMapUiTest extends TestCase
             $this->assertStringContainsString('function finishPivoCircleDraw(', $javascript);
             $this->assertStringContainsString('function pivoCircleStyle()', $javascript);
             $this->assertStringContainsString('function handlePivoCreated(', $javascript);
+            $this->assertStringContainsString('openPivoModal: options.openPivoModal', $javascript);
             $this->assertStringContainsString("modalEl.dataset.pivoMode = mode", $javascript);
             $this->assertStringContainsString("document.querySelector('[data-exclusion-clear-form]')", $javascript);
             $this->assertStringNotContainsString('L.Draw.Circle', $javascript);

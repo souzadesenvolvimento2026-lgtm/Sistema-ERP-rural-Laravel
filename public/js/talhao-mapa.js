@@ -315,10 +315,10 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
         defaultPolygonButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     }
 
-    function startPivoCircleDraw(options = {}) {
+    function startPivoCircleDraw(drawOptions = {}) {
         if (!discardPendingChanges()) return;
 
-        pivoTalhaoId = options.targetMode === 'existing' && selectedTalhao
+        pivoTalhaoId = drawOptions.targetMode === 'existing' && selectedTalhao
             ? String(selectedTalhao.id)
             : null;
         activeDrawHandler?.disable?.();
@@ -340,7 +340,7 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
             center: null,
             layer: null,
             started: false,
-            options,
+            drawOptions,
             onMouseDown(event) {
                 const button = event.originalEvent?.button ?? 0;
                 if (button !== 0) return;
@@ -375,7 +375,7 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
                     return;
                 }
 
-                finishPivoCircleDraw(state.layer, state.options);
+                finishPivoCircleDraw(state.layer, state.drawOptions);
             },
             onKeyDown(event) {
                 if (event.key === 'Escape') {
@@ -392,7 +392,7 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
         syncToolbar();
     }
 
-    function finishPivoCircleDraw(layer, options = {}) {
+    function finishPivoCircleDraw(layer, drawOptions = {}) {
         cleanupPivoCircleDraw(true);
         draftItems.clearLayers();
         draftItems.addLayer(layer);
@@ -406,6 +406,7 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
             talhoes,
             cancelDraft: () => revertCurrent(false),
             openPivoModal: options.openPivoModal,
+            targetMode: drawOptions.targetMode,
         });
 
         drawMode = 'talhao';
