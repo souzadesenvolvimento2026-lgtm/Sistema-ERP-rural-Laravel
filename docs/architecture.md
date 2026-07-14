@@ -176,6 +176,9 @@ Em modais, rodapés, barras de ação e confirmações, manter sempre a mesma le
 
 ## Limites obrigatórios
 
+- Código PHP novo ou alterado deve seguir PSR-12. O projeto possui `pint.json` com preset PSR-12 para validação com Laravel Pint.
+- Regras de Clean Code e SOLID estão documentadas em `docs/coding-standards.md` e são obrigatórias em alterações relevantes.
+- O mapa dos módulos, rotas e camadas está em `docs/project-map.md` e deve orientar novas implementações.
 - Blade não pode usar `DB`, Models, Repositories ou resolver Services pelo container.
 - Controllers não devem conter consultas SQL/query builder.
 - Regras de negócio devem ficar em Service/Domain.

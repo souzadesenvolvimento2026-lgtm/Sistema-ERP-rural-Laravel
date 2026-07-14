@@ -12,6 +12,12 @@ Este arquivo se aplica a todo o repositório. As regras abaixo são obrigatória
 ## Arquitetura obrigatória
 
 - Seguir o padrão documentado em `docs/architecture.md`.
+- Consultar o mapa do projeto em `docs/project-map.md` antes de criar ou alterar módulos, rotas, Services, Controllers ou telas.
+- Seguir os padrões de código documentados em `docs/coding-standards.md`.
+- Código PHP novo ou alterado deve seguir PSR-12, Clean Code e SOLID de forma prática.
+- Variáveis devem usar `camelCase`, com nomes claros. Não abreviar palavras de negócio; quando o contexto exigir prefixo técnico, usar formato como `$boAtivo` e `$dtInicio`.
+- Mensagens exibidas ao usuário devem ter português correto e acentuação correta.
+- Não adicionar comentários redundantes. Comentários só devem explicar regra, decisão ou risco não óbvio.
 - Blade deve ser somente apresentação: telas, campos, tabelas, modais e estados visuais.
 - Controllers devem ficar finos: receber HTTP, validar entrada, autorizar, chamar Service/Use Case e retornar resposta.
 - Regras de negócio devem ficar em Service/Domain.
