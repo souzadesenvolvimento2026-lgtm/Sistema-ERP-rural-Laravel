@@ -175,6 +175,7 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
     let editableLayer = null;
     let drawMode = 'talhao';
     let exclusionTalhaoId = null;
+    let pivoTalhaoId = null;
     let activeDrawHandler = null;
     let activeDrawing = false;
     let hasDraft = false;
@@ -210,6 +211,20 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
             allowIntersection: false,
             showArea: true,
             shapeOptions: { color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.18, dashArray: '6 5' },
+        })
+        : null;
+    const pivoDrawHandler = L.Draw && L.Draw.Circle
+        ? new L.Draw.Circle(map, {
+            showRadius: true,
+            metric: true,
+            feet: false,
+            nautic: false,
+            shapeOptions: {
+                color: '#8edfd0',
+                weight: 2,
+                fillColor: '#8edfd0',
+                fillOpacity: 0.2,
+            },
         })
         : null;
 
@@ -290,7 +305,17 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
 
         drawMode = mode;
         exclusionTalhaoId = mode === 'exclusao' ? String(selectedTalhao.id) : null;
-        activeDrawHandler = mode === 'exclusao' ? exclusionDrawHandler : polygonDrawHandler;
+        pivoTalhaoId = mode === 'pivo' && selectedTalhao ? String(selectedTalhao.id) : null;
+        activeDrawHandler = mode === 'exclusao'
+            ? exclusionDrawHandler
+            : (mode === 'pivo' ? pivoDrawHandler : polygonDrawHandler);
+
+        if (mode === 'pivo' && !activeDrawHandler) {
+            drawMode = 'talhao';
+            pivoTalhaoId = null;
+            alert('A ferramenta de desenho de pivô não está disponível neste navegador.');
+            return;
+        }
 
         if (activeDrawHandler) {
             activeDrawHandler.enable();
@@ -383,6 +408,7 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
         hasDraft = false;
         drawMode = 'talhao';
         exclusionTalhaoId = null;
+        pivoTalhaoId = null;
         clearDraftForms();
 
         if (selectedLayer) applySelectedStyle(selectedLayer, true);
@@ -438,23 +464,27 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
         handlePolygonCreated(event, {
             mode: drawMode,
             talhaoId: exclusionTalhaoId,
+            pivoTalhaoId,
             talhoes,
             cancelDraft: () => revertCurrent(false),
             openPolygonModal: options.openPolygonModal,
+            openPivoModal: options.openPivoModal,
         });
         drawMode = 'talhao';
         exclusionTalhaoId = null;
+        pivoTalhaoId = null;
         syncToolbar();
     });
 
     document.getElementById('btnDrawTalhaoTop')?.addEventListener('click', () => startDraw('talhao'));
     document.getElementById('btnDrawPivoTop')?.addEventListener('click', () => {
-        options.openPivoModal?.(selectedTalhao?.id);
+        startDraw('pivo');
     });
 
     return {
         selectTalhao,
         startExclusion: () => startDraw('exclusao'),
+        startPivo: () => startDraw('pivo'),
         cancelEdits: () => revertCurrent(false),
     };
 }
@@ -764,17 +794,25 @@ function bindMapPivoModal(talhoes) {
     const modalEl = document.getElementById('mapPivoModal');
     const modal = modalEl && window.bootstrap ? bootstrap.Modal.getOrCreateInstance(modalEl) : null;
     const talhoesById = new Map((talhoes || []).map((talhao) => [String(talhao.id), talhao]));
+    let pendingCancel = null;
+    let pendingDraft = null;
 
     if (!modalEl) {
         return { open: () => {} };
     }
 
     const pivoForm = modalEl.querySelector('[data-map-pivo-form]');
+    const createForm = modalEl.querySelector('[data-map-pivo-create-form]');
     const pivoSelect = pivoForm?.querySelector('[data-map-talhao-select]');
     const pivoFields = {
         lat: pivoForm?.querySelector('[name="pivo_lat"]'),
         lng: pivoForm?.querySelector('[name="pivo_lng"]'),
         raio: pivoForm?.querySelector('[name="pivo_raio_m"]'),
+    };
+    const createFields = {
+        lat: createForm?.querySelector('[name="pivo_lat"]'),
+        lng: createForm?.querySelector('[name="pivo_lng"]'),
+        raio: createForm?.querySelector('[name="pivo_raio_m"]'),
     };
 
     const closeFallback = () => {
@@ -785,6 +823,8 @@ function bindMapPivoModal(talhoes) {
     };
 
     const fillPivoFields = () => {
+        if (pendingDraft) return;
+
         const talhao = talhoesById.get(String(pivoSelect?.value || ''));
         if (!talhao) return;
 
@@ -795,11 +835,62 @@ function bindMapPivoModal(talhoes) {
 
     pivoSelect?.addEventListener('change', fillPivoFields);
 
-    const open = (talhaoId = null) => {
+    const applyDraftFields = (draft) => {
+        if (!draft) return;
+
+        const lat = draft.lat ?? '';
+        const lng = draft.lng ?? '';
+        const raio = draft.raio ?? '';
+
+        if (pivoFields.lat) pivoFields.lat.value = lat;
+        if (pivoFields.lng) pivoFields.lng.value = lng;
+        if (pivoFields.raio) pivoFields.raio.value = raio;
+        if (createFields.lat) createFields.lat.value = lat;
+        if (createFields.lng) createFields.lng.value = lng;
+        if (createFields.raio) createFields.raio.value = raio;
+    };
+
+    const cancelDraft = () => {
+        if (typeof pendingCancel === 'function') {
+            pendingCancel();
+        }
+
+        pendingCancel = null;
+        pendingDraft = null;
+        modalEl.dataset.pendingPivo = '0';
+        modalEl.dataset.submittingPivo = '0';
+    };
+
+    modalEl.addEventListener('hidden.bs.modal', () => {
+        if (modalEl.dataset.pendingPivo === '1' && modalEl.dataset.submittingPivo !== '1') {
+            cancelDraft();
+        }
+    });
+
+    modalEl.querySelectorAll('form').forEach((form) => {
+        form.addEventListener('submit', () => {
+            modalEl.dataset.submittingPivo = '1';
+            pendingCancel = null;
+            pendingDraft = null;
+        });
+    });
+
+    const open = (talhaoId = null, draft = null) => {
+        pendingCancel = typeof draft?.cancelDraft === 'function' ? draft.cancelDraft : null;
+        pendingDraft = draft ? {
+            lat: draft.lat,
+            lng: draft.lng,
+            raio: draft.raio,
+        } : null;
+        modalEl.dataset.pendingPivo = draft ? '1' : '0';
+        modalEl.dataset.submittingPivo = '0';
+
         if (talhaoId) {
             setMapSelectValues(talhaoId, modalEl);
             fillPivoFields();
         }
+
+        applyDraftFields(pendingDraft);
 
         if (modal) {
             modal.show();
@@ -818,6 +909,10 @@ function bindMapPivoModal(talhoes) {
 
     modalEl.querySelectorAll('[data-bs-dismiss="modal"]').forEach((button) => {
         button.addEventListener('click', () => {
+            if (modalEl.dataset.pendingPivo === '1' && modalEl.dataset.submittingPivo !== '1') {
+                cancelDraft();
+            }
+
             if (!modal) closeFallback();
         });
     });
@@ -944,7 +1039,8 @@ function bindTalhaoEditModal(talhoes, mapTools, openPivoModal = null) {
         if (!modal) closeFallback();
 
         setTimeout(() => {
-            openPivoModal?.(id);
+            if (!mapTools.selectTalhao(id, { openPopup: false })) return;
+            mapTools.startPivo?.();
         }, 180);
     });
 
@@ -1021,6 +1117,11 @@ function bindMapList(map, talhaoLayers, selectTalhao, openEditModal) {
 }
 
 function handlePolygonCreated(event, context = {}) {
+    if (context.mode === 'pivo') {
+        handlePivoCreated(event.layer, context);
+        return;
+    }
+
     const points = layerPoints(event.layer);
 
     if (context.mode === 'exclusao') {
@@ -1038,6 +1139,41 @@ function handlePolygonCreated(event, context = {}) {
     const name = document.getElementById('polygonName');
     if (coordinates) coordinates.value = JSON.stringify(points);
     name?.focus();
+}
+
+function handlePivoCreated(layer, context = {}) {
+    const draft = circleDraftData(layer);
+    if (!draft) {
+        alert('Não foi possível ler o pivô desenhado no mapa.');
+        context.cancelDraft?.();
+        return;
+    }
+
+    layer.setStyle?.({
+        color: '#8edfd0',
+        weight: 2,
+        fillColor: '#8edfd0',
+        fillOpacity: 0.2,
+    });
+
+    context.openPivoModal?.(context.pivoTalhaoId || null, {
+        ...draft,
+        cancelDraft: context.cancelDraft,
+    });
+}
+
+function circleDraftData(layer) {
+    const center = layer?.getLatLng?.();
+    const radius = layer?.getRadius?.();
+    if (!center || !Number.isFinite(Number(radius))) {
+        return null;
+    }
+
+    return {
+        lat: Number(center.lat.toFixed(7)),
+        lng: Number(center.lng.toFixed(7)),
+        raio: Number(Number(radius).toFixed(2)),
+    };
 }
 
 function handleExclusionCreated(points, context) {

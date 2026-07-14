@@ -103,6 +103,7 @@ class TalhaoMapUiTest extends TestCase
         $css = $this->contents('public/css/farmfort.css');
 
         $this->assertStringContainsString('id="mapPivoModal"', $view);
+        $this->assertStringContainsString('data-map-pivo-create-form', $view);
         $this->assertStringContainsString('data-map-modal-clear-exclusions', $view);
         $this->assertStringContainsString('data-exclusion-clear-form', $view);
         $this->assertStringNotContainsString('data-pivo-panel', $view);
@@ -114,7 +115,10 @@ class TalhaoMapUiTest extends TestCase
             $javascript = $this->contents($script);
 
             $this->assertStringContainsString('function bindMapPivoModal(', $javascript);
-            $this->assertStringContainsString('openPivoModal?.(id)', $javascript);
+            $this->assertStringContainsString("startPivo: () => startDraw('pivo')", $javascript);
+            $this->assertStringContainsString("document.getElementById('btnDrawPivoTop')?.addEventListener('click', () => {", $javascript);
+            $this->assertStringContainsString("startDraw('pivo');", $javascript);
+            $this->assertStringContainsString('function handlePivoCreated(', $javascript);
             $this->assertStringContainsString("document.querySelector('[data-exclusion-clear-form]')", $javascript);
             $this->assertStringNotContainsString('data-pivo-panel', $javascript);
             $this->assertStringNotContainsString('scrollIntoView', $javascript);

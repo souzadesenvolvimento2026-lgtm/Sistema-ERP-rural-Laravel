@@ -166,7 +166,7 @@
                         <span>Use quando o pivô ainda não pertence a nenhum talhão cadastrado.</span>
                     </div>
 
-                    <form method="POST" action="{{ route('talhoes.mapa.pivo.create', [], false) }}" class="ff-map-modal-grid">
+                    <form method="POST" action="{{ route('talhoes.mapa.pivo.create', [], false) }}" class="ff-map-modal-grid" data-map-pivo-create-form>
                         @csrf
                         <label class="col-12">Nome do novo pivô <input name="nome" maxlength="80" required></label>
                         <label>Latitude <input name="pivo_lat" inputmode="decimal" required></label>

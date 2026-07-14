@@ -113,10 +113,10 @@
         .ff-talhao-edit-dialog { width: min(94vw, 520px); }
         .ff-talhao-edit-content {
             overflow: hidden;
-            border: 1px solid #d7dee8;
+            border: 1px solid var(--ff-border);
             border-radius: 8px;
-            background: #fff;
-            color: #122033;
+            background: var(--ff-surface);
+            color: var(--ff-text);
             box-shadow: 0 22px 70px rgba(3, 10, 18, .34);
         }
         .ff-talhao-edit-modal .modal-header {
@@ -127,28 +127,29 @@
         }
         .ff-talhao-edit-modal .modal-body,
         .ff-talhao-edit-modal .modal-footer {
-            background: #fff !important;
-            color: #122033 !important;
+            background: var(--ff-surface) !important;
+            color: var(--ff-text) !important;
         }
         .ff-talhao-edit-modal .modal-body { padding: 18px; }
-        .ff-talhao-edit-modal .modal-footer { border-top: 1px solid #e4e9f1; }
-        .ff-talhao-edit-modal label { display: grid; gap: 7px; color: #122033 !important; }
+        .ff-talhao-edit-modal .modal-footer { border-top: 1px solid var(--ff-border); }
+        .ff-talhao-edit-modal label { display: grid; gap: 7px; color: var(--ff-text) !important; }
         .ff-talhao-edit-modal input,
+        .ff-talhao-edit-modal select,
         .ff-talhao-edit-modal textarea {
-            border-color: #d6dee8 !important;
-            background: #fff !important;
-            color: #122033 !important;
+            border-color: var(--ff-border-strong) !important;
+            background: var(--ff-surface-2) !important;
+            color: var(--ff-text) !important;
         }
         .ff-talhao-edit-modal input[readonly] {
-            color: #66758a !important;
-            background: #f8fafc !important;
+            color: var(--ff-muted) !important;
+            background: var(--ff-surface-3) !important;
         }
         .ff-talhao-edit-tools { display: grid; gap: 8px; margin-top: 16px; }
-        .ff-talhao-edit-tools strong { color: #122033; font-size: 13px; font-weight: 900; }
+        .ff-talhao-edit-tools strong { color: var(--ff-text); font-size: 13px; font-weight: 900; }
         .ff-talhao-edit-tools > div { display: flex; flex-wrap: wrap; gap: 7px; }
         .ff-talhao-edit-tools .btn { min-height: 34px; padding: 7px 10px; font-size: 13px; }
         .ff-talhao-edit-tools .btn:disabled { opacity: .5; cursor: not-allowed; }
-        .ff-talhao-edit-tools small { color: #66758a; font-size: 12px; }
+        .ff-talhao-edit-tools small { color: var(--ff-muted); font-size: 12px; }
     </style>
 @endpush
 
