@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Domain\Access\ProfileAccess;
 use App\Services\AuthenticationService;
+use App\Services\RequestContextService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -18,6 +19,7 @@ class AuthSessionController extends Controller
     public function __construct(
         private readonly ProfileAccess $access,
         private readonly AuthenticationService $authentication,
+        private readonly RequestContextService $requestContext,
     ) {}
 
     public function create(): View|RedirectResponse
@@ -77,7 +79,7 @@ class AuthSessionController extends Controller
         $this->authentication->registerLogin(
             (int) $user->id,
             $propertyId,
-            (string) $request->ip(),
+            (string) ($this->requestContext->clientIp($request) ?? $request->ip()),
         );
 
         $homeRoute = $this->access->isSystemAdministrator((string) $user->perfil)
@@ -94,7 +96,7 @@ class AuthSessionController extends Controller
             $this->authentication->registerLogout(
                 $userId,
                 session('propriedade_id') ? (int) session('propriedade_id') : null,
-                (string) $request->ip(),
+                (string) ($this->requestContext->clientIp($request) ?? $request->ip()),
             );
         }
 
@@ -106,6 +108,6 @@ class AuthSessionController extends Controller
 
     private function throttleKey(Request $request): string
     {
-        return Str::lower(trim((string) $request->input('email'))).'|'.$request->ip();
+        return Str::lower(trim((string) $request->input('email'))).'|'.($this->requestContext->clientIp($request) ?? $request->ip());
     }
 }

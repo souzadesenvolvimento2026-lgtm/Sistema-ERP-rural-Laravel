@@ -11,9 +11,12 @@ use RuntimeException;
 
 class UsuarioService
 {
+    public function __construct(private readonly AuditService $audit) {}
+
     public static function perfisPermitidos(): array
     {
         return [
+            'administrador' => 'Administrador',
             'gestor_propriedade' => 'Gestor da Propriedade',
             'gestor_financeiro' => 'Gestor Financeiro',
             'gestao' => 'Gestão',
@@ -45,9 +48,14 @@ class UsuarioService
         return [
             'activeModule' => 'usuarios',
             'title' => 'Usuários',
-            'subtitle' => 'Gerenciamento dos logins vinculados à fazenda atual.',
+            'subtitle' => 'Usuários e permissões da propriedade selecionada.',
+            'tableTitle' => 'Usuários e permissões por fazenda',
+            'panelTitle' => 'Usuários da propriedade',
+            'emptyMessage' => 'Nenhum usuário encontrado para a propriedade atual.',
             'filtros' => $filtros,
             'rows' => $rows,
+            'perfis' => self::perfisPermitidos(),
+            'modoSistema' => false,
             'statusOptions' => [
                 '' => 'Todos',
                 'ativos' => 'Ativos',
@@ -57,7 +65,7 @@ class UsuarioService
             'cards' => [
                 ['label' => 'Usuários', 'value' => (string) $rows->count(), 'tone' => 'success'],
                 ['label' => 'Ativos', 'value' => (string) $rows->where('ativo', true)->count(), 'tone' => 'success'],
-                ['label' => 'Gestores', 'value' => (string) $rows->whereIn('perfil_key', ['gestor_propriedade', 'gestor_financeiro', 'gestao'])->count(), 'tone' => 'warning'],
+                ['label' => 'Gestores', 'value' => (string) $rows->whereIn('perfil_key', ['administrador', 'gestor_propriedade', 'gestor_financeiro', 'gestao'])->count(), 'tone' => 'warning'],
                 ['label' => 'Visualizadores', 'value' => (string) $rows->where('perfil_key', 'visualizador')->count(), 'tone' => ''],
             ],
         ];
@@ -73,9 +81,12 @@ class UsuarioService
             'title' => 'Usuários',
             'subtitle' => 'Logins internos FarmFort com acesso administrativo ao sistema.',
             'tableTitle' => 'Logins internos FarmFort',
+            'panelTitle' => 'Usuários internos FarmFort',
             'emptyMessage' => 'Nenhum login interno encontrado.',
             'filtros' => $filtros,
             'rows' => $rows,
+            'perfis' => self::perfisSistema(),
+            'modoSistema' => true,
             'statusOptions' => [
                 '' => 'Todos',
                 'ativos' => 'Ativos',
@@ -113,13 +124,18 @@ class UsuarioService
             'propriedade_id' => $propriedadeId,
         ]);
 
-        $this->auditar(
+        $this->audit->registrar(
             $usuarioLogadoId,
             'salvar_usuario',
             'usuarios',
             $usuarioId,
             $propriedadeId,
-            'Usuario criado: '.$nome.' ('.$email.') - Perfil: '.$this->perfilLabel($perfil)
+            [
+                'evento' => 'Usuário criado e vinculado automaticamente à propriedade atual.',
+                'nome' => $nome,
+                'email' => $email,
+                'perfil' => $this->perfilLabel($perfil),
+            ],
         );
 
         return $usuarioId;
@@ -140,13 +156,18 @@ class UsuarioService
         ]);
 
         $usuarioId = (int) DB::getPdo()->lastInsertId();
-        $this->auditar(
+        $this->audit->registrar(
             $usuarioLogadoId,
             'salvar_usuario',
             'usuarios',
             $usuarioId,
-            (int) session('propriedade_id'),
-            'Login interno FarmFort criado: '.$nome.' ('.$email.') - Perfil: '.$this->perfilLabel($perfil)
+            (int) session('propriedade_id') ?: null,
+            [
+                'evento' => 'Login interno FarmFort criado.',
+                'nome' => $nome,
+                'email' => $email,
+                'perfil' => $this->perfilLabel($perfil),
+            ],
         );
 
         return $usuarioId;
@@ -156,22 +177,9 @@ class UsuarioService
     {
         $usuario = DB::table('usuarios as u')
             ->where('u.id', $usuarioId)
-            ->whereNotIn('u.perfil', ['administrador_sistema', 'gerencia_sistema', 'colaborador_sistema'])
+            ->whereNotIn('u.perfil', array_keys(self::perfisSistema()))
             ->where(function ($query) use ($propriedadeId) {
-                $query->whereExists(function ($sub) use ($propriedadeId) {
-                    $sub->selectRaw('1')
-                        ->from('usuario_propriedades as up')
-                        ->whereColumn('up.usuario_id', 'u.id')
-                        ->where('up.propriedade_id', $propriedadeId);
-                })->orWhereExists(function ($sub) use ($propriedadeId) {
-                    $sub->selectRaw('1')
-                        ->from('usuario_grupos_fazendas as ugf')
-                        ->join('grupos_fazendas as gf', 'gf.id', '=', 'ugf.grupo_id')
-                        ->join('grupo_fazenda_propriedades as gfp', 'gfp.grupo_id', '=', 'gf.id')
-                        ->whereColumn('ugf.usuario_id', 'u.id')
-                        ->where('gf.ativo', 1)
-                        ->where('gfp.propriedade_id', $propriedadeId);
-                });
+                $this->scopeAcessoPropriedade($query, $propriedadeId);
             })
             ->select('u.id', 'u.nome', 'u.email', 'u.perfil', 'u.ativo')
             ->first();
@@ -214,21 +222,39 @@ class UsuarioService
 
         DB::table('usuarios')->where('id', $usuarioId)->update($payload);
 
-        $detalhes = 'Usuario atualizado: '.$nome.' ('.$email.') - Perfil: '.$this->perfilLabel($perfil);
-        if ($usuarioAnterior->nome !== $nome || $usuarioAnterior->email !== $email || $usuarioAnterior->perfil !== $perfil) {
-            $detalhes .= ' - Anterior: '.$usuarioAnterior->nome.' ('.$usuarioAnterior->email.') - Perfil: '.$this->perfilLabel((string) $usuarioAnterior->perfil);
-        }
-
-        $this->auditar($usuarioLogadoId, 'salvar_usuario', 'usuarios', $usuarioId, $propriedadeId, $detalhes);
+        $this->audit->registrar(
+            $usuarioLogadoId,
+            'salvar_usuario',
+            'usuarios',
+            $usuarioId,
+            $propriedadeId,
+            [
+                'evento' => 'Usuário atualizado.',
+                'antes' => [
+                    'nome' => $usuarioAnterior->nome,
+                    'email' => $usuarioAnterior->email,
+                    'perfil' => $this->perfilLabel((string) $usuarioAnterior->perfil),
+                ],
+                'depois' => [
+                    'nome' => $nome,
+                    'email' => $email,
+                    'perfil' => $this->perfilLabel($perfil),
+                ],
+            ],
+        );
 
         if ($senhaAlterada) {
-            $this->auditar(
+            $this->audit->registrar(
                 $usuarioLogadoId,
                 'alterar_senha_usuario',
                 'usuarios',
                 $usuarioId,
                 $propriedadeId,
-                'Senha alterada para o usuario: '.$nome.' ('.$email.')'
+                [
+                    'evento' => 'Senha de usuário alterada.',
+                    'usuario' => $nome,
+                    'email' => $email,
+                ],
             );
         }
     }
@@ -236,29 +262,59 @@ class UsuarioService
     public function atualizarSistema(int $usuarioId, array $dados, ?int $usuarioLogadoId = null): void
     {
         $usuarioAnterior = $this->buscarSistema($usuarioId);
+        $this->validarProtecaoAdministradorPrincipal($usuarioAnterior, $usuarioLogadoId);
+
         $nome = trim($dados['nome']);
         $email = strtolower(trim($dados['email']));
         $perfil = $dados['perfil'] ?: 'colaborador_sistema';
+        $senhaAlterada = trim((string) ($dados['senha'] ?? '')) !== '';
         $payload = [
             'nome' => $nome,
             'email' => $email,
             'perfil' => $perfil,
         ];
 
-        if (trim((string) ($dados['senha'] ?? '')) !== '') {
+        if ($senhaAlterada) {
             $payload['senha'] = Hash::make($dados['senha']);
         }
 
         DB::table('usuarios')->where('id', $usuarioId)->update($payload);
 
-        $this->auditar(
+        $this->audit->registrar(
             $usuarioLogadoId,
             'salvar_usuario',
             'usuarios',
             $usuarioId,
-            (int) session('propriedade_id'),
-            'Login interno FarmFort atualizado: '.$nome.' ('.$email.') - Perfil: '.$this->perfilLabel($perfil).' - Anterior: '.$usuarioAnterior->nome.' ('.$usuarioAnterior->email.')'
+            (int) session('propriedade_id') ?: null,
+            [
+                'evento' => 'Login interno FarmFort atualizado.',
+                'antes' => [
+                    'nome' => $usuarioAnterior->nome,
+                    'email' => $usuarioAnterior->email,
+                    'perfil' => $this->perfilLabel((string) $usuarioAnterior->perfil),
+                ],
+                'depois' => [
+                    'nome' => $nome,
+                    'email' => $email,
+                    'perfil' => $this->perfilLabel($perfil),
+                ],
+            ],
         );
+
+        if ($senhaAlterada) {
+            $this->audit->registrar(
+                $usuarioLogadoId,
+                'alterar_senha_usuario',
+                'usuarios',
+                $usuarioId,
+                (int) session('propriedade_id') ?: null,
+                [
+                    'evento' => 'Senha de login interno alterada.',
+                    'usuario' => $nome,
+                    'email' => $email,
+                ],
+            );
+        }
     }
 
     public function alternarStatus(int $usuarioId, int $propriedadeId, ?int $usuarioLogadoId = null): bool
@@ -268,13 +324,17 @@ class UsuarioService
 
         DB::table('usuarios')->where('id', $usuarioId)->update(['ativo' => $ativo]);
 
-        $this->auditar(
+        $this->audit->registrar(
             $usuarioLogadoId,
             $ativo === 1 ? 'ativar_usuario' : 'desativar_usuario',
             'usuarios',
             $usuarioId,
             $propriedadeId,
-            ($ativo === 1 ? 'Usuario ativado: ' : 'Usuario desativado: ').$usuario->nome.' ('.$usuario->email.')'
+            [
+                'evento' => $ativo === 1 ? 'Usuário ativado.' : 'Usuário desativado.',
+                'nome' => $usuario->nome,
+                'email' => $usuario->email,
+            ],
         );
 
         return $ativo === 1;
@@ -283,17 +343,23 @@ class UsuarioService
     public function alternarStatusSistema(int $usuarioId, ?int $usuarioLogadoId = null): bool
     {
         $usuario = $this->buscarSistema($usuarioId);
+        $this->validarProtecaoAdministradorPrincipal($usuario, $usuarioLogadoId);
+
         $ativo = (int) $usuario->ativo === 1 ? 0 : 1;
 
         DB::table('usuarios')->where('id', $usuarioId)->update(['ativo' => $ativo]);
 
-        $this->auditar(
+        $this->audit->registrar(
             $usuarioLogadoId,
             $ativo === 1 ? 'ativar_usuario' : 'desativar_usuario',
             'usuarios',
             $usuarioId,
-            (int) session('propriedade_id'),
-            ($ativo === 1 ? 'Login interno ativado: ' : 'Login interno inativado: ').$usuario->nome.' ('.$usuario->email.')'
+            (int) session('propriedade_id') ?: null,
+            [
+                'evento' => $ativo === 1 ? 'Login interno ativado.' : 'Login interno inativado.',
+                'nome' => $usuario->nome,
+                'email' => $usuario->email,
+            ],
         );
 
         return $ativo === 1;
@@ -315,22 +381,9 @@ class UsuarioService
     private function rows(int $propriedadeId, array $filtros): Collection
     {
         $query = DB::table('usuarios as u')
-            ->whereNotIn('u.perfil', ['administrador_sistema', 'gerencia_sistema', 'colaborador_sistema'])
+            ->whereNotIn('u.perfil', array_keys(self::perfisSistema()))
             ->where(function ($query) use ($propriedadeId) {
-                $query->whereExists(function ($sub) use ($propriedadeId) {
-                    $sub->selectRaw('1')
-                        ->from('usuario_propriedades as up')
-                        ->whereColumn('up.usuario_id', 'u.id')
-                        ->where('up.propriedade_id', $propriedadeId);
-                })->orWhereExists(function ($sub) use ($propriedadeId) {
-                    $sub->selectRaw('1')
-                        ->from('usuario_grupos_fazendas as ugf')
-                        ->join('grupos_fazendas as gf', 'gf.id', '=', 'ugf.grupo_id')
-                        ->join('grupo_fazenda_propriedades as gfp', 'gfp.grupo_id', '=', 'gf.id')
-                        ->whereColumn('ugf.usuario_id', 'u.id')
-                        ->where('gf.ativo', 1)
-                        ->where('gfp.propriedade_id', $propriedadeId);
-                });
+                $this->scopeAcessoPropriedade($query, $propriedadeId);
             });
 
         if ($filtros['status'] === 'ativos') {
@@ -338,7 +391,7 @@ class UsuarioService
         } elseif ($filtros['status'] === 'inativos') {
             $query->where('u.ativo', 0);
         } elseif ($filtros['status'] === 'gestores') {
-            $query->whereIn('u.perfil', ['gestor_propriedade', 'gestor_financeiro', 'gestao']);
+            $query->whereIn('u.perfil', ['administrador', 'gestor_propriedade', 'gestor_financeiro', 'gestao']);
         }
 
         if ($filtros['search'] !== '') {
@@ -362,7 +415,7 @@ class UsuarioService
                 'u.ultimo_acesso',
                 'u.criado_em',
             ])
-            ->map(fn ($row) => $this->normalizar($row));
+            ->map(fn ($row) => $this->normalizar($row, $propriedadeId));
     }
 
     private function rowsSistema(array $filtros): Collection
@@ -399,11 +452,13 @@ class UsuarioService
                 'u.ultimo_acesso',
                 'u.criado_em',
             ])
-            ->map(fn ($row) => $this->normalizar($row));
+            ->map(fn ($row) => $this->normalizar($row, null, true));
     }
 
-    private function normalizar($row): object
+    private function normalizar($row, ?int $propriedadeId = null, bool $modoSistema = false): object
     {
+        $vinculos = $modoSistema ? $this->vinculosSistema() : $this->vinculosPropriedade((int) $row->id, (int) $propriedadeId);
+
         return (object) [
             'id' => (int) $row->id,
             'nome' => FarmFormat::value($row->nome),
@@ -414,6 +469,55 @@ class UsuarioService
             'status' => (int) $row->ativo === 1 ? 'Ativo' : 'Inativo',
             'ultimo_acesso' => FarmFormat::date($row->ultimo_acesso),
             'criado_em' => FarmFormat::date($row->criado_em),
+            'acesso_efetivo' => $vinculos['acesso_efetivo'],
+            'vinculo_direto' => $vinculos['vinculo_direto'],
+            'grupos' => $vinculos['grupos'],
+        ];
+    }
+
+    /**
+     * @return array{acesso_efetivo: string, vinculo_direto: string, grupos: string}
+     */
+    private function vinculosSistema(): array
+    {
+        return [
+            'acesso_efetivo' => 'Sistema FarmFort',
+            'vinculo_direto' => 'Interno',
+            'grupos' => '-',
+        ];
+    }
+
+    /**
+     * @return array{acesso_efetivo: string, vinculo_direto: string, grupos: string}
+     */
+    private function vinculosPropriedade(int $usuarioId, int $propriedadeId): array
+    {
+        $propriedade = DB::table('usuario_propriedades as up')
+            ->join('propriedades as p', 'p.id', '=', 'up.propriedade_id')
+            ->where('up.usuario_id', $usuarioId)
+            ->where('up.propriedade_id', $propriedadeId)
+            ->value('p.nome');
+
+        $grupos = DB::table('usuario_grupos_fazendas as ugf')
+            ->join('grupos_fazendas as gf', 'gf.id', '=', 'ugf.grupo_id')
+            ->join('grupo_fazenda_propriedades as gfp', 'gfp.grupo_id', '=', 'gf.id')
+            ->where('ugf.usuario_id', $usuarioId)
+            ->where('gfp.propriedade_id', $propriedadeId)
+            ->where('gf.ativo', 1)
+            ->distinct()
+            ->orderBy('gf.nome')
+            ->pluck('gf.nome')
+            ->filter()
+            ->values()
+            ->implode(', ');
+
+        $vinculoDireto = $propriedade ? (string) $propriedade : '-';
+        $grupos = $grupos !== '' ? $grupos : '-';
+
+        return [
+            'acesso_efetivo' => $propriedade ? (string) $propriedade : ($grupos !== '-' ? 'Grupo: '.$grupos : '-'),
+            'vinculo_direto' => $vinculoDireto,
+            'grupos' => $grupos,
         ];
     }
 
@@ -426,7 +530,7 @@ class UsuarioService
     {
         $propriedade = DB::table('propriedades')->where('id', $propriedadeId)->first(['nome', 'plano']);
         if (! $propriedade) {
-            throw new RuntimeException('Propriedade nao encontrada para vincular o usuario.');
+            throw new RuntimeException('Propriedade não encontrada para vincular o usuário.');
         }
 
         $plano = (string) ($propriedade->plano ?: 'basico');
@@ -434,54 +538,57 @@ class UsuarioService
         $total = $this->contarUsuariosEfetivos($propriedadeId);
 
         if ($total >= $limite) {
-            throw new RuntimeException('Limite de usuarios do plano '.$this->planoLabel($plano).' atingido para '.$propriedade->nome.'.');
+            throw new RuntimeException('Limite de usuários do plano '.$this->planoLabel($plano).' atingido para '.$propriedade->nome.'.');
         }
     }
 
     private function contarUsuariosEfetivos(int $propriedadeId, ?int $ignorarUsuarioId = null): int
     {
         return DB::table('usuarios as u')
-            ->whereNotIn('u.perfil', ['administrador', 'administrador_sistema', 'gerencia_sistema', 'colaborador_sistema'])
+            ->where('u.ativo', 1)
+            ->whereNotIn('u.perfil', array_keys(self::perfisSistema()))
             ->when($ignorarUsuarioId, fn ($query) => $query->where('u.id', '!=', $ignorarUsuarioId))
             ->where(function ($query) use ($propriedadeId) {
-                $query->whereExists(function ($sub) use ($propriedadeId) {
-                    $sub->selectRaw('1')
-                        ->from('usuario_propriedades as up')
-                        ->whereColumn('up.usuario_id', 'u.id')
-                        ->where('up.propriedade_id', $propriedadeId);
-                })->orWhereExists(function ($sub) use ($propriedadeId) {
-                    $sub->selectRaw('1')
-                        ->from('usuario_grupos_fazendas as ugf')
-                        ->join('grupos_fazendas as gf', 'gf.id', '=', 'ugf.grupo_id')
-                        ->join('grupo_fazenda_propriedades as gfp', 'gfp.grupo_id', '=', 'gf.id')
-                        ->whereColumn('ugf.usuario_id', 'u.id')
-                        ->where('gf.ativo', 1)
-                        ->where('gfp.propriedade_id', $propriedadeId);
-                });
+                $this->scopeAcessoPropriedade($query, $propriedadeId);
             })
             ->count();
     }
 
     private function planoLabel(string $plano): string
     {
-        return ['basico' => 'Basico', 'avancado' => 'Avancado', 'premium' => 'Premium'][$plano] ?? 'Basico';
+        return ['basico' => 'Básico', 'avancado' => 'Avançado', 'premium' => 'Premium'][$plano] ?? 'Básico';
     }
 
-    private function auditar(?int $usuarioId, string $acao, string $tabela, int $registroId, int $propriedadeId, string $detalhes): void
+    private function scopeAcessoPropriedade($query, int $propriedadeId): void
     {
-        try {
-            DB::table('logs_auditoria')->insert([
-                'usuario_id' => $usuarioId,
-                'acao' => $acao,
-                'tabela' => $tabela,
-                'registro_id' => $registroId,
-                'propriedade_id' => $propriedadeId,
-                'detalhes' => $detalhes,
-                'ip' => request()->ip(),
-                'criado_em' => now(),
-            ]);
-        } catch (\Throwable $exception) {
-            report($exception);
+        $query->whereExists(function ($sub) use ($propriedadeId) {
+            $sub->selectRaw('1')
+                ->from('usuario_propriedades as up')
+                ->whereColumn('up.usuario_id', 'u.id')
+                ->where('up.propriedade_id', $propriedadeId);
+        })->orWhereExists(function ($sub) use ($propriedadeId) {
+            $sub->selectRaw('1')
+                ->from('usuario_grupos_fazendas as ugf')
+                ->join('grupos_fazendas as gf', 'gf.id', '=', 'ugf.grupo_id')
+                ->join('grupo_fazenda_propriedades as gfp', 'gfp.grupo_id', '=', 'gf.id')
+                ->whereColumn('ugf.usuario_id', 'u.id')
+                ->where('gf.ativo', 1)
+                ->where('gfp.propriedade_id', $propriedadeId);
+        });
+    }
+
+    private function validarProtecaoAdministradorPrincipal(object $usuarioAlvo, ?int $usuarioLogadoId): void
+    {
+        if ((string) $usuarioAlvo->perfil !== 'administrador_sistema') {
+            return;
+        }
+
+        $perfilAtor = $usuarioLogadoId
+            ? (string) DB::table('usuarios')->where('id', $usuarioLogadoId)->value('perfil')
+            : '';
+
+        if ($perfilAtor === 'gerencia_sistema') {
+            throw new RuntimeException('Gerência do sistema não pode alterar ou desativar administrador principal.');
         }
     }
 }

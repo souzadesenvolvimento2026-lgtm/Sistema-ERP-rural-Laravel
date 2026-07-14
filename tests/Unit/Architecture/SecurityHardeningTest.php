@@ -48,17 +48,39 @@ class SecurityHardeningTest extends TestCase
         $properties = $this->contents('app/Services/PropriedadeService.php');
         $financeController = $this->contents('app/Http/Controllers/ContaBancariaController.php');
         $financeService = $this->contents('app/Services/ContaBancariaService.php');
+        $usersController = $this->contents('app/Http/Controllers/UsuarioController.php');
+        $usersService = $this->contents('app/Services/UsuarioService.php');
         $chat = $this->contents('app/Services/ChatInternoService.php');
         $docs = $this->contents('app/Services/DocumentoService.php');
 
         $this->assertStringContainsString('impedirUsuarioVinculadoEmOutraPropriedade', $properties);
         $this->assertStringContainsString('removerUsuarioDaPropriedade', $properties);
         $this->assertStringContainsString('validarLimiteUsuarios', $properties);
+        $this->assertStringContainsString('canManageUsers', $usersController);
+        $this->assertStringContainsString('scopeAcessoPropriedade', $usersService);
+        $this->assertStringContainsString('validarLimitePropriedade', $usersService);
         $this->assertStringContainsString('authorizeManageFinance', $financeController);
         $this->assertStringContainsString("where('tf.propriedade_id', \$propriedadeId)", $financeService);
         $this->assertStringContainsString("where('up.propriedade_id', '=', \$propriedadeId)", $chat);
         $this->assertStringContainsString('str_starts_with($path, $base)', $chat);
         $this->assertStringContainsString('str_starts_with($path, $base)', $docs);
+    }
+
+    public function test_cloudflare_audit_context_is_not_trusted_without_proxy(): void
+    {
+        $bootstrap = $this->contents('bootstrap/app.php');
+        $requestContext = $this->contents('app/Services/RequestContextService.php');
+        $auditService = $this->contents('app/Services/AuditService.php');
+
+        $this->assertStringContainsString('trustProxies', $bootstrap);
+        $this->assertStringContainsString('TRUSTED_PROXY_IPS', $bootstrap);
+        $this->assertStringContainsString('CF-Connecting-IP', $requestContext);
+        $this->assertStringContainsString('True-Client-IP', $requestContext);
+        $this->assertStringContainsString('canTrustProxyHeaders', $requestContext);
+        $this->assertStringContainsString('X-Forwarded-For', $requestContext);
+        $this->assertStringContainsString('ip_cliente', $auditService);
+        $this->assertStringContainsString('sanitizarArray', $auditService);
+        $this->assertStringContainsString('[removido]', $auditService);
     }
 
     private function contents(string $path): string

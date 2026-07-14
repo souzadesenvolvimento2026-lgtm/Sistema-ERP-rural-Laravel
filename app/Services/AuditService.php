@@ -1,0 +1,88 @@
+<?php
+
+namespace App\Services;
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Throwable;
+
+class AuditService
+{
+    public function __construct(private readonly RequestContextService $context) {}
+
+    public function registrar(
+        ?int $usuarioId,
+        string $acao,
+        string $tabela,
+        ?int $registroId = null,
+        ?int $propriedadeId = null,
+        mixed $detalhes = null,
+        ?Request $request = null,
+    ): void {
+        try {
+            $contexto = $this->context->auditContext($request);
+            $payload = [
+                'usuario_id' => $usuarioId,
+                'acao' => $acao,
+                'tabela' => $tabela,
+                'registro_id' => $registroId,
+                'propriedade_id' => $propriedadeId,
+                'detalhes' => $this->formatarDetalhes($detalhes),
+                'ip' => $contexto['ip_cliente'] ?? request()->ip(),
+                'criado_em' => now(),
+            ];
+
+            foreach ($contexto as $column => $value) {
+                if (Schema::hasColumn('logs_auditoria', $column)) {
+                    $payload[$column] = $value;
+                }
+            }
+
+            DB::table('logs_auditoria')->insert($payload);
+        } catch (Throwable $exception) {
+            report($exception);
+        }
+    }
+
+    private function formatarDetalhes(mixed $detalhes): string
+    {
+        if ($detalhes === null || $detalhes === '') {
+            return 'Ação registrada pelo FarmFort.';
+        }
+
+        if (is_array($detalhes)) {
+            return json_encode($this->sanitizarArray($detalhes), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: 'Ação registrada pelo FarmFort.';
+        }
+
+        return $this->sanitizarTexto((string) $detalhes);
+    }
+
+    /**
+     * @param array<mixed> $dados
+     * @return array<mixed>
+     */
+    private function sanitizarArray(array $dados): array
+    {
+        $limpo = [];
+
+        foreach ($dados as $chave => $valor) {
+            $chaveTexto = strtolower((string) $chave);
+            if (str_contains($chaveTexto, 'senha') || str_contains($chaveTexto, 'password')) {
+                $limpo[$chave] = '[removido]';
+                continue;
+            }
+
+            $limpo[$chave] = is_array($valor) ? $this->sanitizarArray($valor) : $valor;
+        }
+
+        return $limpo;
+    }
+
+    private function sanitizarTexto(string $texto): string
+    {
+        $texto = preg_replace('/(senha|password)\s*[:=]\s*[^;\n\r]+/iu', '$1: [removido]', $texto) ?? $texto;
+
+        return mb_substr($texto, 0, 5000);
+    }
+}

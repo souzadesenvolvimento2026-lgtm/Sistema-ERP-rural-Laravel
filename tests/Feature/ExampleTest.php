@@ -10,6 +10,7 @@ use App\Support\FarmContext;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -5771,6 +5772,50 @@ KML;
             ->assertSee('Logins internos FarmFort');
     }
 
+    public function test_property_users_page_does_not_show_users_from_other_property(): void
+    {
+        DB::beginTransaction();
+
+        try {
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
+            $userId = $this->propertyManagerUserId($propertyId);
+
+            DB::table('propriedades')->insert([
+                'nome' => 'Fazenda isolada usuarios '.uniqid(),
+                'municipio' => 'Rio Verde',
+                'estado' => 'GO',
+                'area_total' => 10,
+                'responsavel' => 'Teste',
+                'cnpj_cpf' => '00000000000',
+                'plano' => 'basico',
+                'pecuaria_ativa' => 0,
+                'ativo' => 1,
+            ]);
+            $otherPropertyId = (int) DB::getPdo()->lastInsertId();
+
+            DB::table('usuarios')->insert([
+                'nome' => 'Usuario outra fazenda nao pode aparecer',
+                'email' => 'usuario-outra-fazenda-'.uniqid().'@teste.local',
+                'senha' => password_hash('senha-segura', PASSWORD_DEFAULT),
+                'perfil' => 'visualizador',
+                'ativo' => 1,
+            ]);
+            $otherUserId = (int) DB::getPdo()->lastInsertId();
+            DB::table('usuario_propriedades')->insert([
+                'usuario_id' => $otherUserId,
+                'propriedade_id' => $otherPropertyId,
+            ]);
+
+            $this->withSession($this->loggedSession(propertyId: $propertyId, profile: 'gestor_propriedade', userId: $userId))
+                ->get('/usuarios')
+                ->assertStatus(200)
+                ->assertSee('Usuários e permissões por fazenda')
+                ->assertDontSee('Usuario outra fazenda nao pode aparecer');
+        } finally {
+            DB::rollBack();
+        }
+    }
+
     public function test_user_can_be_created_with_audit_log(): void
     {
         DB::beginTransaction();
@@ -5806,6 +5851,55 @@ KML;
                 'registro_id' => $usuarioId,
                 'propriedade_id' => $propertyId,
             ]);
+        } finally {
+            DB::rollBack();
+        }
+    }
+
+    public function test_user_audit_uses_real_client_ip_and_does_not_store_password(): void
+    {
+        DB::beginTransaction();
+
+        try {
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
+            $userId = $this->propertyManagerUserId($propertyId);
+            $email = 'usuario-auditoria-'.uniqid().'@teste.local';
+
+            DB::table('propriedades')->where('id', $propertyId)->update(['plano' => 'premium']);
+
+            $this->withHeaders([
+                    'CF-Connecting-IP' => '203.0.113.10',
+                    'CF-Ray' => 'teste-ray-1234',
+                    'User-Agent' => 'FarmFortTest/1.0',
+                ])
+                ->withSession($this->loggedSession(propertyId: $propertyId, profile: 'gestor_propriedade', userId: $userId))
+                ->post('/usuarios', [
+                    'nome' => 'Usuario Auditoria Segura',
+                    'email' => $email,
+                    'perfil' => 'visualizador',
+                    'senha' => 'senha-nao-pode-aparecer',
+                    'senha_confirmation' => 'senha-nao-pode-aparecer',
+                ])
+                ->assertRedirect('/usuarios');
+
+            $usuarioId = (int) DB::table('usuarios')->where('email', $email)->value('id');
+            $log = DB::table('logs_auditoria')
+                ->where('usuario_id', $userId)
+                ->where('acao', 'salvar_usuario')
+                ->where('tabela', 'usuarios')
+                ->where('registro_id', $usuarioId)
+                ->first();
+
+            $this->assertNotNull($log);
+            $this->assertSame('203.0.113.10', (string) $log->ip);
+            $this->assertStringNotContainsString('senha-nao-pode-aparecer', (string) $log->detalhes);
+
+            if (Schema::hasColumn('logs_auditoria', 'ip_cliente')) {
+                $this->assertSame('203.0.113.10', (string) $log->ip_cliente);
+            }
+            if (Schema::hasColumn('logs_auditoria', 'cf_ray')) {
+                $this->assertSame('teste-ray-1234', (string) $log->cf_ray);
+            }
         } finally {
             DB::rollBack();
         }
@@ -6029,7 +6123,7 @@ KML;
                     'senha_confirmation' => 'senha-limite',
                 ])
                 ->assertRedirect('/usuarios/novo')
-                ->assertSessionHas('error');
+                ->assertSessionHasErrors();
 
             $this->assertDatabaseMissing('usuarios', [
                 'email' => $emailNovo,
@@ -6051,7 +6145,8 @@ KML;
             $usuariosVinculados = DB::table('usuarios as u')
                 ->join('usuario_propriedades as up', 'up.usuario_id', '=', 'u.id')
                 ->where('up.propriedade_id', $propertyId)
-                ->whereNotIn('u.perfil', ['administrador', 'administrador_sistema', 'gerencia_sistema', 'colaborador_sistema'])
+                ->where('u.ativo', 1)
+                ->whereNotIn('u.perfil', ['administrador_sistema', 'gerencia_sistema', 'colaborador_sistema'])
                 ->distinct('u.id')
                 ->count('u.id');
 
@@ -6082,7 +6177,7 @@ KML;
                     'senha_confirmation' => 'senha-limite',
                 ])
                 ->assertRedirect('/usuarios/novo')
-                ->assertSessionHas('error');
+                ->assertSessionHasErrors();
 
             $this->assertDatabaseMissing('usuarios', [
                 'email' => $emailNovo,

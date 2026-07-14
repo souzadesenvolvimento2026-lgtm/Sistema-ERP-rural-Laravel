@@ -17,11 +17,15 @@ class UsuarioController extends Controller
 
     public function index(Request $request, UsuarioService $service): View
     {
+        abort_unless($this->canManageUsers(), 403);
+
         return view('usuarios.index', $service->pagina(app(FarmContext::class)->propertyId(), $request, $this->isSystemAdmin()));
     }
 
     public function create(): View
     {
+        abort_unless($this->canManageUsers(), 403);
+
         return view('usuarios.create', [
             'activeModule' => 'usuarios',
             'perfis' => $this->perfisDisponiveis(),
@@ -31,6 +35,8 @@ class UsuarioController extends Controller
 
     public function edit(int $usuario, UsuarioService $service): View
     {
+        abort_unless($this->canManageUsers(), 403);
+
         return view('usuarios.edit', [
             'activeModule' => 'usuarios',
             'usuario' => $this->isSystemAdmin()
@@ -43,6 +49,8 @@ class UsuarioController extends Controller
 
     public function store(Request $request, UsuarioService $service): RedirectResponse
     {
+        abort_unless($this->canManageUsers(), 403);
+
         $dados = $request->validate([
             'nome' => ['required', 'string', 'max:100'],
             'email' => ['required', 'email', 'max:100', 'unique:usuarios,email'],
@@ -60,7 +68,8 @@ class UsuarioController extends Controller
             report($exception);
 
             return back()
-                ->with('error', $exception->getMessage());
+                ->withInput($request->except(['senha', 'senha_confirmation']))
+                ->withErrors($exception->getMessage());
         }
 
         return redirect()
@@ -70,6 +79,8 @@ class UsuarioController extends Controller
 
     public function update(Request $request, int $usuario, UsuarioService $service): RedirectResponse
     {
+        abort_unless($this->canManageUsers(), 403);
+
         $dados = $request->validate([
             'nome' => ['required', 'string', 'max:100'],
             'email' => ['required', 'email', 'max:100', Rule::unique('usuarios', 'email')->ignore($usuario)],
@@ -77,10 +88,18 @@ class UsuarioController extends Controller
             'perfil' => ['required', Rule::in(array_keys($this->perfisDisponiveis()))],
         ]);
 
-        if ($this->isSystemAdmin()) {
-            $service->atualizarSistema($usuario, $dados, (int) $request->session()->get('usuario_id'));
-        } else {
-            $service->atualizar($usuario, $dados, app(FarmContext::class)->propertyId(), (int) $request->session()->get('usuario_id'));
+        try {
+            if ($this->isSystemAdmin()) {
+                $service->atualizarSistema($usuario, $dados, (int) $request->session()->get('usuario_id'));
+            } else {
+                $service->atualizar($usuario, $dados, app(FarmContext::class)->propertyId(), (int) $request->session()->get('usuario_id'));
+            }
+        } catch (RuntimeException $exception) {
+            report($exception);
+
+            return back()
+                ->withInput($request->except(['senha', 'senha_confirmation']))
+                ->withErrors($exception->getMessage());
         }
 
         return redirect()
@@ -90,9 +109,17 @@ class UsuarioController extends Controller
 
     public function toggleStatus(Request $request, int $usuario, UsuarioService $service): RedirectResponse
     {
-        $ativo = $this->isSystemAdmin()
-            ? $service->alternarStatusSistema($usuario, (int) $request->session()->get('usuario_id'))
-            : $service->alternarStatus($usuario, app(FarmContext::class)->propertyId(), (int) $request->session()->get('usuario_id'));
+        abort_unless($this->canManageUsers(), 403);
+
+        try {
+            $ativo = $this->isSystemAdmin()
+                ? $service->alternarStatusSistema($usuario, (int) $request->session()->get('usuario_id'))
+                : $service->alternarStatus($usuario, app(FarmContext::class)->propertyId(), (int) $request->session()->get('usuario_id'));
+        } catch (RuntimeException $exception) {
+            report($exception);
+
+            return back()->withErrors($exception->getMessage());
+        }
 
         return redirect()
             ->route('usuarios.index')
@@ -107,5 +134,16 @@ class UsuarioController extends Controller
     private function perfisDisponiveis(): array
     {
         return $this->isSystemAdmin() ? UsuarioService::perfisSistema() : UsuarioService::perfisPermitidos();
+    }
+
+    private function canManageUsers(): bool
+    {
+        $perfil = (string) session('perfil');
+
+        if ($this->isSystemAdmin()) {
+            return true;
+        }
+
+        return in_array($perfil, ['gestor_propriedade', 'administrador'], true);
     }
 }

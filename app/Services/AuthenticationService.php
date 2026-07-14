@@ -5,11 +5,13 @@ namespace App\Services;
 use App\Domain\Access\ProfileAccess;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
-use Throwable;
 
 final class AuthenticationService
 {
-    public function __construct(private readonly ProfileAccess $profiles) {}
+    public function __construct(
+        private readonly ProfileAccess $profiles,
+        private readonly AuditService $audit,
+    ) {}
 
     public function authenticate(string $email, string $password): ?object
     {
@@ -119,19 +121,16 @@ final class AuthenticationService
 
     private function audit(string $action, string $details, int $userId, ?int $propertyId, string $ip): void
     {
-        try {
-            DB::table('logs_auditoria')->insert([
-                'usuario_id' => $userId,
-                'acao' => $action,
-                'tabela' => 'usuarios',
-                'registro_id' => $userId,
-                'propriedade_id' => $propertyId,
-                'detalhes' => $details,
-                'ip' => $ip,
-                'criado_em' => now(),
-            ]);
-        } catch (Throwable $exception) {
-            report($exception);
-        }
+        $this->audit->registrar(
+            $userId,
+            $action,
+            'usuarios',
+            $userId,
+            $propertyId,
+            [
+                'evento' => $details,
+                'ip_informado' => $ip,
+            ],
+        );
     }
 }

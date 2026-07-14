@@ -114,7 +114,15 @@ function initDataTable(selector, opts) {
   $(selector).each(function () {
     if (this.querySelector('tbody td[colspan], tbody th[colspan]')) return;
     if ($.fn.DataTable.isDataTable && $.fn.DataTable.isDataTable(this)) return;
-    const defaultOrder = [[0, 'desc']];
+    let defaultOrder = [[0, 'desc']];
+    const orderConfig = this.getAttribute('data-default-order');
+    if (orderConfig) {
+      try {
+        defaultOrder = JSON.parse(orderConfig);
+      } catch (error) {
+        defaultOrder = [[0, 'desc']];
+      }
+    }
 
     $(this).DataTable(Object.assign({
       language: { url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/pt-BR.json' },

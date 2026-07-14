@@ -5,10 +5,13 @@ namespace App\Services;
 use App\Support\FarmContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class AuditoriaService
 {
+    public function __construct(private readonly AuditService $audit) {}
+
     public function dados(Request $request): array
     {
         $propertyId = app(FarmContext::class)->propertyId();
@@ -23,10 +26,13 @@ class AuditoriaService
             'cards' => $this->cards($logs),
             'logs' => $logs,
             'columns' => [
-                'criado_em' => 'Data',
-                'usuario' => 'Usuário',
-                'acao_legivel' => 'Ação',
-                'tabela_legivel' => 'Área',
+                'criado_em' => 'Data/Hora',
+                'usuario' => 'Quem fez',
+                'propriedade' => 'Propriedade',
+                'lancamento' => 'Lançamento',
+                'acao_legivel' => 'O que fez',
+                'onde' => 'Onde',
+                'tipo_despesa' => 'Tipo despesa',
                 'registro' => 'Registro',
                 'detalhes' => 'Detalhes',
                 'ip' => 'IP',
@@ -35,14 +41,14 @@ class AuditoriaService
             'acoes' => $this->valoresFiltro($propertyId, 'acao'),
             'tabelas' => $this->valoresFiltro($propertyId, 'tabela'),
             'filtros' => [
-                'usuario_id' => (int)$request->query('usuario_id'),
-                'acao' => trim((string)$request->query('acao')),
-                'tabela' => trim((string)$request->query('tabela')),
-                'lancamento' => trim((string)$request->query('lancamento')),
-                'tipo_despesa' => trim((string)$request->query('tipo_despesa')),
-                'inicio' => trim((string)$request->query('inicio')),
-                'fim' => trim((string)$request->query('fim')),
-                'busca' => trim((string)$request->query('busca')),
+                'usuario_id' => (int) $request->query('usuario_id'),
+                'acao' => trim((string) $request->query('acao')),
+                'tabela' => trim((string) $request->query('tabela')),
+                'lancamento' => trim((string) $request->query('lancamento')),
+                'tipo_despesa' => trim((string) $request->query('tipo_despesa')),
+                'inicio' => trim((string) $request->query('inicio')),
+                'fim' => trim((string) $request->query('fim')),
+                'busca' => trim((string) $request->query('busca')),
             ],
             'lancamentos' => [
                 'despesas' => 'Despesas',
@@ -54,18 +60,34 @@ class AuditoriaService
                 'talhoes' => 'Talhões',
                 'suporte' => 'Suporte',
             ],
-            'tiposDespesa' => DB::table('categorias')
-                ->whereNotNull('tipo')
-                ->where('tipo', '!=', '')
-                ->distinct()
-                ->orderBy('tipo')
-                ->pluck('tipo'),
+            'tiposDespesa' => Schema::hasTable('categorias')
+                ? DB::table('categorias')
+                    ->whereNotNull('tipo')
+                    ->where('tipo', '!=', '')
+                    ->distinct()
+                    ->orderBy('tipo')
+                    ->pluck('tipo')
+                : collect(),
         ];
     }
 
     public function exportar(Request $request): array
     {
         $propertyId = app(FarmContext::class)->propertyId();
+
+        $this->audit->registrar(
+            (int) session('usuario_id') ?: null,
+            'exportar_auditoria',
+            'logs_auditoria',
+            null,
+            $propertyId,
+            [
+                'evento' => 'Exportou auditoria da propriedade.',
+                'filtros' => $request->query(),
+            ],
+            $request,
+        );
+
         $logs = $this->filtrar($this->baseQuery($propertyId), $request)
             ->orderByDesc('l.criado_em')
             ->limit(5000)
@@ -74,42 +96,42 @@ class AuditoriaService
 
         return [
             'filename' => 'auditoria-'.now()->format('Ymd-His').'.csv',
-            'headers' => ['Data', 'Usuario', 'Acao', 'Area', 'Registro', 'Detalhes', 'IP'],
+            'headers' => ['Data/Hora', 'Quem fez', 'Propriedade', 'Lançamento', 'O que fez', 'Onde', 'Tipo despesa', 'Registro', 'Detalhes', 'IP'],
             'rows' => $logs,
         ];
     }
 
     private function filtrar($query, Request $request)
     {
-        if ($usuarioId = (int)$request->query('usuario_id')) {
+        if ($usuarioId = (int) $request->query('usuario_id')) {
             $query->where('l.usuario_id', $usuarioId);
         }
 
-        if ($acao = trim((string)$request->query('acao'))) {
+        if ($acao = trim((string) $request->query('acao'))) {
             $query->where('l.acao', $acao);
         }
 
-        if ($tabela = trim((string)$request->query('tabela'))) {
+        if ($tabela = trim((string) $request->query('tabela'))) {
             $query->where('l.tabela', $tabela);
         }
 
-        if ($lancamento = trim((string)$request->query('lancamento'))) {
+        if ($lancamento = trim((string) $request->query('lancamento'))) {
             $this->filtrarLancamento($query, $lancamento);
         }
 
-        if ($tipoDespesa = trim((string)$request->query('tipo_despesa'))) {
+        if ($tipoDespesa = trim((string) $request->query('tipo_despesa'))) {
             $query->where('l.tabela', 'despesas')->where('cd.tipo', $tipoDespesa);
         }
 
-        if ($inicio = trim((string)$request->query('inicio'))) {
+        if ($inicio = trim((string) $request->query('inicio'))) {
             $query->where('l.criado_em', '>=', $inicio.' 00:00:00');
         }
 
-        if ($fim = trim((string)$request->query('fim'))) {
+        if ($fim = trim((string) $request->query('fim'))) {
             $query->where('l.criado_em', '<=', $fim.' 23:59:59');
         }
 
-        if ($busca = trim((string)$request->query('busca'))) {
+        if ($busca = trim((string) $request->query('busca'))) {
             $like = '%' . $busca . '%';
             $query->where(function ($q) use ($like) {
                 $q->where('l.acao', 'like', $like)
@@ -187,29 +209,63 @@ class AuditoriaService
                 'u.nome as usuario_nome',
                 'u.email as usuario_email',
                 'p.nome as propriedade_nome',
+                'cd.tipo as tipo_despesa',
+                $this->selectOptionalAuditColumn('ip_cliente'),
+                $this->selectOptionalAuditColumn('ip_proxy'),
+                $this->selectOptionalAuditColumn('cf_ray'),
+                $this->selectOptionalAuditColumn('host'),
+                $this->selectOptionalAuditColumn('rota'),
+                $this->selectOptionalAuditColumn('metodo'),
             ]);
+    }
+
+    private function selectOptionalAuditColumn(string $column)
+    {
+        if (Schema::hasColumn('logs_auditoria', $column)) {
+            return 'l.'.$column;
+        }
+
+        return DB::raw('NULL as '.$column);
     }
 
     private function formatLog($log): object
     {
-        return (object)[
+        $acaoLegivel = $this->acaoLegivel((string) $log->acao);
+        $tabelaLegivel = $this->tabelaLegivel($log->tabela);
+        $rota = trim((string) ($log->rota ?? ''));
+        $metodo = trim((string) ($log->metodo ?? ''));
+        $host = trim((string) ($log->host ?? ''));
+        $ipCliente = trim((string) ($log->ip_cliente ?? ''));
+        $ipProxy = trim((string) ($log->ip_proxy ?? ''));
+        $ip = $ipCliente !== '' ? $ipCliente : (string) ($log->ip ?: '-');
+
+        if ($ipProxy !== '' && $ipProxy !== $ip) {
+            $ip .= ' / proxy '.$ipProxy;
+        }
+
+        return (object) [
             'id' => $log->id,
             'criado_em' => $log->criado_em,
             'usuario' => trim(($log->usuario_nome ?: 'Usuário removido') . ($log->usuario_email ? ' - ' . $log->usuario_email : '')),
-            'acao_legivel' => $this->acaoLegivel((string)$log->acao),
-            'tabela_legivel' => $this->tabelaLegivel($log->tabela),
+            'propriedade' => $log->propriedade_nome ?: '-',
+            'lancamento' => $this->lancamentoLegivel((string) $log->tabela, (string) $log->acao),
+            'acao_legivel' => $acaoLegivel,
+            'tabela_legivel' => $tabelaLegivel,
+            'onde' => trim(($metodo ? $metodo.' ' : '').($rota ?: $tabelaLegivel).($host ? ' @ '.$host : '')),
+            'tipo_despesa' => $log->tipo_despesa ?: '-',
             'registro' => $log->registro_id ? '#' . $log->registro_id : '-',
-            'detalhes' => $log->detalhes ?: $this->acaoLegivel((string)$log->acao) . ' em ' . $this->tabelaLegivel($log->tabela),
-            'ip' => $log->ip ?: '-',
+            'detalhes' => $log->detalhes ?: $acaoLegivel . ' em ' . $tabelaLegivel,
+            'ip' => $ip,
+            'critico' => $this->acaoCritica($acaoLegivel),
         ];
     }
 
     private function cards($logs): array
     {
         return [
-            ['label' => 'Registros', 'value' => (string)$logs->count(), 'tone' => 'success'],
-            ['label' => 'Usuários', 'value' => (string)$logs->pluck('usuario')->filter()->unique()->count(), 'tone' => 'success'],
-            ['label' => 'Ações críticas', 'value' => (string)$logs->filter(fn ($log) => $this->acaoCritica($log->acao_legivel))->count(), 'tone' => 'danger'],
+            ['label' => 'Registros', 'value' => (string) $logs->count(), 'tone' => 'success'],
+            ['label' => 'Usuários', 'value' => (string) $logs->pluck('usuario')->filter()->unique()->count(), 'tone' => 'success'],
+            ['label' => 'Ações críticas', 'value' => (string) $logs->filter(fn ($log) => $log->critico)->count(), 'tone' => 'danger'],
             ['label' => 'Último registro', 'value' => $logs->first()->criado_em ?? '-', 'tone' => 'success'],
         ];
     }
@@ -236,11 +292,37 @@ class AuditoriaService
             ->pluck($campo);
     }
 
+    private function lancamentoLegivel(string $tabela, string $acao): string
+    {
+        if ($tabela === 'despesas') {
+            return 'Despesas';
+        }
+
+        if ($tabela === 'receitas') {
+            return 'Receitas';
+        }
+
+        if ($tabela === 'usuarios' || str_contains($acao, 'usuario') || in_array($acao, ['login', 'logout'], true)) {
+            return 'Usuários';
+        }
+
+        if ($tabela === 'talhoes') {
+            return 'Talhões';
+        }
+
+        if (in_array($tabela, ['nf_entradas', 'notas_fiscais', 'certificados_digitais'], true)) {
+            return 'Fiscal';
+        }
+
+        return $this->tabelaLegivel($tabela);
+    }
+
     private function acaoLegivel(string $acao): string
     {
         $mapa = [
             'login' => 'Entrou no sistema',
             'logout' => 'Saiu do sistema',
+            'exportar_auditoria' => 'Exportou auditoria',
             'envio_formulario' => 'Enviou formulário',
             'liberar_edicao_sistema' => 'Liberou edição operacional',
             'nova_despesa' => 'Lançou despesa',
@@ -249,6 +331,9 @@ class AuditoriaService
             'receber_receita' => 'Confirmou recebimento',
             'salvar_colheita' => 'Lançou colheita',
             'salvar_usuario' => 'Criou/editou usuário',
+            'alterar_senha_usuario' => 'Alterou senha de usuário',
+            'ativar_usuario' => 'Ativou usuário',
+            'desativar_usuario' => 'Desativou usuário',
             'salvar_propriedade' => 'Criou/editou propriedade',
             'salvar_safra' => 'Criou/editou safra',
             'importar_xml_nf' => 'Importou XML de NF',
@@ -262,6 +347,7 @@ class AuditoriaService
     private function tabelaLegivel(?string $tabela): string
     {
         $mapa = [
+            'logs_auditoria' => 'Auditoria',
             'usuarios' => 'Usuários',
             'despesas' => 'Despesas',
             'receitas' => 'Receitas',
@@ -276,7 +362,7 @@ class AuditoriaService
             'fiscal_orders' => 'Pedidos fiscais',
         ];
 
-        return $mapa[$tabela] ?? Str::headline((string)($tabela ?: 'não informado'));
+        return $mapa[$tabela] ?? Str::headline((string) ($tabela ?: 'não informado'));
     }
 
     private function acaoCritica(string $acao): bool

@@ -7,7 +7,7 @@
             <p class="subtitle">Consulta dos registros de ações realizadas na propriedade atual.</p>
         </div>
         <div class="actions">
-            <a class="btn primary" href="{{ route('auditoria.exportar', request()->query()) }}">Exportar CSV</a>
+            <a class="btn primary" href="{{ route('auditoria.exportar', request()->query()) }}"><i class="bi bi-file-earmark-spreadsheet"></i> Exportar Excel</a>
         </div>
     </div>
 

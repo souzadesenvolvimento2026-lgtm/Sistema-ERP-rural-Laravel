@@ -31,8 +31,11 @@ class AuditoriaController extends Controller
                 fputcsv($handle, [
                     $row->criado_em,
                     $row->usuario,
+                    $row->propriedade,
+                    $row->lancamento,
                     $row->acao_legivel,
-                    $row->tabela_legivel,
+                    $row->onde,
+                    $row->tipo_despesa,
                     $row->registro,
                     $row->detalhes,
                     $row->ip,
