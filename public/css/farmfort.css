@@ -10405,7 +10405,24 @@ html[data-theme="dark"] #talhaoMap .ff-map-selection-status {
 }
 
 .ff-bank-transfer-table {
-  min-width: 560px;
+  min-width: 680px;
+}
+
+.ff-bank-transfer-table th:nth-child(1),
+.ff-bank-transfer-table td:nth-child(1) {
+  width: 100px;
+}
+
+.ff-bank-transfer-table th:nth-child(3),
+.ff-bank-transfer-table td:nth-child(3) {
+  width: 158px;
+  text-align: right;
+}
+
+.ff-bank-transfer-table th:last-child,
+.ff-bank-transfer-table td:last-child {
+  width: 62px;
+  text-align: center;
 }
 
 .ff-bank-table th,
@@ -10447,6 +10464,42 @@ html[data-theme="dark"] #talhaoMap .ff-map-selection-status {
 }
 
 .ff-bank-total-card .is-positive {
+  color: var(--ff-accent-strong) !important;
+}
+
+.ff-bank-transfer-value {
+  white-space: nowrap;
+}
+
+.ff-bank-transfer-value span {
+  display: grid;
+  gap: 1px;
+}
+
+.ff-bank-transfer-value span + span {
+  margin-top: 7px;
+}
+
+.ff-bank-transfer-value small {
+  color: var(--ff-muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .02em;
+  line-height: 1;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.ff-bank-transfer-value strong {
+  font-size: 13px;
+  line-height: 1.1;
+}
+
+.ff-transfer-value-out strong {
+  color: var(--ff-danger) !important;
+}
+
+.ff-transfer-value-in strong {
   color: var(--ff-accent-strong) !important;
 }
 

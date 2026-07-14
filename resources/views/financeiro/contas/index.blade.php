@@ -196,7 +196,16 @@
                                         <small>{{ $transferencia->descricao ?: 'Transferência entre contas' }}</small>
                                         <small>Registrada por {{ $transferencia->usuario_nome ?: 'usuário não informado' }}</small>
                                     </td>
-                                    <td><strong class="is-positive">{{ $money($transferencia->valor) }}</strong></td>
+                                    <td class="ff-bank-transfer-value">
+                                        <span class="ff-transfer-value-out">
+                                            <small>Transferido</small>
+                                            <strong>- {{ $money($transferencia->valor) }}</strong>
+                                        </span>
+                                        <span class="ff-transfer-value-in">
+                                            <small>Depositado</small>
+                                            <strong>+ {{ $money($transferencia->valor) }}</strong>
+                                        </span>
+                                    </td>
                                     @if ($canManageFinance)
                                         <td>
                                             <a class="ff-icon-action is-edit" href="{{ route('financeiro.contas.transfer.edit', $transferencia->id, false) }}" data-bank-edit-transfer="{{ $transferencia->id }}" title="Editar transferência" aria-label="Editar transferência">

@@ -23,8 +23,14 @@ class FinanceiroUiTest extends TestCase
 
         $this->assertStringContainsString('modal-footer ff-modal-footer-split', $contasView);
         $this->assertStringContainsString('modal-footer ff-modal-footer-split', $launchModal);
+        $this->assertStringContainsString('ff-bank-transfer-value', $contasView);
+        $this->assertStringContainsString('Transferido', $contasView);
+        $this->assertStringContainsString('Depositado', $contasView);
         $this->assertStringContainsString('.ff-bank-modal .form-control', $css);
         $this->assertStringContainsString('.ff-bank-modal .form-select', $css);
+        $this->assertStringContainsString('.ff-bank-transfer-value', $css);
+        $this->assertStringContainsString('.ff-transfer-value-out strong', $css);
+        $this->assertStringContainsString('.ff-transfer-value-in strong', $css);
         $this->assertStringContainsString('width: min(94vw, 720px);', $css);
     }
 
