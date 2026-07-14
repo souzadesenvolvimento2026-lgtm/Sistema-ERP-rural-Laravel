@@ -6218,6 +6218,88 @@ KML;
         }
     }
 
+    public function test_property_cannot_link_user_already_linked_to_another_property(): void
+    {
+        DB::beginTransaction();
+
+        try {
+            DB::table('propriedades')->insert([
+                'nome' => 'Fazenda origem usuario Laravel',
+                'municipio' => 'Rio Verde',
+                'estado' => 'GO',
+                'area_total' => 100,
+                'responsavel' => 'Responsavel origem',
+                'cnpj_cpf' => '11111111111',
+                'plano' => 'premium',
+                'pecuaria_ativa' => 0,
+                'ativo' => 1,
+            ]);
+            $propriedadeOrigemId = (int) DB::getPdo()->lastInsertId();
+
+            DB::table('propriedades')->insert([
+                'nome' => 'Fazenda destino usuario Laravel',
+                'municipio' => 'Jatai',
+                'estado' => 'GO',
+                'area_total' => 100,
+                'responsavel' => 'Responsavel destino',
+                'cnpj_cpf' => '22222222222',
+                'plano' => 'premium',
+                'pecuaria_ativa' => 0,
+                'ativo' => 1,
+            ]);
+            $propriedadeDestinoId = (int) DB::getPdo()->lastInsertId();
+
+            $email = 'usuario-vinculo-unico-'.uniqid().'@teste.local';
+            DB::table('usuarios')->insert([
+                'nome' => 'Usuario Vinculo Unico',
+                'email' => $email,
+                'senha' => password_hash('senha-segura', PASSWORD_DEFAULT),
+                'perfil' => 'visualizador',
+                'ativo' => 1,
+            ]);
+            $usuarioId = (int) DB::getPdo()->lastInsertId();
+
+            DB::table('usuario_propriedades')->insert([
+                'usuario_id' => $usuarioId,
+                'propriedade_id' => $propriedadeOrigemId,
+            ]);
+
+            $this->withSession($this->loggedSession())
+                ->from('/propriedades/'.$propriedadeDestinoId.'/editar')
+                ->put('/propriedades/'.$propriedadeDestinoId, [
+                    'nome' => 'Fazenda destino usuario Laravel',
+                    'municipio' => 'Jatai',
+                    'estado' => 'GO',
+                    'area_total' => '100',
+                    'responsavel' => 'Responsavel destino',
+                    'inscricao_estadual' => '',
+                    'cnpj_cpf' => '22222222222',
+                    'plano' => 'premium',
+                    'pecuaria_ativa' => '0',
+                    'latitude' => '',
+                    'longitude' => '',
+                    'regiao_cotacao' => '',
+                    'novos_usuarios' => [
+                        [
+                            'nome' => 'Usuario Vinculo Unico',
+                            'email' => $email,
+                            'senha' => 'senha-segura',
+                            'perfil' => 'visualizador',
+                        ],
+                    ],
+                ])
+                ->assertRedirect('/propriedades/'.$propriedadeDestinoId.'/editar')
+                ->assertSessionHasErrors();
+
+            $this->assertDatabaseMissing('usuario_propriedades', [
+                'usuario_id' => $usuarioId,
+                'propriedade_id' => $propriedadeDestinoId,
+            ]);
+        } finally {
+            DB::rollBack();
+        }
+    }
+
     public function test_property_approver_can_be_saved_and_linked(): void
     {
         DB::beginTransaction();

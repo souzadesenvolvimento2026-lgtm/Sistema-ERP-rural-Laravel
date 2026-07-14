@@ -138,7 +138,7 @@
                 'method' => 'PUT',
                 'propriedade' => $row,
                 'linkedUsers' => $row->usuarios_vinculados,
-                'aprovadores' => $aprovadores,
+                'aprovadores' => $aprovadoresPorPropriedade->get($row->id, collect()),
                 'perfisUsuario' => $perfisUsuario,
                 'planOptions' => $planOptions,
             ])

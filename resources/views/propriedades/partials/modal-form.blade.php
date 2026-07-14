@@ -197,7 +197,7 @@
                                     </select>
                                 </div>
                             @endfor
-                            <small>Não listamos usuários de outras propriedades. Se você informar um e-mail já existente, ele será vinculado sem expor a lista global. Se for novo, a senha é obrigatória.</small>
+                            <small>Não listamos usuários de outras propriedades. Se o e-mail já estiver vinculado a outra fazenda, o FarmFort bloqueia o cadastro. Se for um usuário novo, a senha é obrigatória.</small>
                         </div>
                     </div>
                 </div>

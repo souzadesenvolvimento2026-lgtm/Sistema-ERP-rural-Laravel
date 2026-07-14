@@ -67,6 +67,7 @@ class PropriedadeService
 
             return $row;
         });
+        $aprovadoresPorPropriedade = $this->aprovadoresPorPropriedade($rows->pluck('id')->all());
 
         $propriedadeAtual = DB::table('propriedades')
             ->where('id', (int) session('propriedade_id'))
@@ -94,6 +95,7 @@ class PropriedadeService
                 ['label' => 'Usuários vinculados', 'value' => (string) $rows->sum('usuarios_total'), 'tone' => 'warning'],
             ],
             'aprovadores' => self::aprovadores(),
+            'aprovadoresPorPropriedade' => $aprovadoresPorPropriedade,
             'perfisUsuario' => self::USER_PROFILES,
             'planOptions' => self::PLAN_OPTIONS,
             'canCreateProperty' => $canCreateProperty,
@@ -159,11 +161,39 @@ class PropriedadeService
         });
     }
 
-    public static function aprovadores(): Collection
+    public static function aprovadores(?int $propriedadeId = null): Collection
     {
-        return DB::table('usuarios')
+        $query = DB::table('usuarios')
             ->where('ativo', 1)
-            ->whereIn('perfil', self::APPROVER_PROFILES)
+            ->whereIn('perfil', self::APPROVER_PROFILES);
+
+        if ($propriedadeId !== null) {
+            $query->where(function ($scope) use ($propriedadeId) {
+                $scope->whereExists(function ($currentProperty) use ($propriedadeId) {
+                    $currentProperty->selectRaw('1')
+                        ->from('usuario_propriedades as up_current')
+                        ->whereColumn('up_current.usuario_id', 'usuarios.id')
+                        ->where('up_current.propriedade_id', $propriedadeId);
+                })->orWhereNotExists(function ($anyProperty) {
+                    $anyProperty->selectRaw('1')
+                        ->from('usuario_propriedades as up_any')
+                        ->whereColumn('up_any.usuario_id', 'usuarios.id');
+                });
+            })->whereNotExists(function ($otherProperty) use ($propriedadeId) {
+                $otherProperty->selectRaw('1')
+                    ->from('usuario_propriedades as up_other')
+                    ->whereColumn('up_other.usuario_id', 'usuarios.id')
+                    ->where('up_other.propriedade_id', '!=', $propriedadeId);
+            });
+        } else {
+            $query->whereNotExists(function ($anyProperty) {
+                $anyProperty->selectRaw('1')
+                    ->from('usuario_propriedades as up_any')
+                    ->whereColumn('up_any.usuario_id', 'usuarios.id');
+            });
+        }
+
+        return $query
             ->orderBy('nome')
             ->get(['id', 'nome', 'email', 'perfil']);
     }
@@ -377,6 +407,13 @@ class PropriedadeService
             ->groupBy('propriedade_id');
     }
 
+    private function aprovadoresPorPropriedade(array $propriedadesIds): Collection
+    {
+        $ids = collect($propriedadesIds)->map(fn ($id) => (int) $id)->filter()->unique()->values();
+
+        return $ids->mapWithKeys(fn (int $id): array => [$id => self::aprovadores($id)]);
+    }
+
     private function processarUsuarios(int $propriedadeId, array $dados, ?int $usuarioLogadoId): void
     {
         $this->atualizarUsuariosVinculados($propriedadeId, $dados['usuarios_vinculados'] ?? [], $usuarioLogadoId);
@@ -403,6 +440,8 @@ class PropriedadeService
             if (! $usuarioAnterior) {
                 continue;
             }
+
+            $this->impedirUsuarioVinculadoEmOutraPropriedade($usuarioId, $propriedadeId, (string) $usuarioAnterior->email);
 
             $nome = trim((string) ($usuarioDados['nome'] ?? $usuarioAnterior->nome));
             $email = strtolower(trim((string) ($usuarioDados['email'] ?? $usuarioAnterior->email)));
@@ -472,6 +511,8 @@ class PropriedadeService
                 if ((int) $usuarioExistente->ativo !== 1 || in_array((string) $usuarioExistente->perfil, self::SYSTEM_PROFILES, true)) {
                     throw new RuntimeException('O e-mail '.$email.' pertence a um usuário indisponível para vínculo nesta propriedade.');
                 }
+
+                $this->impedirUsuarioVinculadoEmOutraPropriedade((int) $usuarioExistente->id, $propriedadeId, $email);
 
                 DB::table('usuario_propriedades')->updateOrInsert([
                     'usuario_id' => (int) $usuarioExistente->id,
@@ -596,9 +637,30 @@ class PropriedadeService
             ->exists();
     }
 
+    private function impedirUsuarioVinculadoEmOutraPropriedade(int $usuarioId, int $propriedadeId, string $email): void
+    {
+        $vinculo = DB::table('usuario_propriedades as up')
+            ->join('propriedades as p', 'p.id', '=', 'up.propriedade_id')
+            ->where('up.usuario_id', $usuarioId)
+            ->where('up.propriedade_id', '!=', $propriedadeId)
+            ->orderBy('p.nome')
+            ->first(['p.nome']);
+
+        if ($vinculo) {
+            throw new RuntimeException('O e-mail '.$email.' já está sendo utilizado na propriedade '.$vinculo->nome.'. Cada usuário operacional pode estar vinculado a apenas uma propriedade.');
+        }
+    }
+
     private function vincularAprovador(int $propriedadeId, ?int $aprovadorId): void
     {
-        if (! $aprovadorId || $this->usuarioVinculado($propriedadeId, $aprovadorId)) {
+        if (! $aprovadorId) {
+            return;
+        }
+
+        $email = (string) DB::table('usuarios')->where('id', $aprovadorId)->value('email');
+        $this->impedirUsuarioVinculadoEmOutraPropriedade($aprovadorId, $propriedadeId, $email);
+
+        if ($this->usuarioVinculado($propriedadeId, $aprovadorId)) {
             return;
         }
 
@@ -623,6 +685,9 @@ class PropriedadeService
         if (! $usuarioPermitido) {
             return;
         }
+
+        $email = (string) DB::table('usuarios')->where('id', $usuarioId)->value('email');
+        $this->impedirUsuarioVinculadoEmOutraPropriedade($usuarioId, $propriedadeId, $email);
 
         DB::table('usuario_propriedades')->updateOrInsert([
             'usuario_id' => $usuarioId,

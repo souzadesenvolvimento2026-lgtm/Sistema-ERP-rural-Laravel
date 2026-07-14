@@ -28,7 +28,7 @@ class PropriedadeController extends Controller
         return view('propriedades.edit', [
             'activeModule' => 'propriedades',
             'propriedade' => $service->buscar($propriedade),
-            'aprovadores' => PropriedadeService::aprovadores(),
+            'aprovadores' => PropriedadeService::aprovadores($propriedade),
         ]);
     }
 
