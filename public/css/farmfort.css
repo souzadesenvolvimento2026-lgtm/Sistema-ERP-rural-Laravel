@@ -6471,11 +6471,12 @@ html[data-theme="dark"] .ff-or-chart-filter button.active {
 
 .ff-bi-hero h1 {
   margin: 8px 0;
-  color: #fff;
+  color: #fff !important;
   font-size: 44px;
   font-weight: 950;
   line-height: 1.05;
   text-transform: uppercase;
+  -webkit-text-fill-color: #fff;
 }
 
 .ff-bi-hero p {
@@ -10372,11 +10373,18 @@ html[data-theme="dark"] #talhaoMap .ff-map-selection-status {
   align-items: start;
   display: grid;
   gap: 20px;
-  grid-template-columns: minmax(560px, 1.35fr) minmax(360px, .95fr);
+  grid-template-columns: minmax(420px, .74fr) minmax(620px, 1.46fr);
 }
 
 .ff-bank-panel {
   overflow: hidden;
+}
+
+.ff-bank-transfers-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 340px);
+  min-height: 420px;
 }
 
 .ff-bank-panel .panel-head {
@@ -10400,8 +10408,15 @@ html[data-theme="dark"] #talhaoMap .ff-map-selection-status {
   overflow-x: auto;
 }
 
+.ff-bank-transfers-panel .ff-bank-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
 .ff-bank-table {
-  min-width: 760px;
+  min-width: 690px;
 }
 
 .ff-bank-transfer-table {
@@ -10410,14 +10425,20 @@ html[data-theme="dark"] #talhaoMap .ff-map-selection-status {
   width: 100%;
 }
 
+.ff-bank-transfer-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
 .ff-bank-transfer-table th:nth-child(1),
 .ff-bank-transfer-table td:nth-child(1) {
-  width: 100px;
+  width: 96px;
 }
 
 .ff-bank-transfer-table th:nth-child(3),
 .ff-bank-transfer-table td:nth-child(3) {
-  width: 150px;
+  width: 160px;
   text-align: right;
 }
 
