@@ -10833,13 +10833,20 @@ html[data-theme="dark"] .ff-bank-modal .modal-content {
 }
 
 .ff-property-user-row {
+  align-items: end;
   background: color-mix(in srgb, var(--ff-surface-2) 86%, transparent);
   border: 1px solid var(--ff-border);
   border-radius: 10px;
   display: grid;
   gap: 10px;
-  grid-template-columns: 1.25fr 1.4fr 1fr 1fr;
+  grid-template-columns: 1.2fr 1.35fr .95fr .95fr auto;
   padding: 12px;
+}
+
+.ff-property-user-row.is-removing {
+  background: color-mix(in srgb, var(--ff-danger) 8%, var(--ff-surface-2));
+  border-color: color-mix(in srgb, var(--ff-danger) 45%, var(--ff-border));
+  opacity: .75;
 }
 
 .ff-property-user-row label {
@@ -10851,6 +10858,17 @@ html[data-theme="dark"] .ff-bank-modal .modal-content {
   color: var(--ff-muted);
   font-size: 11px;
   font-weight: 900;
+}
+
+.ff-property-user-remove {
+  align-self: end;
+  white-space: nowrap;
+}
+
+.ff-property-user-row.is-removing .ff-property-user-remove {
+  background: var(--ff-warning);
+  border-color: var(--ff-warning);
+  color: #111827;
 }
 
 .ff-property-user-columns {

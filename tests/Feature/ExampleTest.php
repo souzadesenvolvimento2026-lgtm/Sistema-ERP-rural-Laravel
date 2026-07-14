@@ -6300,6 +6300,80 @@ KML;
         }
     }
 
+    public function test_property_admin_can_remove_user_link_from_property(): void
+    {
+        DB::beginTransaction();
+
+        try {
+            DB::table('propriedades')->insert([
+                'nome' => 'Fazenda remover usuario Laravel',
+                'municipio' => 'Rio Verde',
+                'estado' => 'GO',
+                'area_total' => 100,
+                'responsavel' => 'Responsavel remover',
+                'cnpj_cpf' => '33333333333',
+                'plano' => 'premium',
+                'pecuaria_ativa' => 0,
+                'ativo' => 1,
+            ]);
+            $propriedadeId = (int) DB::getPdo()->lastInsertId();
+
+            DB::table('usuarios')->insert([
+                'nome' => 'Usuario Remover Propriedade',
+                'email' => 'usuario-remover-propriedade-'.uniqid().'@teste.local',
+                'senha' => password_hash('senha-segura', PASSWORD_DEFAULT),
+                'perfil' => 'visualizador',
+                'ativo' => 1,
+            ]);
+            $usuarioId = (int) DB::getPdo()->lastInsertId();
+
+            DB::table('usuario_propriedades')->insert([
+                'usuario_id' => $usuarioId,
+                'propriedade_id' => $propriedadeId,
+            ]);
+
+            $this->withSession($this->loggedSession())
+                ->put('/propriedades/'.$propriedadeId, [
+                    'nome' => 'Fazenda remover usuario Laravel',
+                    'municipio' => 'Rio Verde',
+                    'estado' => 'GO',
+                    'area_total' => '100',
+                    'responsavel' => 'Responsavel remover',
+                    'inscricao_estadual' => '',
+                    'cnpj_cpf' => '33333333333',
+                    'plano' => 'premium',
+                    'pecuaria_ativa' => '0',
+                    'latitude' => '',
+                    'longitude' => '',
+                    'regiao_cotacao' => '',
+                    'usuarios_vinculados' => [
+                        [
+                            'id' => $usuarioId,
+                            'remover' => '1',
+                        ],
+                    ],
+                ])
+                ->assertRedirect('/propriedades');
+
+            $this->assertDatabaseMissing('usuario_propriedades', [
+                'usuario_id' => $usuarioId,
+                'propriedade_id' => $propriedadeId,
+            ]);
+            $this->assertDatabaseHas('usuarios', [
+                'id' => $usuarioId,
+                'ativo' => 1,
+            ]);
+            $this->assertDatabaseHas('logs_auditoria', [
+                'acao' => 'remover_usuario_propriedade',
+                'tabela' => 'usuario_propriedades',
+                'registro_id' => $usuarioId,
+                'propriedade_id' => $propriedadeId,
+            ]);
+        } finally {
+            DB::rollBack();
+        }
+    }
+
     public function test_property_approver_can_be_saved_and_linked(): void
     {
         DB::beginTransaction();

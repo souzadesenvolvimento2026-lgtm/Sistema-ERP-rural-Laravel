@@ -441,6 +441,11 @@ class PropriedadeService
                 continue;
             }
 
+            if ((string) ($usuarioDados['remover'] ?? '0') === '1') {
+                $this->removerUsuarioDaPropriedade($propriedadeId, $usuarioAnterior, $usuarioLogadoId);
+                continue;
+            }
+
             $this->impedirUsuarioVinculadoEmOutraPropriedade($usuarioId, $propriedadeId, (string) $usuarioAnterior->email);
 
             $nome = trim((string) ($usuarioDados['nome'] ?? $usuarioAnterior->nome));
@@ -480,6 +485,30 @@ class PropriedadeService
                 'Usuário vinculado atualizado: '.$usuarioAnterior->nome.' ('.$usuarioAnterior->email.') → '.$nome.' ('.$email.')'
             );
         }
+    }
+
+    private function removerUsuarioDaPropriedade(int $propriedadeId, object $usuario, ?int $usuarioLogadoId): void
+    {
+        $usuarioId = (int) $usuario->id;
+
+        DB::table('usuario_propriedades')
+            ->where('usuario_id', $usuarioId)
+            ->where('propriedade_id', $propriedadeId)
+            ->delete();
+
+        DB::table('propriedades')
+            ->where('id', $propriedadeId)
+            ->where('aprovador_usuario_id', $usuarioId)
+            ->update(['aprovador_usuario_id' => null]);
+
+        $this->auditar(
+            $usuarioLogadoId,
+            'remover_usuario_propriedade',
+            'usuario_propriedades',
+            $usuarioId,
+            $propriedadeId,
+            'Usuário removido da propriedade: '.$usuario->nome.' ('.$usuario->email.')'
+        );
     }
 
     private function criarOuVincularNovosUsuarios(int $propriedadeId, mixed $usuarios, ?int $usuarioLogadoId): void

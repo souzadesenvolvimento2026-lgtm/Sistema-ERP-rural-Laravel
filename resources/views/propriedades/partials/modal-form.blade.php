@@ -126,8 +126,9 @@
                     @if ($isEdit && $linkedUsers->isNotEmpty())
                         <div class="ff-property-linked-users">
                             @foreach ($linkedUsers as $index => $usuario)
-                                <div class="ff-property-user-row">
+                                <div class="ff-property-user-row" data-property-linked-user-row>
                                     <input type="hidden" name="usuarios_vinculados[{{ $index }}][id]" value="{{ $usuario->id }}">
+                                    <input type="hidden" name="usuarios_vinculados[{{ $index }}][remover]" value="0" data-property-user-remove-input>
                                     <label>
                                         <span>Nome</span>
                                         <input name="usuarios_vinculados[{{ $index }}][nome]" value="{{ $usuario->nome }}">
@@ -148,6 +149,9 @@
                                         <span>Senha opcional</span>
                                         <input type="password" name="usuarios_vinculados[{{ $index }}][senha]" autocomplete="new-password" placeholder="Alterar senha">
                                     </label>
+                                    <button class="btn small danger ff-property-user-remove" type="button" data-property-remove-linked-user>
+                                        <i class="bi bi-x-circle"></i> Remover
+                                    </button>
                                 </div>
                             @endforeach
                         </div>
@@ -197,7 +201,6 @@
                                     </select>
                                 </div>
                             @endfor
-                            <small>Não listamos usuários de outras propriedades. Se o e-mail já estiver vinculado a outra fazenda, o FarmFort bloqueia o cadastro. Se for um usuário novo, a senha é obrigatória.</small>
                         </div>
                     </div>
                 </div>

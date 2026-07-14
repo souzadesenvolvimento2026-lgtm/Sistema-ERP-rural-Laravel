@@ -170,16 +170,20 @@
                 const planLimits = { basico: 3, avancado: 5, premium: 10 };
 
                 const visibleRows = () => rows.filter((row) => !row.hidden).length;
+                const removedLinkedUsers = () => Array.from(form?.querySelectorAll('[data-property-user-remove-input]') || [])
+                    .filter((input) => input.value === '1').length;
+                const activeCurrentUsers = () => Math.max(0, currentUsers - removedLinkedUsers());
                 const planKey = () => planSelect?.value || 'basico';
                 const currentLimit = () => planLimits[planKey()] || 3;
 
                 const updateLimitText = () => {
                     const limit = currentLimit();
+                    const usersInProperty = activeCurrentUsers();
                     box.dataset.planLimit = String(limit);
                     if (limitText) {
-                        limitText.textContent = `Esta propriedade usa ${currentUsers}/${limit} usuários do plano ${planLabels[planKey()] || planLabels.basico}.`;
+                        limitText.textContent = `Esta propriedade usa ${usersInProperty}/${limit} usuários do plano ${planLabels[planKey()] || planLabels.basico}.`;
                     }
-                    if (message && currentUsers + visibleRows() < limit) {
+                    if (message && usersInProperty + visibleRows() < limit) {
                         message.hidden = true;
                     }
                 };
@@ -187,9 +191,10 @@
                 addButton?.addEventListener('click', () => {
                     updateLimitText();
                     const limit = currentLimit();
-                    if (currentUsers + visibleRows() >= limit) {
+                    const usersInProperty = activeCurrentUsers();
+                    if (usersInProperty + visibleRows() >= limit) {
                         if (message) {
-                            message.textContent = `Limite de usuários do plano atingido (${currentUsers + visibleRows()}/${limit}). Aumente o plano da propriedade ou remova/inative um usuário vinculado.`;
+                            message.textContent = `Limite de usuários do plano atingido (${usersInProperty + visibleRows()}/${limit}). Aumente o plano da propriedade ou remova um usuário vinculado.`;
                             message.hidden = false;
                         }
                         return;
@@ -209,7 +214,26 @@
                 });
 
                 planSelect?.addEventListener('change', updateLimitText);
+                form?.addEventListener('property-users-updated', updateLimitText);
                 updateLimitText();
+            });
+
+            document.querySelectorAll('[data-property-remove-linked-user]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    const row = button.closest('[data-property-linked-user-row]');
+                    const input = row?.querySelector('[data-property-user-remove-input]');
+                    const form = button.closest('form');
+                    if (!row || !input) return;
+
+                    const removing = input.value !== '1';
+                    input.value = removing ? '1' : '0';
+                    row.classList.toggle('is-removing', removing);
+                    button.innerHTML = removing
+                        ? '<i class="bi bi-arrow-counterclockwise"></i> Desfazer'
+                        : '<i class="bi bi-x-circle"></i> Remover';
+
+                    form?.dispatchEvent(new CustomEvent('property-users-updated'));
+                });
             });
 
             if (!modalId) return;

@@ -114,6 +114,7 @@ class PropriedadeController extends Controller
             'usuarios_vinculados.*.email' => ['nullable', 'email', 'max:190'],
             'usuarios_vinculados.*.senha' => ['nullable', 'string', 'min:6'],
             'usuarios_vinculados.*.perfil' => ['nullable', 'string', 'max:50'],
+            'usuarios_vinculados.*.remover' => ['nullable', 'boolean'],
             'novos_usuarios' => ['nullable', 'array', 'max:3'],
             'novos_usuarios.*.nome' => ['nullable', 'string', 'max:150'],
             'novos_usuarios.*.email' => ['nullable', 'email', 'max:190'],
