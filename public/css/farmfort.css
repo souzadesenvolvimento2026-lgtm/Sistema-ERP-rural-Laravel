@@ -10373,7 +10373,7 @@ html[data-theme="dark"] #talhaoMap .ff-map-selection-status {
   align-items: start;
   display: grid;
   gap: 20px;
-  grid-template-columns: minmax(420px, .74fr) minmax(620px, 1.46fr);
+  grid-template-columns: minmax(680px, 1.15fr) minmax(430px, .85fr);
 }
 
 .ff-bank-panel {
@@ -10408,6 +10408,10 @@ html[data-theme="dark"] #talhaoMap .ff-map-selection-status {
   overflow-x: auto;
 }
 
+.ff-bank-accounts-panel .ff-bank-table-wrap {
+  overflow-x: visible;
+}
+
 .ff-bank-transfers-panel .ff-bank-table-wrap {
   flex: 1;
   min-height: 0;
@@ -10417,6 +10421,44 @@ html[data-theme="dark"] #talhaoMap .ff-map-selection-status {
 
 .ff-bank-table {
   min-width: 690px;
+}
+
+.ff-bank-accounts-panel .ff-bank-table {
+  min-width: 0;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.ff-bank-accounts-panel .ff-bank-table th:nth-child(1),
+.ff-bank-accounts-panel .ff-bank-table td:nth-child(1) {
+  width: 25%;
+}
+
+.ff-bank-accounts-panel .ff-bank-table th:nth-child(2),
+.ff-bank-accounts-panel .ff-bank-table td:nth-child(2) {
+  width: 14%;
+}
+
+.ff-bank-accounts-panel .ff-bank-table th:nth-child(3),
+.ff-bank-accounts-panel .ff-bank-table td:nth-child(3) {
+  width: 13%;
+}
+
+.ff-bank-accounts-panel .ff-bank-table th:nth-child(4),
+.ff-bank-accounts-panel .ff-bank-table td:nth-child(4) {
+  width: 14%;
+  white-space: nowrap;
+}
+
+.ff-bank-accounts-panel .ff-bank-table th:nth-child(5),
+.ff-bank-accounts-panel .ff-bank-table td:nth-child(5) {
+  width: 16%;
+  white-space: nowrap;
+}
+
+.ff-bank-accounts-panel .ff-bank-table th:nth-child(6),
+.ff-bank-accounts-panel .ff-bank-table td:nth-child(6) {
+  width: 18%;
 }
 
 .ff-bank-transfer-table {
@@ -10475,6 +10517,10 @@ html[data-theme="dark"] #talhaoMap .ff-map-selection-status {
   font-size: 11px;
   line-height: 1.35;
   margin-top: 2px;
+}
+
+.ff-bank-accounts-panel .ff-bank-table td {
+  overflow-wrap: anywhere;
 }
 
 .ff-bank-table .is-positive {
