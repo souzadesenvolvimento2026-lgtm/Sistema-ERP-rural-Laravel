@@ -112,7 +112,7 @@
             </div>
 
             <div class="modal-body">
-                <div class="ff-map-modal-section">
+                <div class="ff-map-modal-section ff-map-pivo-section" data-map-pivo-existing-section hidden>
                     <div class="ff-map-modal-section-title">
                         <strong>Criar ou editar pivô em talhão existente</strong>
                         <span>Selecione o talhão e informe o centro e o raio do pivô.</span>
@@ -129,16 +129,18 @@
                                 @endforeach
                             </select>
                         </label>
-                        <label>Latitude <input name="pivo_lat" inputmode="decimal" required></label>
-                        <label>Longitude <input name="pivo_lng" inputmode="decimal" required></label>
-                        <label>Raio em metros <input name="pivo_raio_m" inputmode="decimal" required></label>
-                        <div class="ff-map-modal-actions">
+                        <div class="ff-map-pivo-measurements col-12">
+                            <label>Latitude <input name="pivo_lat" inputmode="decimal" required></label>
+                            <label>Longitude <input name="pivo_lng" inputmode="decimal" required></label>
+                            <label>Raio em metros <input name="pivo_raio_m" inputmode="decimal" required></label>
+                        </div>
+                        <div class="ff-map-modal-actions col-12">
                             <button class="btn primary" type="submit">Salvar pivô</button>
                         </div>
                     </form>
                 </div>
 
-                <div class="ff-map-modal-section">
+                <div class="ff-map-modal-section" data-map-pivo-remove-section hidden aria-hidden="true">
                     <div class="ff-map-modal-section-title">
                         <strong>Remover pivô</strong>
                         <span>Remove somente o vínculo do pivô com o talhão selecionado.</span>
@@ -160,7 +162,7 @@
                     </form>
                 </div>
 
-                <div class="ff-map-modal-section">
+                <div class="ff-map-modal-section ff-map-pivo-section" data-map-pivo-new-section>
                     <div class="ff-map-modal-section-title">
                         <strong>Criar pivô como novo talhão</strong>
                         <span>Use quando o pivô ainda não pertence a nenhum talhão cadastrado.</span>
@@ -169,10 +171,12 @@
                     <form method="POST" action="{{ route('talhoes.mapa.pivo.create', [], false) }}" class="ff-map-modal-grid" data-map-pivo-create-form>
                         @csrf
                         <label class="col-12">Nome do novo pivô <input name="nome" maxlength="80" required></label>
-                        <label>Latitude <input name="pivo_lat" inputmode="decimal" required></label>
-                        <label>Longitude <input name="pivo_lng" inputmode="decimal" required></label>
-                        <label>Raio em metros <input name="pivo_raio_m" inputmode="decimal" required></label>
-                        <div class="ff-map-modal-actions">
+                        <div class="ff-map-pivo-measurements col-12">
+                            <label>Latitude <input name="pivo_lat" inputmode="decimal" required></label>
+                            <label>Longitude <input name="pivo_lng" inputmode="decimal" required></label>
+                            <label>Raio em metros <input name="pivo_raio_m" inputmode="decimal" required></label>
+                        </div>
+                        <div class="ff-map-modal-actions col-12">
                             <button class="btn primary" type="submit">Criar pivô/talhão</button>
                         </div>
                     </form>

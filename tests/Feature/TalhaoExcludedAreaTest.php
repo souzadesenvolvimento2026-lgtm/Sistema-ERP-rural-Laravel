@@ -320,6 +320,66 @@ class TalhaoExcludedAreaTest extends TestCase
         );
     }
 
+    public function test_composite_polygon_can_be_redrawn_from_the_map_editor(): void
+    {
+        $propertyId = $this->propertyId();
+        $session = $this->sessionData($propertyId);
+        $geometrias = [
+            [
+                'points' => $this->outerPolygon(),
+                'exclusions' => [],
+            ],
+            [
+                'points' => [
+                    ['lat' => -15.7200, 'lng' => -47.8950],
+                    ['lat' => -15.7200, 'lng' => -47.8750],
+                    ['lat' => -15.7000, 'lng' => -47.8750],
+                    ['lat' => -15.7000, 'lng' => -47.8950],
+                ],
+                'exclusions' => [],
+            ],
+        ];
+
+        DB::table('talhoes')->insert([
+            'propriedade_id' => $propertyId,
+            'nome' => 'Talhao composto teste',
+            'area' => 960,
+            'area_bruta' => 960,
+            'area_excluida_ha' => 0,
+            'latitude' => -15.71,
+            'longitude' => -47.90,
+            'geometria_tipo' => 'polygon',
+            'coordenadas_json' => json_encode(['type' => 'MultiPolygon', 'geometries' => $geometrias]),
+            'ativo' => 1,
+        ]);
+        $talhaoId = (int) DB::getPdo()->lastInsertId();
+
+        $geometrias[1]['points'][1]['lng'] = -47.8700;
+        $geometrias[1]['points'][2]['lng'] = -47.8700;
+
+        $this->withSession($session)
+            ->from('/talhoes/mapa')
+            ->post('/talhoes/mapa', [
+                'talhao_id' => $talhaoId,
+                'nome' => 'Talhao composto editado',
+                'descricao' => 'Editado como multipoligono no mapa',
+                'coordenadas_json' => json_encode(['type' => 'MultiPolygon', 'geometries' => $geometrias]),
+            ])
+            ->assertRedirect('/talhoes/mapa')
+            ->assertSessionHas('success')
+            ->assertSessionDoesntHaveErrors();
+
+        $talhao = DB::table('talhoes')->where('id', $talhaoId)->first();
+        $decoded = json_decode((string) $talhao->coordenadas_json, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame('MultiPolygon', $decoded['type']);
+        $this->assertCount(2, $decoded['geometries']);
+        $this->assertNull($talhao->exclusoes_json);
+        $this->assertGreaterThan(0.0, (float) $talhao->area_bruta);
+        $this->assertGreaterThan(0.0, (float) $talhao->area);
+        $this->assertSame('Talhao composto editado', $talhao->nome);
+    }
+
     public function test_overlapping_exclusions_are_rejected_without_changing_the_saved_area(): void
     {
         $propertyId = $this->propertyId();

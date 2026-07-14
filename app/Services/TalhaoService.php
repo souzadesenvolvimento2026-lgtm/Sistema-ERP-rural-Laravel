@@ -711,15 +711,10 @@ class TalhaoService
 
     public function atualizarPoligono(int $talhaoId, array $dados, int $propriedadeId, ?int $usuarioId): void
     {
-        try {
-            $points = $this->geometry->decodeJsonRing((string) ($dados['coordenadas_json'] ?? ''));
-        } catch (InvalidPolygon $exception) {
-            throw ValidationException::withMessages(['coordenadas_json' => $exception->getMessage()]);
-        }
+        $geometrias = $this->decodificarGeometriasDoFormulario((string) ($dados['coordenadas_json'] ?? ''));
+        $centro = $this->centroideGeometrias($geometrias);
 
-        $centro = $this->centroide($points);
-
-        DB::transaction(function () use ($talhaoId, $dados, $propriedadeId, $usuarioId, $points, $centro): void {
+        DB::transaction(function () use ($talhaoId, $dados, $propriedadeId, $usuarioId, $geometrias, $centro): void {
             $talhao = DB::table('talhoes')
                 ->where('id', $talhaoId)
                 ->where('propriedade_id', $propriedadeId)
@@ -728,14 +723,9 @@ class TalhaoService
             abort_if(! $talhao, 404);
             $this->assertMapMutationAllowed($talhao, $propriedadeId, 'coordenadas_json');
 
-            $existingRings = $this->exclusoesTalhaoEstritas($talhao);
-            try {
-                $areas = $this->geometry->areaBreakdown($points, $existingRings);
-            } catch (InvalidPolygon $exception) {
-                throw ValidationException::withMessages([
-                    'coordenadas_json' => 'O novo polígono não comporta as exclusões existentes. Limpe ou ajuste as exclusões antes de redesenhar.',
-                ]);
-            }
+            $geometriasAtualizadas = $this->preservarExclusoesAoRedesenhar($talhao, $geometrias);
+            $areas = $this->calcularAreasGeometriasEstritas($geometriasAtualizadas);
+            [$coordenadasJson, $exclusoesJson] = $this->serializarGeometrias($geometriasAtualizadas);
 
             DB::table('talhoes')
                 ->where('id', $talhaoId)
@@ -749,10 +739,8 @@ class TalhaoService
                     'latitude' => $centro['lat'],
                     'longitude' => $centro['lng'],
                     'geometria_tipo' => 'polygon',
-                    'coordenadas_json' => json_encode(
-                        $points,
-                        JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
-                    ),
+                    'coordenadas_json' => $coordenadasJson,
+                    'exclusoes_json' => $exclusoesJson,
                 ]);
 
             $this->auditarObrigatorio(
@@ -1611,6 +1599,74 @@ class TalhaoService
         }
 
         return $geometrias;
+    }
+
+    private function decodificarGeometriasDoFormulario(string $json): array
+    {
+        $geometrias = $this->normalizarGeometrias($json);
+        if ($geometrias === []) {
+            try {
+                $geometrias = [[
+                    'points' => $this->geometry->decodeJsonRing($json),
+                    'exclusions' => [],
+                ]];
+            } catch (InvalidPolygon $exception) {
+                throw ValidationException::withMessages(['coordenadas_json' => $exception->getMessage()]);
+            }
+        }
+
+        if ($geometrias === []) {
+            throw ValidationException::withMessages([
+                'coordenadas_json' => 'Informe pelo menos um polígono válido para o talhão.',
+            ]);
+        }
+
+        return $geometrias;
+    }
+
+    private function preservarExclusoesAoRedesenhar($talhao, array $geometrias): array
+    {
+        if (count($geometrias) === 1 && ($geometrias[0]['exclusions'] ?? []) === []) {
+            $geometrias[0]['exclusions'] = $this->exclusoesTalhaoEstritas($talhao);
+
+            return $geometrias;
+        }
+
+        $atuais = $this->geometriasTalhao($talhao);
+        foreach ($geometrias as $indice => $geometria) {
+            if (($geometria['exclusions'] ?? []) === [] && isset($atuais[$indice]['exclusions'])) {
+                $geometrias[$indice]['exclusions'] = $atuais[$indice]['exclusions'];
+            }
+        }
+
+        return $geometrias;
+    }
+
+    private function calcularAreasGeometriasEstritas(array $geometrias): array
+    {
+        $areas = ['bruta' => 0.0, 'excluida' => 0.0, 'liquida' => 0.0];
+        foreach ($geometrias as $geometria) {
+            try {
+                $breakdown = $this->geometry->areaBreakdown(
+                    $this->geometry->normalizeRing($geometria['points'] ?? []),
+                    array_map(fn (array $ring) => $this->geometry->normalizeRing($ring), $geometria['exclusions'] ?? []),
+                );
+            } catch (InvalidPolygon $exception) {
+                throw ValidationException::withMessages([
+                    'coordenadas_json' => 'O novo polígono não comporta as exclusões existentes. Limpe ou ajuste as exclusões antes de redesenhar.',
+                ]);
+            }
+
+            $areas['bruta'] += (float) $breakdown['bruta'];
+            $areas['excluida'] += (float) $breakdown['excluida'];
+            $areas['liquida'] += (float) $breakdown['liquida'];
+        }
+
+        return [
+            'bruta' => round($areas['bruta'], 2),
+            'excluida' => round($areas['excluida'], 2),
+            'liquida' => round($areas['liquida'], 2),
+        ];
     }
 
     private function exclusoesTalhao($talhao): array

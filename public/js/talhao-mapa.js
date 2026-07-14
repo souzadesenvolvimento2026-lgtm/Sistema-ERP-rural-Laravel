@@ -288,7 +288,7 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
         return true;
     }
 
-    function startDraw(mode) {
+    function startDraw(mode, options = {}) {
         if (mode === 'exclusao') {
             if (!selectedTalhao) {
                 alert('Selecione um talhão no mapa ou na lista antes de adicionar uma área excluída.');
@@ -305,7 +305,9 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
 
         drawMode = mode;
         exclusionTalhaoId = mode === 'exclusao' ? String(selectedTalhao.id) : null;
-        pivoTalhaoId = mode === 'pivo' && selectedTalhao ? String(selectedTalhao.id) : null;
+        pivoTalhaoId = mode === 'pivo' && options.targetMode === 'existing' && selectedTalhao
+            ? String(selectedTalhao.id)
+            : null;
         activeDrawHandler = mode === 'exclusao'
             ? exclusionDrawHandler
             : (mode === 'pivo' ? pivoDrawHandler : polygonDrawHandler);
@@ -328,29 +330,11 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
     function startEdit() {
         if (!selectedTalhao || !selectedLayer || !selectedTalhao.can_edit_geometry) return;
         if (!Array.isArray(selectedTalhao.points) || selectedTalhao.points.length < 3) return;
-        if (Number(selectedTalhao.geometrias_count || 1) > 1) {
-            alert('Este talhao unificado possui mais de um poligono. Para redesenhar o contorno, ajuste os talhoes separadamente ou crie um novo desenho unico.');
-            return;
-        }
         if (!discardPendingChanges()) return;
 
-        const snapshot = selectedTalhao.points.map((point) => ({
-            lat: Number(point.lat),
-            lng: Number(point.lng),
-        }));
-        editableLayer = L.polygon(
-            snapshot.map((point) => [point.lat, point.lng]),
-            {
-                color: '#00d4aa',
-                weight: 3,
-                opacity: 1,
-                fillColor: '#00a77e',
-                fillOpacity: 0.24,
-                dashArray: '6 4',
-            },
-        ).addTo(map);
-        editableLayer.bringToFront?.();
-        editableLayer.editing?.enable();
+        editableLayer = buildEditableLayer(selectedTalhao).addTo(map);
+        bringLayerToFront(editableLayer);
+        enableLayerEditing(editableLayer);
         dimSelectedLayer(selectedLayer);
         isEditing = true;
         selectionStatus.update(selectedTalhao, 'Arraste os pontos e confirme no ícone verde. Use Reverter para cancelar.');
@@ -360,9 +344,9 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
     function saveEdit() {
         if (!isEditing || !editableLayer || !selectedTalhao) return;
 
-        const points = layerPoints(editableLayer);
-        if (points.length < 3) {
-            alert('O polígono precisa ter pelo menos três pontos.');
+        const geometryPayload = editableGeometryPayload(editableLayer, selectedTalhao);
+        if (!geometryPayload) {
+            alert('O polígono precisa ter pelo menos três pontos em cada parte.');
             return;
         }
 
@@ -381,8 +365,8 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
         select.value = String(selectedTalhao.id);
         name.value = selectedTalhao.nome || '';
         if (description) description.value = selectedTalhao.descricao || '';
-        coordinates.value = JSON.stringify(points);
-        editableLayer.editing?.disable();
+        coordinates.value = JSON.stringify(geometryPayload);
+        disableLayerEditing(editableLayer);
 
         if (typeof form.requestSubmit === 'function') {
             form.requestSubmit();
@@ -398,7 +382,7 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
         activeDrawing = false;
 
         if (editableLayer) {
-            editableLayer.editing?.disable();
+            disableLayerEditing(editableLayer);
             map.removeLayer(editableLayer);
             editableLayer = null;
         }
@@ -433,8 +417,7 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
 
     function syncToolbar() {
         const hasPolygon = Boolean(selectedTalhao?.points?.length >= 3);
-        const isComposite = Number(selectedTalhao?.geometrias_count || 1) > 1;
-        const canEdit = hasPolygon && !isComposite && selectedTalhao?.can_edit_geometry === true;
+        const canEdit = hasPolygon && selectedTalhao?.can_edit_geometry === true;
         const canExclude = hasPolygon && selectedTalhao?.can_add_exclusion === true;
         const busy = isEditing || activeDrawing || hasDraft;
 
@@ -478,13 +461,13 @@ function configureDraw(map, draftItems, talhoes, talhaoLayers, options = {}) {
 
     document.getElementById('btnDrawTalhaoTop')?.addEventListener('click', () => startDraw('talhao'));
     document.getElementById('btnDrawPivoTop')?.addEventListener('click', () => {
-        startDraw('pivo');
+        startDraw('pivo', { targetMode: 'new' });
     });
 
     return {
         selectTalhao,
         startExclusion: () => startDraw('exclusao'),
-        startPivo: () => startDraw('pivo'),
+        startPivo: (targetMode = 'existing') => startDraw('pivo', { targetMode }),
         cancelEdits: () => revertCurrent(false),
     };
 }
@@ -632,6 +615,90 @@ function clearDraftForms() {
         polygonModal.dataset.submittingPolygon = '0';
     }
     if (exclusionJson) exclusionJson.value = '';
+}
+
+function buildEditableLayer(talhao) {
+    const editStyle = {
+        color: '#00d4aa',
+        weight: 3,
+        opacity: 1,
+        fillColor: '#00a77e',
+        fillOpacity: 0.24,
+        dashArray: '6 4',
+    };
+    const geometrias = Array.isArray(talhao?.geometries) && talhao.geometries.length
+        ? talhao.geometries
+        : [{ points: talhao?.points || [], exclusions: talhao?.exclusoes || [] }];
+    const parts = geometrias
+        .filter((geometria) => Array.isArray(geometria.points) && geometria.points.length >= 3)
+        .map((geometria, index) => {
+            const polygon = L.polygon(
+                geometria.points.map((point) => [Number(point.lat), Number(point.lng)]),
+                editStyle,
+            );
+            polygon.ffGeometryIndex = index;
+            polygon.ffGeometryExclusions = geometria.exclusions || [];
+
+            return polygon;
+        });
+
+    return parts.length === 1 ? parts[0] : L.featureGroup(parts);
+}
+
+function enableLayerEditing(layer) {
+    if (layer?.editing) {
+        layer.editing.enable();
+        return;
+    }
+
+    layer?.eachLayer?.((child) => enableLayerEditing(child));
+}
+
+function disableLayerEditing(layer) {
+    if (layer?.editing) {
+        layer.editing.disable();
+        return;
+    }
+
+    layer?.eachLayer?.((child) => disableLayerEditing(child));
+}
+
+function editableGeometryPayload(layer, talhao) {
+    const parts = [];
+
+    if (layer?.eachLayer && !layer?.getLatLngs) {
+        layer.eachLayer((child) => {
+            const points = layerPoints(child);
+            if (points.length >= 3) {
+                parts.push({
+                    points,
+                    exclusions: child.ffGeometryExclusions || [],
+                });
+            }
+        });
+    } else {
+        const points = layerPoints(layer);
+        if (points.length >= 3) {
+            const firstGeometry = Array.isArray(talhao?.geometries) ? talhao.geometries[0] : null;
+            parts.push({
+                points,
+                exclusions: firstGeometry?.exclusions || talhao?.exclusoes || [],
+            });
+        }
+    }
+
+    if (!parts.length) {
+        return null;
+    }
+
+    if (parts.length === 1) {
+        return parts[0].points;
+    }
+
+    return {
+        type: 'MultiPolygon',
+        geometries: parts,
+    };
 }
 
 function layerPoints(layer) {
@@ -803,6 +870,8 @@ function bindMapPivoModal(talhoes) {
 
     const pivoForm = modalEl.querySelector('[data-map-pivo-form]');
     const createForm = modalEl.querySelector('[data-map-pivo-create-form]');
+    const existingSection = modalEl.querySelector('[data-map-pivo-existing-section]');
+    const newSection = modalEl.querySelector('[data-map-pivo-new-section]');
     const pivoSelect = pivoForm?.querySelector('[data-map-talhao-select]');
     const pivoFields = {
         lat: pivoForm?.querySelector('[name="pivo_lat"]'),
@@ -876,14 +945,18 @@ function bindMapPivoModal(talhoes) {
     });
 
     const open = (talhaoId = null, draft = null) => {
+        const mode = talhaoId ? 'existing' : 'new';
         pendingCancel = typeof draft?.cancelDraft === 'function' ? draft.cancelDraft : null;
         pendingDraft = draft ? {
             lat: draft.lat,
             lng: draft.lng,
             raio: draft.raio,
         } : null;
+        modalEl.dataset.pivoMode = mode;
         modalEl.dataset.pendingPivo = draft ? '1' : '0';
         modalEl.dataset.submittingPivo = '0';
+        if (existingSection) existingSection.hidden = mode !== 'existing';
+        if (newSection) newSection.hidden = mode !== 'new';
 
         if (talhaoId) {
             setMapSelectValues(talhaoId, modalEl);
@@ -902,7 +975,8 @@ function bindMapPivoModal(talhoes) {
         }
 
         setTimeout(() => {
-            const firstEmpty = modalEl.querySelector('select:not([value]), input:not([type="hidden"])');
+            const activeSection = mode === 'existing' ? existingSection : newSection;
+            const firstEmpty = activeSection?.querySelector('select, input:not([type="hidden"])');
             firstEmpty?.focus?.();
         }, 180);
     };
@@ -1040,7 +1114,7 @@ function bindTalhaoEditModal(talhoes, mapTools, openPivoModal = null) {
 
         setTimeout(() => {
             if (!mapTools.selectTalhao(id, { openPopup: false })) return;
-            mapTools.startPivo?.();
+            mapTools.startPivo?.('existing');
         }, 180);
     });
 

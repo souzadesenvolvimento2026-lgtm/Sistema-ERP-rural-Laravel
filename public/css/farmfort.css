@@ -8544,6 +8544,27 @@ button:disabled {
   grid-column: 1 / -1;
 }
 
+.ff-map-modal-section[hidden],
+.ff-map-pivo-section[hidden] {
+  display: none !important;
+}
+
+.ff-map-pivo-measurements {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.ff-map-pivo-measurements label {
+  min-width: 0;
+}
+
+.ff-map-pivo-measurements input {
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
 .ff-map-modal-inline {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -9534,7 +9555,8 @@ html[data-theme="dark"] .ff-financial-form-modal textarea {
   }
 
   .ff-map-modal-grid,
-  .ff-map-modal-inline {
+  .ff-map-modal-inline,
+  .ff-map-pivo-measurements {
     grid-template-columns: 1fr;
   }
 

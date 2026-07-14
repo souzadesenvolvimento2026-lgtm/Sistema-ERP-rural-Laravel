@@ -103,22 +103,28 @@ class TalhaoMapUiTest extends TestCase
         $css = $this->contents('public/css/farmfort.css');
 
         $this->assertStringContainsString('id="mapPivoModal"', $view);
+        $this->assertStringContainsString('data-map-pivo-existing-section', $view);
+        $this->assertStringContainsString('data-map-pivo-new-section', $view);
         $this->assertStringContainsString('data-map-pivo-create-form', $view);
+        $this->assertStringContainsString('data-map-pivo-remove-section hidden', $view);
         $this->assertStringContainsString('data-map-modal-clear-exclusions', $view);
         $this->assertStringContainsString('data-exclusion-clear-form', $view);
         $this->assertStringNotContainsString('data-pivo-panel', $view);
         $this->assertStringNotContainsString('Ajustes do mapa', $view);
         $this->assertStringContainsString('.ff-map-hidden-forms { display: contents; }', $css);
+        $this->assertStringContainsString('.ff-map-modal-section[hidden]', $css);
+        $this->assertStringContainsString('.ff-map-pivo-measurements', $css);
         $this->assertStringNotContainsString('[data-pivo-panel]', $css);
 
         foreach (['public/js/talhao-mapa.js', 'public/js/talhao-mapa-modal.js'] as $script) {
             $javascript = $this->contents($script);
 
             $this->assertStringContainsString('function bindMapPivoModal(', $javascript);
-            $this->assertStringContainsString("startPivo: () => startDraw('pivo')", $javascript);
+            $this->assertStringContainsString("startPivo: (targetMode = 'existing') => startDraw('pivo', { targetMode })", $javascript);
             $this->assertStringContainsString("document.getElementById('btnDrawPivoTop')?.addEventListener('click', () => {", $javascript);
-            $this->assertStringContainsString("startDraw('pivo');", $javascript);
+            $this->assertStringContainsString("startDraw('pivo', { targetMode: 'new' });", $javascript);
             $this->assertStringContainsString('function handlePivoCreated(', $javascript);
+            $this->assertStringContainsString("modalEl.dataset.pivoMode = mode", $javascript);
             $this->assertStringContainsString("document.querySelector('[data-exclusion-clear-form]')", $javascript);
             $this->assertStringNotContainsString('data-pivo-panel', $javascript);
             $this->assertStringNotContainsString('scrollIntoView', $javascript);
@@ -137,6 +143,30 @@ class TalhaoMapUiTest extends TestCase
             $this->assertStringContainsString("fill: false", $javascript);
             $this->assertStringContainsString("className: 'ff-map-exclusion-outline'", $javascript);
             $this->assertStringNotContainsString("fillOpacity: 0.14", $javascript);
+        }
+    }
+
+    public function test_unified_fields_can_be_edited_as_composite_geometry(): void
+    {
+        $service = $this->contents('app/Services/TalhaoService.php');
+
+        $this->assertStringContainsString('function decodificarGeometriasDoFormulario(', $service);
+        $this->assertStringContainsString('function preservarExclusoesAoRedesenhar(', $service);
+        $this->assertStringContainsString('function calcularAreasGeometriasEstritas(', $service);
+        $this->assertStringContainsString('$geometrias = $this->decodificarGeometriasDoFormulario', $service);
+        $this->assertStringContainsString('$this->serializarGeometrias($geometriasAtualizadas)', $service);
+
+        foreach (['public/js/talhao-mapa.js', 'public/js/talhao-mapa-modal.js'] as $script) {
+            $javascript = $this->contents($script);
+
+            $this->assertStringContainsString('function buildEditableLayer(talhao)', $javascript);
+            $this->assertStringContainsString('enableLayerEditing(editableLayer)', $javascript);
+            $this->assertStringContainsString('disableLayerEditing(editableLayer)', $javascript);
+            $this->assertStringContainsString('editableGeometryPayload(editableLayer, selectedTalhao)', $javascript);
+            $this->assertStringContainsString("type: 'MultiPolygon'", $javascript);
+            $this->assertStringContainsString('const canEdit = hasPolygon && selectedTalhao?.can_edit_geometry === true;', $javascript);
+            $this->assertStringNotContainsString('Este talhao unificado possui mais de um poligono', $javascript);
+            $this->assertStringNotContainsString('!isComposite', $javascript);
         }
     }
 
