@@ -24,6 +24,7 @@ use App\Http\Controllers\MigrationModuleController;
 use App\Http\Controllers\MovimentacaoBancariaController;
 use App\Http\Controllers\ProdutoController;
 use App\Http\Controllers\PatrimonioController;
+use App\Http\Controllers\PropertyContextController;
 use App\Http\Controllers\SafraController;
 use App\Http\Controllers\SystemUnlockController;
 use App\Http\Controllers\SuporteAdminController;
@@ -60,6 +61,7 @@ Route::get('/admin', [AdminPainelController::class, 'index'])->name('admin.index
 Route::get('/dashboard', [MigrationModuleController::class, 'dashboard'])->name('dashboard');
 Route::get('/logout.php', [AuthSessionController::class, 'destroy']);
 Route::post('/sistema/liberar-edicao', [SystemUnlockController::class, 'store'])->name('system.unlock.store');
+Route::post('/propriedades/selecionar', [PropertyContextController::class, 'store'])->name('propriedades.contexto.store');
 Route::get('/suporte', [SuporteAdminController::class, 'index'])->name('suporte.admin.index');
 Route::get('/suporte/chat', [SuporteChatController::class, 'atual'])->name('suporte.chat.atual');
 Route::post('/suporte/chat/mensagens', [SuporteChatController::class, 'enviar'])->name('suporte.chat.enviar');

@@ -3,11 +3,15 @@
 namespace App\View\Composers;
 
 use App\Domain\Access\ProfileAccess;
+use App\Services\AuthenticationService;
 use Illuminate\View\View;
 
 final class FarmfortLayoutComposer
 {
-    public function __construct(private readonly ProfileAccess $access) {}
+    public function __construct(
+        private readonly ProfileAccess $access,
+        private readonly AuthenticationService $authentication,
+    ) {}
 
     public function compose(View $view): void
     {
@@ -17,6 +21,16 @@ final class FarmfortLayoutComposer
         $profile = (string) session('perfil', '');
         $userId = (int) session('usuario_id', 0);
         $isSystemAdmin = $this->access->isSystemAdministrator($profile);
+        $showAllProperties = $isSystemAdmin && request()->routeIs(
+            'admin.*',
+            'propriedades.*',
+            'usuarios.*',
+            'auditoria.*',
+            'suporte.admin.*',
+        );
+        $propertyOptions = $userId > 0
+            ? $this->authentication->propertyOptions($userId, $profile, $showAllProperties)
+            : collect();
         $menu = $this->mainMenu();
         if ($isSystemAdmin) {
             $menu = array_values(array_filter($menu, fn (array $item) => $item['key'] !== 'usuarios'));
@@ -39,6 +53,8 @@ final class FarmfortLayoutComposer
             'isSystemAdmin' => $isSystemAdmin,
             'userName' => session('usuario_nome', session('nome', 'Usuário')),
             'propertyName' => $data['property']->nome ?? session('propriedade_nome', 'Fazenda teste'),
+            'selectedPropertyId' => (int) session('propriedade_id', 0),
+            'propertyOptions' => $propertyOptions,
             'adminMenu' => $this->adminMenu(),
             'menu' => $menu,
             'financeTabs' => $this->financeTabs(),

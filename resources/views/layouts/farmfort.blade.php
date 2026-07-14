@@ -85,10 +85,24 @@
 
         <div class="topbar-actions">
             <div class="topbar-context">
-                <form>
+                <form method="post" action="{{ route('propriedades.contexto.store') }}">
+                    @csrf
                     <label>Propriedade</label>
-                    <select aria-label="Propriedade atual">
-                        <option selected>{{ $propertyName }}</option>
+                    <select name="propriedade_id" aria-label="Propriedade atual" onchange="this.form.submit()">
+                        @forelse ($propertyOptions as $propertyOption)
+                            @php
+                                $isPropertyActive = (int) ($propertyOption->ativo ?? 0) === 1;
+                            @endphp
+                            <option
+                                value="{{ $propertyOption->id }}"
+                                @selected((int) $selectedPropertyId === (int) $propertyOption->id)
+                                @disabled(! $isPropertyActive)
+                            >
+                                {{ $propertyOption->nome }}{{ $isPropertyActive ? '' : ' (inativa)' }}
+                            </option>
+                        @empty
+                            <option selected>{{ $propertyName }}</option>
+                        @endforelse
                     </select>
                 </form>
             </div>

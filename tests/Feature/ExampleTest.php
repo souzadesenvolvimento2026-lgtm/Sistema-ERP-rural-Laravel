@@ -6204,6 +6204,77 @@ KML;
             ->assertSee('Filtros');
     }
 
+    public function test_system_admin_property_selector_lists_all_properties_on_admin_panel(): void
+    {
+        DB::beginTransaction();
+
+        try {
+            $activePropertyName = 'Fazenda seletor ativa Laravel '.uniqid();
+            $inactivePropertyName = 'Fazenda seletor inativa Laravel '.uniqid();
+
+            DB::table('propriedades')->insert([
+                'nome' => $activePropertyName,
+                'municipio' => 'Rio Verde',
+                'estado' => 'GO',
+                'area_total' => 100,
+                'responsavel' => 'Responsavel seletor',
+                'cnpj_cpf' => '12345678901',
+                'plano' => 'premium',
+                'pecuaria_ativa' => 0,
+                'ativo' => 1,
+            ]);
+
+            DB::table('propriedades')->insert([
+                'nome' => $inactivePropertyName,
+                'municipio' => 'Jatai',
+                'estado' => 'GO',
+                'area_total' => 50,
+                'responsavel' => 'Responsavel seletor inativo',
+                'cnpj_cpf' => '12345678902',
+                'plano' => 'basico',
+                'pecuaria_ativa' => 0,
+                'ativo' => 0,
+            ]);
+
+            $this->withSession($this->loggedSession(profile: 'administrador_sistema'))
+                ->get('/propriedades')
+                ->assertStatus(200)
+                ->assertSee($activePropertyName)
+                ->assertSee($inactivePropertyName)
+                ->assertSee('inativa');
+        } finally {
+            DB::rollBack();
+        }
+    }
+
+    public function test_property_selector_for_regular_user_keeps_property_scope(): void
+    {
+        DB::beginTransaction();
+
+        try {
+            $externalPropertyName = 'Fazenda fora do escopo Laravel '.uniqid();
+
+            DB::table('propriedades')->insert([
+                'nome' => $externalPropertyName,
+                'municipio' => 'Cristalina',
+                'estado' => 'GO',
+                'area_total' => 80,
+                'responsavel' => 'Responsavel externo',
+                'cnpj_cpf' => '12345678903',
+                'plano' => 'premium',
+                'pecuaria_ativa' => 0,
+                'ativo' => 1,
+            ]);
+
+            $this->withSession($this->loggedSession(profile: 'visualizador'))
+                ->get('/dashboard')
+                ->assertStatus(200)
+                ->assertDontSee($externalPropertyName);
+        } finally {
+            DB::rollBack();
+        }
+    }
+
     public function test_property_create_can_import_geo_file_as_fields(): void
     {
         DB::beginTransaction();

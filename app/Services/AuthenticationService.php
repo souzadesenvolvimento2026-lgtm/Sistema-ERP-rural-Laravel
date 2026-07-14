@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Domain\Access\ProfileAccess;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 final class AuthenticationService
@@ -34,6 +35,25 @@ final class AuthenticationService
             ->value('p.id');
 
         return $propertyId === null ? null : (int) $propertyId;
+    }
+
+    public function propertyOptions(int $userId, string $profile, bool $includeInactive = false): Collection
+    {
+        $query = $includeInactive && $this->profiles->isSystemAdministrator($profile)
+            ? DB::table('propriedades as p')
+            : $this->accessibleProperties($userId, $profile);
+
+        return $query
+            ->orderByDesc('p.ativo')
+            ->orderBy('p.nome')
+            ->get(['p.id', 'p.nome', 'p.ativo']);
+    }
+
+    public function selectableProperty(int $userId, string $profile, int $propertyId): ?object
+    {
+        return $this->accessibleProperties($userId, $profile)
+            ->where('p.id', $propertyId)
+            ->first(['p.id', 'p.nome', 'p.ativo']);
     }
 
     public function activeUser(int $userId): ?object
