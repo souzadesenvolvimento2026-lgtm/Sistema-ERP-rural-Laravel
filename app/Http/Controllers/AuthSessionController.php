@@ -6,10 +6,15 @@ use App\Domain\Access\ProfileAccess;
 use App\Services\AuthenticationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class AuthSessionController extends Controller
 {
+    private const LOGIN_MAX_ATTEMPTS = 5;
+    private const LOGIN_DECAY_SECONDS = 60;
+
     public function __construct(
         private readonly ProfileAccess $access,
         private readonly AuthenticationService $authentication,
@@ -31,9 +36,22 @@ class AuthSessionController extends Controller
             'senha' => ['required', 'string'],
         ]);
 
+        $throttleKey = $this->throttleKey($request);
+        if (RateLimiter::tooManyAttempts($throttleKey, self::LOGIN_MAX_ATTEMPTS)) {
+            $seconds = RateLimiter::availableIn($throttleKey);
+
+            return back()
+                ->withInput($request->only('email'))
+                ->withErrors([
+                    'email' => 'Muitas tentativas de login. Aguarde '.$seconds.' segundo(s) e tente novamente.',
+                ]);
+        }
+
         $user = $this->authentication->authenticate($credentials['email'], $credentials['senha']);
 
         if (! $user) {
+            RateLimiter::hit($throttleKey, self::LOGIN_DECAY_SECONDS);
+
             return back()
                 ->withInput($request->only('email'))
                 ->withErrors(['email' => 'E-mail ou senha inválidos.']);
@@ -45,6 +63,8 @@ class AuthSessionController extends Controller
                 ->withInput($request->only('email'))
                 ->withErrors(['email' => 'Usuário sem propriedade ativa vinculada. Contate o administrador.']);
         }
+
+        RateLimiter::clear($throttleKey);
 
         $request->session()->regenerate();
         session([
@@ -82,5 +102,10 @@ class AuthSessionController extends Controller
         $request->session()->regenerateToken();
 
         return redirect()->route('login');
+    }
+
+    private function throttleKey(Request $request): string
+    {
+        return Str::lower(trim((string) $request->input('email'))).'|'.$request->ip();
     }
 }

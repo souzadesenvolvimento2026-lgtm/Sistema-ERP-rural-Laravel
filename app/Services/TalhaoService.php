@@ -18,6 +18,10 @@ use ZipArchive;
 
 class TalhaoService
 {
+    private const GEO_UPLOAD_EXTENSIONS = ['kml', 'kmz', 'shp', 'zip'];
+    private const GEO_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
+    private const GEO_ZIP_MAX_ENTRIES = 200;
+
     public function __construct(
         private readonly PolygonGeometry $geometry,
         private readonly TalhaoMapCapabilities $mapCapabilities,
@@ -817,16 +821,13 @@ class TalhaoService
 
     public function importarArquivoGeo(int $propriedadeId, UploadedFile $arquivo, ?string $nomeImportacao = null, ?int $usuarioId = null): array
     {
-        $ext = strtolower($arquivo->getClientOriginalExtension() ?: $arquivo->extension());
-        if (! in_array($ext, ['kml', 'kmz', 'shp', 'zip'], true)) {
-            throw new RuntimeException('Envie um arquivo KML, KMZ ou SHP.');
-        }
+        $ext = $this->validarArquivoGeo($arquivo);
 
         $nomeBase = $this->slug(pathinfo($arquivo->getClientOriginalName(), PATHINFO_FILENAME) ?: 'talhoes');
-        $arquivoNome = 'talhoes_prop_'.$propriedadeId.'_'.date('YmdHis').'_'.$nomeBase.'.'.$ext;
+        $arquivoNome = 'talhoes_prop_'.$propriedadeId.'_'.date('YmdHis').'_'.bin2hex(random_bytes(8)).'_'.$nomeBase.'.'.$ext;
         $dir = public_path('uploads/geo');
-        if (! is_dir($dir)) {
-            mkdir($dir, 0755, true);
+        if (! is_dir($dir) && ! mkdir($dir, 0755, true) && ! is_dir($dir)) {
+            throw new RuntimeException('Nao foi possivel preparar o diretorio de uploads geoespaciais.');
         }
         $arquivo->move($dir, $arquivoNome);
         $relativePath = 'uploads/geo/'.$arquivoNome;
@@ -885,6 +886,28 @@ class TalhaoService
         $this->auditar($usuarioId, 'importar_geometria', 'talhoes', 0, $propriedadeId, "Importados {$imported} talhoes de ".strtoupper($ext));
 
         return ['imported' => $imported, 'source' => strtoupper($ext)];
+    }
+
+    private function validarArquivoGeo(UploadedFile $arquivo): string
+    {
+        if (! $arquivo->isValid()) {
+            throw new RuntimeException('Nao foi possivel receber o arquivo geoespacial.');
+        }
+
+        $size = (int) $arquivo->getSize();
+        if ($size <= 0 || $size > self::GEO_UPLOAD_MAX_BYTES) {
+            throw new RuntimeException('O arquivo geoespacial precisa ter conteudo e no maximo 20 MB.');
+        }
+
+        $clientExt = strtolower(pathinfo($arquivo->getClientOriginalName(), PATHINFO_EXTENSION));
+        $detectedExt = strtolower((string) $arquivo->extension());
+        $ext = in_array($clientExt, self::GEO_UPLOAD_EXTENSIONS, true) ? $clientExt : $detectedExt;
+
+        if (! in_array($ext, self::GEO_UPLOAD_EXTENSIONS, true)) {
+            throw new RuntimeException('Envie um arquivo KML, KMZ, SHP ou ZIP.');
+        }
+
+        return $ext;
     }
 
     private function filtros(Request $request): array
@@ -1188,10 +1211,19 @@ class TalhaoService
             return [];
         }
 
+        if ($zip->numFiles > self::GEO_ZIP_MAX_ENTRIES) {
+            $zip->close();
+
+            throw new RuntimeException('O arquivo geoespacial possui arquivos internos demais.');
+        }
+
         $shpIndexes = [];
         for ($i = 0; $i < $zip->numFiles; $i++) {
             $name = $zip->getNameIndex($i);
             if (! $name) {
+                continue;
+            }
+            if (! $this->zipGeoEntryPermitida($name)) {
                 continue;
             }
             $entryExt = strtolower(pathinfo($name, PATHINFO_EXTENSION));
@@ -1218,6 +1250,26 @@ class TalhaoService
         $zip->close();
 
         return $items;
+    }
+
+    private function zipGeoEntryPermitida(string $name): bool
+    {
+        $normalized = str_replace('\\', '/', $name);
+        if ($normalized === '' || str_contains($normalized, "\0")) {
+            return false;
+        }
+
+        if (str_starts_with($normalized, '/') || preg_match('/^[a-zA-Z]:\//', $normalized) === 1) {
+            return false;
+        }
+
+        foreach (explode('/', $normalized) as $segment) {
+            if ($segment === '..') {
+                return false;
+            }
+        }
+
+        return in_array(strtolower(pathinfo($normalized, PATHINFO_EXTENSION)), ['kml', 'shp'], true);
     }
 
     private function parseKmlContent(string $raw, string $defaultName): array

@@ -9,6 +9,7 @@ use App\Services\NotaFiscalXmlService;
 use App\Support\FarmContext;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -464,6 +465,131 @@ class ExampleTest extends TestCase
             if ($arquivoPath && file_exists($arquivoPath)) {
                 @unlink($arquivoPath);
             }
+            DB::rollBack();
+        }
+    }
+
+    public function test_internal_chat_does_not_cross_property_boundaries(): void
+    {
+        DB::beginTransaction();
+
+        try {
+            DB::table('propriedades')->insert([
+                'nome' => 'Fazenda chat origem Laravel',
+                'municipio' => 'Rio Verde',
+                'estado' => 'GO',
+                'area_total' => 100,
+                'responsavel' => 'Responsavel chat origem',
+                'cnpj_cpf' => '44444444444',
+                'plano' => 'premium',
+                'pecuaria_ativa' => 0,
+                'ativo' => 1,
+            ]);
+            $propriedadeOrigemId = (int) DB::getPdo()->lastInsertId();
+
+            DB::table('propriedades')->insert([
+                'nome' => 'Fazenda chat destino Laravel',
+                'municipio' => 'Jatai',
+                'estado' => 'GO',
+                'area_total' => 100,
+                'responsavel' => 'Responsavel chat destino',
+                'cnpj_cpf' => '55555555555',
+                'plano' => 'premium',
+                'pecuaria_ativa' => 0,
+                'ativo' => 1,
+            ]);
+            $propriedadeDestinoId = (int) DB::getPdo()->lastInsertId();
+
+            DB::table('usuarios')->insert([
+                'nome' => 'Chat Usuario Fazenda Origem',
+                'email' => 'chat-origem-'.uniqid().'@teste.local',
+                'senha' => password_hash('senha-segura', PASSWORD_DEFAULT),
+                'perfil' => 'colaborador',
+                'ativo' => 1,
+            ]);
+            $usuarioOrigemId = (int) DB::getPdo()->lastInsertId();
+
+            DB::table('usuarios')->insert([
+                'nome' => 'Chat Usuario Outra Fazenda',
+                'email' => 'chat-outra-fazenda-'.uniqid().'@teste.local',
+                'senha' => password_hash('senha-segura', PASSWORD_DEFAULT),
+                'perfil' => 'visualizador',
+                'ativo' => 1,
+            ]);
+            $usuarioOutraPropriedadeId = (int) DB::getPdo()->lastInsertId();
+
+            DB::table('usuario_propriedades')->insert([
+                ['usuario_id' => $usuarioOrigemId, 'propriedade_id' => $propriedadeOrigemId],
+                ['usuario_id' => $usuarioOutraPropriedadeId, 'propriedade_id' => $propriedadeDestinoId],
+            ]);
+
+            $sessaoOrigem = $this->loggedSession(propertyId: $propriedadeOrigemId, userId: $usuarioOrigemId);
+
+            $this->withSession($sessaoOrigem)
+                ->getJson('/chat-interno/contatos')
+                ->assertStatus(200)
+                ->assertJsonMissing(['nome' => 'Chat Usuario Outra Fazenda']);
+
+            $this->withSession($sessaoOrigem)
+                ->postJson('/chat-interno/'.$usuarioOutraPropriedadeId.'/mensagens', [
+                    'mensagem' => 'Tentativa indevida entre propriedades',
+                ])
+                ->assertStatus(403);
+        } finally {
+            DB::rollBack();
+        }
+    }
+
+    public function test_login_rate_limit_blocks_repeated_invalid_attempts(): void
+    {
+        DB::beginTransaction();
+
+        $ip = '10.77.0.15';
+        $email = 'login-rate-limit-'.uniqid().'@teste.local';
+        $throttleKey = strtolower($email).'|'.$ip;
+        RateLimiter::clear($throttleKey);
+
+        try {
+            $propertyId = (int) DB::table('propriedades')->where('ativo', 1)->orderBy('id')->value('id');
+            $this->assertGreaterThan(0, $propertyId);
+
+            DB::table('usuarios')->insert([
+                'nome' => 'Usuario Rate Limit Laravel',
+                'email' => $email,
+                'senha' => password_hash('senha-correta', PASSWORD_DEFAULT),
+                'perfil' => 'gestor_propriedade',
+                'ativo' => 1,
+            ]);
+            $usuarioId = (int) DB::getPdo()->lastInsertId();
+
+            DB::table('usuario_propriedades')->insert([
+                'usuario_id' => $usuarioId,
+                'propriedade_id' => $propertyId,
+            ]);
+
+            for ($attempt = 1; $attempt <= 5; $attempt++) {
+                $this->withServerVariables(['REMOTE_ADDR' => $ip])
+                    ->from('/login')
+                    ->post('/login', [
+                        'email' => $email,
+                        'senha' => 'senha-errada',
+                    ])
+                    ->assertRedirect('/login')
+                    ->assertSessionHasErrors('email');
+            }
+
+            $this->withServerVariables(['REMOTE_ADDR' => $ip])
+                ->from('/login')
+                ->post('/login', [
+                    'email' => $email,
+                    'senha' => 'senha-correta',
+                ])
+                ->assertRedirect('/login')
+                ->assertSessionHasErrors('email');
+
+            $this->assertTrue(RateLimiter::tooManyAttempts($throttleKey, 5));
+        } finally {
+            RateLimiter::clear($throttleKey);
             DB::rollBack();
         }
     }

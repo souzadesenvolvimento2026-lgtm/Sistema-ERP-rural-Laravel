@@ -107,7 +107,7 @@ class PropriedadeController extends Controller
             'longitude' => ['nullable', 'string'],
             'regiao_cotacao' => ['nullable', 'string', 'max:160'],
             'aprovador_usuario_id' => ['nullable', 'integer'],
-            'kml_area' => ['nullable', 'file', 'mimes:kml,kmz,shp,zip'],
+            'kml_area' => ['nullable', 'file', 'mimes:kml,kmz,shp,zip', 'max:20480'],
             'usuarios_vinculados' => ['nullable', 'array'],
             'usuarios_vinculados.*.id' => ['nullable', 'integer'],
             'usuarios_vinculados.*.nome' => ['nullable', 'string', 'max:150'],
