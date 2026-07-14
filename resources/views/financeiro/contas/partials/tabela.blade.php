@@ -28,8 +28,8 @@
                         <td><span class="pill {{ $contaBancaria->ativo ? 'success' : 'warning' }}">{{ $contaBancaria->ativo ? 'Ativa' : 'Inativa' }}</span></td>
                         <td>
                             <div class="inline-actions">
-                                <a class="btn small" href="{{ route('financeiro.contas.edit', $contaBancaria->id) }}">Editar</a>
-                                <form method="POST" action="{{ route('financeiro.contas.toggle-status', $contaBancaria->id) }}">
+                                <a class="btn small" href="{{ route('financeiro.contas.edit', $contaBancaria->id, false) }}">Editar</a>
+                                <form method="POST" action="{{ route('financeiro.contas.toggle-status', $contaBancaria->id, false) }}">
                                     @csrf
                                     <button class="btn small" type="submit">{{ $contaBancaria->ativo ? 'Inativar' : 'Ativar' }}</button>
                                 </form>

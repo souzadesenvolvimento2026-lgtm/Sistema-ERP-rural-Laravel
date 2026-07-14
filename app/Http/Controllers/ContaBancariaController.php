@@ -37,7 +37,7 @@ class ContaBancariaController extends Controller
         }
 
         return redirect()
-            ->route('financeiro.contas.index')
+            ->to(route('financeiro.contas.index', [], false))
             ->with('success', 'Conta bancária criada.');
     }
 
@@ -68,7 +68,7 @@ class ContaBancariaController extends Controller
         }
 
         return redirect()
-            ->route('financeiro.contas.index')
+            ->to(route('financeiro.contas.index', [], false))
             ->with('success', 'Conta bancária atualizada.');
     }
 
@@ -86,7 +86,7 @@ class ContaBancariaController extends Controller
         }
 
         return redirect()
-            ->route('financeiro.contas.index')
+            ->to(route('financeiro.contas.index', [], false))
             ->with('success', 'Status da conta atualizado.');
     }
 
@@ -120,7 +120,7 @@ class ContaBancariaController extends Controller
         }
 
         return redirect()
-            ->route($dados['return_route'] ?? 'financeiro.contas.index')
+            ->to(route($dados['return_route'] ?? 'financeiro.contas.index', [], false))
             ->with('success', 'Transferência registrada.');
     }
 
@@ -164,7 +164,7 @@ class ContaBancariaController extends Controller
         }
 
         return redirect()
-            ->route('financeiro.contas.index')
+            ->to(route('financeiro.contas.index', [], false))
             ->with('success', 'Transferência atualizada.');
     }
 

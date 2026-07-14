@@ -6460,7 +6460,7 @@ html[data-theme="dark"] .ff-or-chart-filter button.active {
   margin-bottom: 18px;
   padding: 30px;
   min-height: 230px;
-  border: 1px solid var(--ff-border);
+  border: 1px solid rgba(255, 255, 255, .10);
   border-radius: var(--ff-radius);
   background:
     linear-gradient(135deg, rgba(3, 98, 62, .92), rgba(44, 111, 158, .78)),
@@ -8117,21 +8117,6 @@ html[data-theme="light"] .panel-head {
   background: #f8fbfd;
 }
 
-html[data-theme="light"] .ff-bi-hero {
-  border: 0;
-  background: linear-gradient(120deg, #14785f 0%, #5d96bd 100%);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, .08);
-}
-
-html[data-theme="light"] .ff-bi-hero h1 {
-  font-size: 34px;
-}
-
-html[data-theme="light"] .ff-bi-hero-facts div {
-  background: rgba(18, 68, 89, .34);
-  border-color: rgba(255, 255, 255, .22);
-}
-
 html[data-theme="light"] .ff-bi-kpi.is-result {
   background: linear-gradient(180deg, #f0fbf6 0%, #ffffff 100%);
   border-color: #bdebd7;
@@ -9171,8 +9156,8 @@ body.ff-map-fixed-body .ff-map-hidden-forms {
 }
 
 .ff-financial-transfer-dialog {
-  width: min(94vw, 520px);
-  max-width: min(94vw, 560px);
+  width: min(94vw, 720px);
+  max-width: min(94vw, 720px);
 }
 
 .ff-financial-buyer-dialog {
@@ -9248,6 +9233,7 @@ body.ff-map-fixed-body .ff-map-hidden-forms {
 
 .ff-transfer-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
 }
 
 .ff-financial-field {
@@ -9286,12 +9272,14 @@ body.ff-map-fixed-body .ff-map-hidden-forms {
 .ff-financial-field textarea {
   width: 100%;
   min-height: 34px;
+  padding: 7px 10px;
   border: 1px solid var(--ff-border-strong);
   border-radius: 7px;
   background: var(--ff-surface);
   color: var(--ff-text);
   font-size: 14px;
   font-weight: 500;
+  line-height: 1.25;
 }
 
 .ff-financial-field textarea {
@@ -10531,14 +10519,15 @@ html[data-theme="dark"] #talhaoMap .ff-map-selection-status {
 }
 
 .ff-bank-transfer-dialog {
-  width: min(94vw, 640px);
-  max-width: min(94vw, 640px);
+  width: min(94vw, 720px);
+  max-width: min(94vw, 720px);
 }
 
 .ff-bank-form-grid {
   display: grid;
   gap: 14px 16px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
 }
 
 .ff-bank-form-grid .span-2 {
@@ -10548,6 +10537,16 @@ html[data-theme="dark"] #talhaoMap .ff-map-selection-status {
 .ff-bank-modal .ff-field {
   display: grid;
   gap: 6px;
+  min-width: 0;
+}
+
+.ff-bank-modal .form-control,
+.ff-bank-modal .form-select {
+  display: block;
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 12px;
+  line-height: 1.25;
 }
 
 .ff-bank-modal .ff-field span {

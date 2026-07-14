@@ -22,7 +22,7 @@
             'numero_conta' => (string) ($conta->numero_conta ?? ''),
             'saldo_inicial' => $moneyInput($conta->saldo_inicial ?? 0),
             'saldo_atual' => (float) ($conta->saldo_atual ?? 0),
-            'update_url' => route('financeiro.contas.update', $conta->id),
+            'update_url' => route('financeiro.contas.update', $conta->id, false),
         ];
     })->values();
 
@@ -34,7 +34,7 @@
             'valor' => $moneyInput($transferencia->valor ?? 0),
             'data_transferencia' => (string) $transferencia->data_transferencia,
             'descricao' => (string) ($transferencia->descricao ?? ''),
-            'update_url' => route('financeiro.contas.transfer.update', $transferencia->id),
+            'update_url' => route('financeiro.contas.transfer.update', $transferencia->id, false),
         ];
     })->values();
 
@@ -45,7 +45,7 @@
         'valor' => $moneyInput($transferenciaEditando->valor ?? 0),
         'data_transferencia' => (string) $transferenciaEditando->data_transferencia,
         'descricao' => (string) ($transferenciaEditando->descricao ?? ''),
-        'update_url' => route('financeiro.contas.transfer.update', $transferenciaEditando->id),
+        'update_url' => route('financeiro.contas.transfer.update', $transferenciaEditando->id, false),
     ] : null;
 
     $oldAccount = [
@@ -139,13 +139,13 @@
                                     @if ($canManageFinance)
                                         <td>
                                             <div class="ff-bank-row-actions">
-                                                <a class="ff-icon-action is-edit" href="{{ route('financeiro.contas.edit', $contaBancaria->id) }}" data-bank-edit-account="{{ $contaBancaria->id }}" title="Editar conta" aria-label="Editar conta {{ $contaBancaria->nome }}">
+                                                <a class="ff-icon-action is-edit" href="{{ route('financeiro.contas.edit', $contaBancaria->id, false) }}" data-bank-edit-account="{{ $contaBancaria->id }}" title="Editar conta" aria-label="Editar conta {{ $contaBancaria->nome }}">
                                                     <i class="bi bi-pencil"></i>
                                                 </a>
                                                 <button class="ff-icon-action is-transfer" type="button" data-bank-transfer-origin="{{ $contaBancaria->id }}" @disabled($contasAtivas->count() < 2) title="Transferir desta conta" aria-label="Transferir desta conta {{ $contaBancaria->nome }}">
                                                     <i class="bi bi-arrow-left-right"></i>
                                                 </button>
-                                                <form method="POST" action="{{ route('financeiro.contas.toggle-status', $contaBancaria->id) }}" onsubmit="return confirm('Desativar esta conta? Ela deixará de aparecer nas contas ativas.');">
+                                                <form method="POST" action="{{ route('financeiro.contas.toggle-status', $contaBancaria->id, false) }}" onsubmit="return confirm('Desativar esta conta? Ela deixará de aparecer nas contas ativas.');">
                                                     @csrf
                                                     <button class="ff-icon-action is-danger" type="submit" title="Desativar conta" aria-label="Desativar conta {{ $contaBancaria->nome }}">
                                                         <i class="bi bi-x-lg"></i>
@@ -199,7 +199,7 @@
                                     <td><strong class="is-positive">{{ $money($transferencia->valor) }}</strong></td>
                                     @if ($canManageFinance)
                                         <td>
-                                            <a class="ff-icon-action is-edit" href="{{ route('financeiro.contas.transfer.edit', $transferencia->id) }}" data-bank-edit-transfer="{{ $transferencia->id }}" title="Editar transferência" aria-label="Editar transferência">
+                                            <a class="ff-icon-action is-edit" href="{{ route('financeiro.contas.transfer.edit', $transferencia->id, false) }}" data-bank-edit-transfer="{{ $transferencia->id }}" title="Editar transferência" aria-label="Editar transferência">
                                                 <i class="bi bi-pencil"></i>
                                             </a>
                                         </td>
@@ -220,7 +220,7 @@
     @if ($canManageFinance)
         <div class="modal fade ff-bank-modal" id="bankAccountModal" tabindex="-1" aria-labelledby="bankAccountModalLabel" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered ff-bank-account-dialog">
-                <form method="POST" action="{{ route('financeiro.contas.store') }}" class="modal-content" data-bank-account-form>
+                <form method="POST" action="{{ route('financeiro.contas.store', [], false) }}" class="modal-content" data-bank-account-form>
                     @csrf
                     <input type="hidden" name="_method" value="PUT" data-bank-account-method disabled>
                     <input type="hidden" name="bank_form" value="account">
@@ -269,7 +269,7 @@
                         </div>
                     </div>
 
-                    <div class="modal-footer">
+                    <div class="modal-footer ff-modal-footer-split">
                         <button type="button" class="btn" data-bs-dismiss="modal">Cancelar</button>
                         <button type="submit" class="btn primary"><i class="bi bi-check2-square"></i> <span data-bank-account-submit>Salvar Conta</span></button>
                     </div>
@@ -279,7 +279,7 @@
 
         <div class="modal fade ff-bank-modal" id="bankTransferModal" tabindex="-1" aria-labelledby="bankTransferModalLabel" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered ff-bank-transfer-dialog">
-                <form method="POST" action="{{ route('financeiro.contas.transfer') }}" class="modal-content" data-bank-transfer-form>
+                <form method="POST" action="{{ route('financeiro.contas.transfer', [], false) }}" class="modal-content" data-bank-transfer-form>
                     @csrf
                     <input type="hidden" name="_method" value="PUT" data-bank-transfer-method disabled>
                     <input type="hidden" name="bank_form" value="transfer">
@@ -343,7 +343,7 @@
                         </div>
                     </div>
 
-                    <div class="modal-footer">
+                    <div class="modal-footer ff-modal-footer-split">
                         <button type="button" class="btn" data-bs-dismiss="modal">Cancelar</button>
                         <button type="submit" class="btn primary" @disabled($contasAtivas->count() < 2)><i class="bi bi-arrow-left-right"></i> <span data-bank-transfer-submit>Registrar Transferência</span></button>
                     </div>
@@ -359,8 +359,8 @@
             document.addEventListener('DOMContentLoaded', () => {
                 const accounts = @json($contasPayload);
                 const transfers = @json($transferenciasPayload);
-                const accountStoreUrl = @json(route('financeiro.contas.store'));
-                const transferStoreUrl = @json(route('financeiro.contas.transfer'));
+                const accountStoreUrl = @json(route('financeiro.contas.store', [], false));
+                const transferStoreUrl = @json(route('financeiro.contas.transfer', [], false));
                 const oldForm = @json(old('bank_form'));
                 const oldAccount = @json($oldAccount);
                 const oldTransfer = @json($oldTransfer);

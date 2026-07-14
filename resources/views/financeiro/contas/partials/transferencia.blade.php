@@ -1,6 +1,6 @@
 <section class="panel">
     <div class="panel-head"><h2>Transferencia entre contas</h2></div>
-    <form method="POST" action="{{ route('financeiro.contas.transfer') }}" class="form-grid">
+    <form method="POST" action="{{ route('financeiro.contas.transfer', [], false) }}" class="form-grid">
         @csrf
 
         <label>

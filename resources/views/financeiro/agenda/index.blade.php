@@ -10,7 +10,7 @@
             <a class="btn" href="{{ route('financeiro.agenda.index') }}">Todos</a>
             <a class="btn" href="{{ route('financeiro.agenda.index', ['fp' => 'boleto']) }}">Boletos</a>
             <a class="btn" href="{{ route('financeiro.agenda.index', ['alerta' => 'boletos_vencendo']) }}">Boletos vencendo</a>
-            <a class="btn" href="{{ route('financeiro.contas.index') }}">Contas bancarias</a>
+            <a class="btn" href="{{ route('financeiro.contas.index', [], false) }}">Contas bancarias</a>
         </div>
     </div>
 

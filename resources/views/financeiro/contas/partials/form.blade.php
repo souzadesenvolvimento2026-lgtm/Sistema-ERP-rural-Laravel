@@ -1,6 +1,6 @@
 <section class="panel">
     <div class="panel-head"><h2>{{ isset($conta) ? 'Editar conta' : 'Nova conta' }}</h2></div>
-    <form method="POST" action="{{ isset($conta) ? route('financeiro.contas.update', $conta->id) : route('financeiro.contas.store') }}" class="form-grid">
+    <form method="POST" action="{{ isset($conta) ? route('financeiro.contas.update', $conta->id, false) : route('financeiro.contas.store', [], false) }}" class="form-grid">
         @csrf
         @isset($conta)
             @method('PUT')
@@ -47,7 +47,7 @@
 
         <div class="form-actions span-2">
             @isset($conta)
-                <a class="btn" href="{{ route('financeiro.contas.index') }}">Cancelar</a>
+                <a class="btn" href="{{ route('financeiro.contas.index', [], false) }}">Cancelar</a>
             @endisset
             <button class="btn primary" type="submit">{{ isset($conta) ? 'Atualizar conta' : 'Salvar conta' }}</button>
         </div>

@@ -6,7 +6,7 @@
             <h1>Movimentações bancárias</h1>
             <p class="subtitle">Extrato manual, conciliação e controle por conta.</p>
         </div>
-        <a class="btn" href="{{ route('financeiro.contas.index') }}">Contas bancárias</a>
+        <a class="btn" href="{{ route('financeiro.contas.index', [], false) }}">Contas bancárias</a>
     </div>
 
     <section class="stats">

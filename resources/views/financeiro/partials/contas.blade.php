@@ -1,7 +1,7 @@
 <section class="panel">
     <div class="panel-head">
         <h2>Saldos por conta</h2>
-        <a class="btn" href="{{ route('financeiro.contas.index') }}">Contas</a>
+        <a class="btn" href="{{ route('financeiro.contas.index', [], false) }}">Contas</a>
     </div>
     <div class="table-wrap">
         <table>

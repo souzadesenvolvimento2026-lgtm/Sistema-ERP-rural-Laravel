@@ -172,6 +172,7 @@ Em modais, rodapés, barras de ação e confirmações, manter sempre a mesma le
 - ações positivas, de criação, salvamento, aceite, aprovação, confirmação ou continuidade ficam do lado direito;
 - quando houver duas ações principais no rodapé de um modal, usar a classe `ff-modal-footer-split` para separar visualmente os lados;
 - não inverter essa ordem por módulo ou tela, para preservar consistência operacional no sistema inteiro.
+- blocos hero do dashboard que usam o gradiente FarmFort verde/azul são identidade fixa do produto e não devem mudar entre tema claro e tema escuro.
 
 ## Limites obrigatórios
 

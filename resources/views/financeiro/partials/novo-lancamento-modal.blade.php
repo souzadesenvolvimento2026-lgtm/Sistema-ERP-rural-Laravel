@@ -279,7 +279,7 @@
                 </div>
             </div>
 
-            <div class="modal-footer">
+            <div class="modal-footer ff-modal-footer-split">
                 <button type="button" class="btn" data-bs-dismiss="modal">Cancelar</button>
                 <button type="submit" class="btn primary">
                     <i class="bi bi-shield-check"></i> Salvar Despesa
@@ -455,7 +455,7 @@
                 </div>
             </div>
 
-            <div class="modal-footer">
+            <div class="modal-footer ff-modal-footer-split">
                 <button type="button" class="btn" data-bs-dismiss="modal">Cancelar</button>
                 <button type="submit" class="btn primary">
                     <i class="bi bi-shield-check"></i> Salvar
@@ -497,7 +497,7 @@
                 </div>
             </div>
 
-            <div class="modal-footer">
+            <div class="modal-footer ff-modal-footer-split">
                 <button type="button" class="btn" data-ff-financial-open="#financeiroReceitaModal">Cancelar</button>
                 <button type="submit" class="btn primary">
                     <i class="bi bi-shield-check"></i> Salvar comprador
@@ -509,7 +509,7 @@
 
 <div class="modal fade ff-financial-form-modal" id="financeiroTransferenciaModal" tabindex="-1" aria-labelledby="financeiroTransferenciaModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered ff-financial-transfer-dialog">
-        <form method="POST" action="{{ route('financeiro.contas.transfer') }}" class="modal-content ff-financial-form-content">
+        <form method="POST" action="{{ route('financeiro.contas.transfer', [], false) }}" class="modal-content ff-financial-form-content">
             @csrf
             <input type="hidden" name="return_route" value="financeiro.index">
 
@@ -578,7 +578,7 @@
                 </div>
             </div>
 
-            <div class="modal-footer">
+            <div class="modal-footer ff-modal-footer-split">
                 <button type="button" class="btn" data-bs-dismiss="modal">Cancelar</button>
                 <button type="submit" class="btn primary">
                     <i class="bi bi-arrow-left-right"></i> Registrar transferência
@@ -615,7 +615,7 @@
                 </div>
             </div>
 
-            <div class="modal-footer">
+            <div class="modal-footer ff-modal-footer-split">
                 <button type="button" class="btn" data-bs-dismiss="modal">Cancelar</button>
                 <button type="submit" class="btn primary">
                     <i class="bi bi-upload"></i> Processar XML

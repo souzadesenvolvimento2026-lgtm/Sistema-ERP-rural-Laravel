@@ -385,7 +385,7 @@ class FinanceiroPainelService
             'is_rejected' => false,
             'is_overdue' => false,
             'data_sort' => $row->data,
-            'action_url' => route('financeiro.contas.index'),
+            'action_url' => route('financeiro.contas.index', [], false),
         ];
     }
 

@@ -152,7 +152,7 @@
                     <a class="btn btn-sm {{ in_array($tipoAtual, ['pagar', 'receber'], true) ? 'btn-farmflow' : 'btn-outline-secondary' }}" href="{{ $urlFiltro(['filtro' => 'pagar']) }}">
                         <i class="bi bi-list-check"></i> Pendentes
                     </a>
-                    <a class="btn btn-sm btn-outline-secondary" href="{{ route('financeiro.contas.index') }}">
+                    <a class="btn btn-sm btn-outline-secondary" href="{{ route('financeiro.contas.index', [], false) }}">
                         <i class="bi bi-bank"></i> Bancos
                     </a>
                 </div>
@@ -252,7 +252,7 @@
                                     </button>
                                     <ul class="dropdown-menu dropdown-menu-end">
                                         @if ($row->tipo === 'transferencia')
-                                            <li><a class="dropdown-item" href="{{ route('financeiro.contas.index') }}"><i class="bi bi-bank me-2"></i>Ver bancos</a></li>
+                                            <li><a class="dropdown-item" href="{{ route('financeiro.contas.index', [], false) }}"><i class="bi bi-bank me-2"></i>Ver bancos</a></li>
                                             <li><button class="dropdown-item" type="button" data-bs-toggle="modal" data-bs-target="#financeiroTransferenciaModal"><i class="bi bi-arrow-left-right me-2"></i>Nova transferência</button></li>
                                         @else
                                             <li><a class="dropdown-item" href="{{ $row->action_url }}"><i class="bi bi-pencil-square me-2"></i>Editar</a></li>

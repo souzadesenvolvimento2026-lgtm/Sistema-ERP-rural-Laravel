@@ -2,7 +2,7 @@
     <a class="btn" href="{{ route('financeiro.agenda.index') }}">Agenda</a>
     <a class="btn" href="{{ route('financeiro.analise-despesas.index') }}">Analise de Despesas</a>
     <a class="btn" href="{{ route('financeiro.categorias.index') }}">Categorias</a>
-    <a class="btn" href="{{ route('financeiro.contas.index') }}">Contas bancarias</a>
+    <a class="btn" href="{{ route('financeiro.contas.index', [], false) }}">Contas bancarias</a>
     <a class="btn" href="{{ route('financeiro.despesas.index') }}">Despesas</a>
     <a class="btn" href="{{ route('financeiro.livro-caixa.index') }}">Livro Caixa</a>
     <a class="btn" href="{{ route('financeiro.movimentacoes.index') }}">Movimentacoes</a>
