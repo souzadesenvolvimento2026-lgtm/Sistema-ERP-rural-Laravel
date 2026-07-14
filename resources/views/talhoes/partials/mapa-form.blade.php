@@ -168,7 +168,7 @@
                         <span>Use quando o pivô ainda não pertence a nenhum talhão cadastrado.</span>
                     </div>
 
-                    <form method="POST" action="{{ route('talhoes.mapa.pivo.create', [], false) }}" class="ff-map-modal-grid" data-map-pivo-create-form>
+                    <form method="POST" action="{{ route('talhoes.mapa.pivo.create', [], false) }}" class="ff-map-modal-grid" id="mapPivoCreateForm" data-map-pivo-create-form>
                         @csrf
                         <label class="col-12">Nome do novo pivô <input name="nome" maxlength="80" required></label>
                         <div class="ff-map-pivo-measurements col-12">
@@ -176,15 +176,13 @@
                             <label>Longitude <input name="pivo_lng" inputmode="decimal" required></label>
                             <label>Raio em metros <input name="pivo_raio_m" inputmode="decimal" required></label>
                         </div>
-                        <div class="ff-map-modal-actions col-12">
-                            <button class="btn primary" type="submit">Criar pivô/talhão</button>
-                        </div>
                     </form>
                 </div>
             </div>
 
-            <div class="modal-footer">
+            <div class="modal-footer ff-modal-footer-split">
                 <button type="button" class="btn" data-bs-dismiss="modal">Cancelar</button>
+                <button class="btn primary" type="submit" form="mapPivoCreateForm" data-map-pivo-create-submit>Criar pivô/talhão</button>
             </div>
         </div>
     </div>

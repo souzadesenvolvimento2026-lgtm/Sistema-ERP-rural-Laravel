@@ -106,6 +106,9 @@ class TalhaoMapUiTest extends TestCase
         $this->assertStringContainsString('data-map-pivo-existing-section', $view);
         $this->assertStringContainsString('data-map-pivo-new-section', $view);
         $this->assertStringContainsString('data-map-pivo-create-form', $view);
+        $this->assertStringContainsString('id="mapPivoCreateForm"', $view);
+        $this->assertStringContainsString('modal-footer ff-modal-footer-split', $view);
+        $this->assertStringContainsString('form="mapPivoCreateForm" data-map-pivo-create-submit', $view);
         $this->assertStringContainsString('data-map-pivo-remove-section hidden', $view);
         $this->assertStringContainsString('data-map-modal-clear-exclusions', $view);
         $this->assertStringContainsString('data-exclusion-clear-form', $view);
@@ -115,6 +118,7 @@ class TalhaoMapUiTest extends TestCase
         $this->assertStringContainsString('.ff-map-modal-section[hidden]', $css);
         $this->assertStringContainsString('.ff-map-pivo-measurements', $css);
         $this->assertStringContainsString('.ff-map-drawing-circle', $css);
+        $this->assertStringContainsString('.modal-footer.ff-modal-footer-split', $css);
         $this->assertStringNotContainsString('[data-pivo-panel]', $css);
 
         foreach (['public/js/talhao-mapa.js', 'public/js/talhao-mapa-modal.js'] as $script) {
@@ -131,6 +135,7 @@ class TalhaoMapUiTest extends TestCase
             $this->assertStringContainsString('function handlePivoCreated(', $javascript);
             $this->assertStringContainsString('openPivoModal: options.openPivoModal', $javascript);
             $this->assertStringContainsString("modalEl.dataset.pivoMode = mode", $javascript);
+            $this->assertStringContainsString("createSubmit.hidden = mode !== 'new'", $javascript);
             $this->assertStringContainsString("document.querySelector('[data-exclusion-clear-form]')", $javascript);
             $this->assertStringNotContainsString('L.Draw.Circle', $javascript);
             $this->assertStringNotContainsString('pivoDrawHandler', $javascript);

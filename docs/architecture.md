@@ -164,6 +164,15 @@ app/Domain/Financeiro/
 
 Para código legado já existente, não mover arquivos apenas por estética. Mover somente quando houver alteração funcional, teste associado e ganho claro de manutenção.
 
+## Padrão visual de ações
+
+Em modais, rodapés, barras de ação e confirmações, manter sempre a mesma leitura visual:
+
+- ações negativas, de cancelamento, rejeição, reprovação, fechamento ou volta ficam do lado esquerdo;
+- ações positivas, de criação, salvamento, aceite, aprovação, confirmação ou continuidade ficam do lado direito;
+- quando houver duas ações principais no rodapé de um modal, usar a classe `ff-modal-footer-split` para separar visualmente os lados;
+- não inverter essa ordem por módulo ou tela, para preservar consistência operacional no sistema inteiro.
+
 ## Limites obrigatórios
 
 - Blade não pode usar `DB`, Models, Repositories ou resolver Services pelo container.

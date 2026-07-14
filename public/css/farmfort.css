@@ -8938,6 +8938,10 @@ body.ff-map-fixed-body .ff-map-hidden-forms {
   margin: 0;
 }
 
+.modal-footer.ff-modal-footer-split {
+  justify-content: space-between;
+}
+
 .modal .form-label,
 .modal label {
   color: var(--ff-text);

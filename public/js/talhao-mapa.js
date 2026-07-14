@@ -977,6 +977,7 @@ function bindMapPivoModal(talhoes) {
     const createForm = modalEl.querySelector('[data-map-pivo-create-form]');
     const existingSection = modalEl.querySelector('[data-map-pivo-existing-section]');
     const newSection = modalEl.querySelector('[data-map-pivo-new-section]');
+    const createSubmit = modalEl.querySelector('[data-map-pivo-create-submit]');
     const pivoSelect = pivoForm?.querySelector('[data-map-talhao-select]');
     const pivoFields = {
         lat: pivoForm?.querySelector('[name="pivo_lat"]'),
@@ -1062,6 +1063,7 @@ function bindMapPivoModal(talhoes) {
         modalEl.dataset.submittingPivo = '0';
         if (existingSection) existingSection.hidden = mode !== 'existing';
         if (newSection) newSection.hidden = mode !== 'new';
+        if (createSubmit) createSubmit.hidden = mode !== 'new';
 
         if (talhaoId) {
             setMapSelectValues(talhaoId, modalEl);
