@@ -90,15 +90,11 @@
                     <label>Propriedade</label>
                     <select name="propriedade_id" aria-label="Propriedade atual" onchange="this.form.submit()">
                         @forelse ($propertyOptions as $propertyOption)
-                            @php
-                                $isPropertyActive = (int) ($propertyOption->ativo ?? 0) === 1;
-                            @endphp
                             <option
                                 value="{{ $propertyOption->id }}"
                                 @selected((int) $selectedPropertyId === (int) $propertyOption->id)
-                                @disabled(! $isPropertyActive)
                             >
-                                {{ $propertyOption->nome }}{{ $isPropertyActive ? '' : ' (inativa)' }}
+                                {{ $propertyOption->nome }}
                             </option>
                         @empty
                             <option selected>{{ $propertyName }}</option>

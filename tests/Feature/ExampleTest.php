@@ -6204,7 +6204,7 @@ KML;
             ->assertSee('Filtros');
     }
 
-    public function test_system_admin_property_selector_lists_all_properties_on_admin_panel(): void
+    public function test_system_admin_property_selector_lists_only_active_properties(): void
     {
         DB::beginTransaction();
 
@@ -6237,11 +6237,10 @@ KML;
             ]);
 
             $this->withSession($this->loggedSession(profile: 'administrador_sistema'))
-                ->get('/propriedades')
+                ->get('/admin')
                 ->assertStatus(200)
                 ->assertSee($activePropertyName)
-                ->assertSee($inactivePropertyName)
-                ->assertSee('inativa');
+                ->assertDontSee($inactivePropertyName);
         } finally {
             DB::rollBack();
         }

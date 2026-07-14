@@ -37,13 +37,9 @@ final class AuthenticationService
         return $propertyId === null ? null : (int) $propertyId;
     }
 
-    public function propertyOptions(int $userId, string $profile, bool $includeInactive = false): Collection
+    public function propertyOptions(int $userId, string $profile): Collection
     {
-        $query = $includeInactive && $this->profiles->isSystemAdministrator($profile)
-            ? DB::table('propriedades as p')
-            : $this->accessibleProperties($userId, $profile);
-
-        return $query
+        return $this->accessibleProperties($userId, $profile)
             ->orderByDesc('p.ativo')
             ->orderBy('p.nome')
             ->get(['p.id', 'p.nome', 'p.ativo']);

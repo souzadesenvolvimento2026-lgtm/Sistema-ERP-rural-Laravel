@@ -21,15 +21,8 @@ final class FarmfortLayoutComposer
         $profile = (string) session('perfil', '');
         $userId = (int) session('usuario_id', 0);
         $isSystemAdmin = $this->access->isSystemAdministrator($profile);
-        $showAllProperties = $isSystemAdmin && request()->routeIs(
-            'admin.*',
-            'propriedades.*',
-            'usuarios.*',
-            'auditoria.*',
-            'suporte.admin.*',
-        );
         $propertyOptions = $userId > 0
-            ? $this->authentication->propertyOptions($userId, $profile, $showAllProperties)
+            ? $this->authentication->propertyOptions($userId, $profile)
             : collect();
         $menu = $this->mainMenu();
         if ($isSystemAdmin) {
