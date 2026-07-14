@@ -192,6 +192,16 @@
                                 <tr>
                                     <td>{{ \App\Support\FarmFormat::date($transferencia->data_transferencia) }}</td>
                                     <td>
+                                        <div class="ff-bank-transfer-inline-values" aria-label="Valores da transferencia">
+                                            <span class="ff-transfer-value-out">
+                                                <small>Transferido</small>
+                                                <strong>- {{ $money($transferencia->valor) }}</strong>
+                                            </span>
+                                            <span class="ff-transfer-value-in">
+                                                <small>Depositado</small>
+                                                <strong>+ {{ $money($transferencia->valor) }}</strong>
+                                            </span>
+                                        </div>
                                         <strong>{{ $transferencia->origem_nome }} → {{ $transferencia->destino_nome }}</strong>
                                         <small>{{ $transferencia->descricao ?: 'Transferência entre contas' }}</small>
                                         <small>Registrada por {{ $transferencia->usuario_nome ?: 'usuário não informado' }}</small>

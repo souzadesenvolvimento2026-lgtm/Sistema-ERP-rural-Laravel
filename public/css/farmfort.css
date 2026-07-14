@@ -10405,7 +10405,9 @@ html[data-theme="dark"] #talhaoMap .ff-map-selection-status {
 }
 
 .ff-bank-transfer-table {
-  min-width: 680px;
+  min-width: 0;
+  table-layout: fixed;
+  width: 100%;
 }
 
 .ff-bank-transfer-table th:nth-child(1),
@@ -10415,7 +10417,7 @@ html[data-theme="dark"] #talhaoMap .ff-map-selection-status {
 
 .ff-bank-transfer-table th:nth-child(3),
 .ff-bank-transfer-table td:nth-child(3) {
-  width: 158px;
+  width: 150px;
   text-align: right;
 }
 
@@ -10471,6 +10473,23 @@ html[data-theme="dark"] #talhaoMap .ff-map-selection-status {
   white-space: nowrap;
 }
 
+.ff-bank-transfer-inline-values {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+
+.ff-bank-transfer-inline-values span {
+  align-items: center;
+  border: 1px solid var(--ff-border);
+  border-radius: 10px;
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px 8px;
+}
+
 .ff-bank-transfer-value span {
   display: grid;
   gap: 1px;
@@ -10490,9 +10509,24 @@ html[data-theme="dark"] #talhaoMap .ff-map-selection-status {
   text-transform: uppercase;
 }
 
+.ff-bank-transfer-inline-values small {
+  color: var(--ff-muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .02em;
+  line-height: 1;
+  margin: 0;
+  text-transform: uppercase;
+}
+
 .ff-bank-transfer-value strong {
   font-size: 13px;
   line-height: 1.1;
+}
+
+.ff-bank-transfer-inline-values strong {
+  font-size: 12px;
+  line-height: 1;
 }
 
 .ff-transfer-value-out strong {
