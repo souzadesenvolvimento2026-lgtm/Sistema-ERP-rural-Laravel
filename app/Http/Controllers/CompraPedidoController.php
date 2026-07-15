@@ -60,9 +60,8 @@ class CompraPedidoController extends Controller
             if ($canApproveOrders && ! $linkInvoiceBeforeApproval) {
                 $expenseId = $this->pedidos->approveOrder($propertyId, $orderId, $userId, true);
 
-                return redirect()
-                    ->route('financeiro.despesas.edit', $expenseId)
-                    ->with('success', 'Pedido fiscal criado, aprovado e lançado no financeiro. Confira o vencimento e informe a conta real na baixa do pagamento.');
+                return $this->redirectToFinancialPanel($expenseId)
+                    ->with('success', 'Pedido fiscal criado, aprovado e lançado no financeiro. Confira o lançamento no painel e informe a conta real na baixa do pagamento.');
             }
 
             if ($linkInvoiceBeforeApproval) {
@@ -146,9 +145,8 @@ class CompraPedidoController extends Controller
             return back()->withErrors($exception->getMessage());
         }
 
-        return redirect()
-            ->route('financeiro.despesas.edit', $expenseId)
-            ->with('success', 'Pedido aprovado, lançado no financeiro e incorporado ao estoque. Confira o vencimento e informe a conta real na baixa do pagamento.');
+        return $this->redirectToFinancialPanel($expenseId)
+            ->with('success', 'Pedido aprovado, lançado no financeiro e incorporado ao estoque. Confira o lançamento no painel e informe a conta real na baixa do pagamento.');
     }
 
     public function linkInvoice(Request $request, int $pedido): RedirectResponse
@@ -248,5 +246,14 @@ class CompraPedidoController extends Controller
         return redirect()
             ->route('compras.pedidos.show', $pedido)
             ->with('success', 'Vínculo com nota fiscal removido.');
+    }
+
+    private function redirectToFinancialPanel(int $expenseId): RedirectResponse
+    {
+        return redirect()->route('financeiro.index', [
+            'filtro' => 'despesas',
+            'todos' => 1,
+            'lancamento_id' => $expenseId,
+        ]);
     }
 }

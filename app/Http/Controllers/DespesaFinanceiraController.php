@@ -28,7 +28,7 @@ class DespesaFinanceiraController extends Controller
         } catch (RuntimeException $exception) {
             report($exception);
 
-            return redirect()->route('financeiro.despesas.index')->withErrors($exception->getMessage());
+            return $this->redirectToFinancialPanel()->withErrors($exception->getMessage());
         }
 
         return view('financeiro.despesas.edit', [
@@ -47,7 +47,7 @@ class DespesaFinanceiraController extends Controller
         } catch (RuntimeException $exception) {
             report($exception);
 
-            return redirect()->route('financeiro.despesas.index')->withErrors($exception->getMessage());
+            return $this->redirectToFinancialPanel()->withErrors($exception->getMessage());
         }
 
         $lancamento->baixado = '0';
@@ -92,9 +92,8 @@ class DespesaFinanceiraController extends Controller
             return back()->withInput()->withErrors($exception->getMessage());
         }
 
-        return redirect()
-            ->route('financeiro.despesas.index')
-            ->with('success', 'Despesa editada pelo Laravel.');
+        return $this->redirectToFinancialPanel($despesa)
+            ->with('success', 'Despesa editada com sucesso.');
     }
 
     public function approve(int $despesa, DespesaFinanceiraService $service): RedirectResponse
@@ -107,9 +106,8 @@ class DespesaFinanceiraController extends Controller
             return back()->withErrors($exception->getMessage());
         }
 
-        return redirect()
-            ->route('financeiro.despesas.index')
-            ->with('success', 'Despesa aprovada pelo Laravel.');
+        return $this->redirectToFinancialPanel($despesa)
+            ->with('success', 'Despesa aprovada com sucesso.');
     }
 
     public function approveBatch(Request $request, DespesaFinanceiraService $service): RedirectResponse
@@ -131,8 +129,7 @@ class DespesaFinanceiraController extends Controller
             $message .= ' '.$result['ignoradas'].' item(ns) ignorado(s).';
         }
 
-        return redirect()
-            ->route('financeiro.despesas.index', ['aprovacao' => 'pendente'])
+        return $this->redirectToFinancialPanel(null, ['filtro' => 'solicitacoes'])
             ->with('success', $message);
     }
 
@@ -151,9 +148,8 @@ class DespesaFinanceiraController extends Controller
             return back()->withErrors($exception->getMessage());
         }
 
-        return redirect()
-            ->route('financeiro.despesas.index')
-            ->with('success', 'Despesa reprovada pelo Laravel.');
+        return $this->redirectToFinancialPanel($despesa)
+            ->with('success', 'Despesa reprovada com sucesso.');
     }
 
     public function pay(Request $request, int $despesa, DespesaFinanceiraService $service): RedirectResponse
@@ -177,9 +173,8 @@ class DespesaFinanceiraController extends Controller
             return back()->withErrors($exception->getMessage());
         }
 
-        return redirect()
-            ->route('financeiro.despesas.index')
-            ->with('success', 'Despesa marcada como paga pelo Laravel.');
+        return $this->redirectToFinancialPanel($despesa)
+            ->with('success', 'Despesa marcada como paga com sucesso.');
     }
 
     public function cancel(int $despesa, DespesaFinanceiraService $service): RedirectResponse
@@ -192,9 +187,8 @@ class DespesaFinanceiraController extends Controller
             return back()->withErrors($exception->getMessage());
         }
 
-        return redirect()
-            ->route('financeiro.despesas.index')
-            ->with('success', 'Despesa cancelada pelo Laravel.');
+        return $this->redirectToFinancialPanel($despesa)
+            ->with('success', 'Despesa cancelada com sucesso.');
     }
 
     private function formData(int $propertyId): array
@@ -204,5 +198,20 @@ class DespesaFinanceiraController extends Controller
             'tipoSelecionado' => 'despesa',
             ...$this->formDataService->options($propertyId),
         ];
+    }
+
+    private function redirectToFinancialPanel(?int $expenseId = null, array $params = []): RedirectResponse
+    {
+        $query = [
+            'filtro' => 'despesas',
+            'todos' => 1,
+            ...$params,
+        ];
+
+        if ($expenseId) {
+            $query['lancamento_id'] = $expenseId;
+        }
+
+        return redirect()->route('financeiro.index', $query);
     }
 }

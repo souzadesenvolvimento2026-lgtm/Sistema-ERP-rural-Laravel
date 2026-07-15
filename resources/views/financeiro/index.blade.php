@@ -9,8 +9,10 @@
     $fmtMoney = fn ($value) => FarmFormat::money($value);
     $tipoAtual = $filtros['tipo'] ?? 'todos';
     $contaAtual = (int) ($filtros['conta_id'] ?? 0);
+    $lancamentoDestacado = (int) ($filtros['lancamento_id'] ?? 0);
     $urlFiltro = function (array $params = [], array $forget = []) {
         $query = request()->query();
+        unset($query['lancamento_id']);
 
         foreach ($forget as $key) {
             unset($query[$key]);
@@ -233,12 +235,19 @@
                     </thead>
                     <tbody>
                     @forelse ($lancamentos as $row)
-                        <tr @class([
+                        @php
+                            $linhaDestacada = $row->tipo === 'despesa' && (int) $row->id === $lancamentoDestacado;
+                        @endphp
+                        <tr
+                            @class([
                             'ff-row-approval' => $row->needs_approval,
                             'ff-row-rejected' => $row->is_rejected,
                             'ff-row-overdue' => $row->is_overdue,
                             'ff-row-pending' => in_array($row->status, ['pendente', 'vencido'], true),
-                        ])>
+                            'ff-row-highlight' => $linhaDestacada,
+                        ])
+                            @if ($linhaDestacada) data-ff-highlighted-ledger @endif
+                        >
                             <td data-order="{{ $row->data_sort }}" data-ff-sort-value="{{ $row->data_sort ?: $row->data }}">{{ FarmFormat::date($row->data) }}</td>
                             <td data-ff-sort-value="{{ $row->tipo_label }}"><span class="badge {{ $row->type_tone }}">{{ $row->tipo_label }}</span></td>
                             <td data-ff-sort-value="{{ trim(($row->descricao ?? '').' '.($row->descricao_extra ?? '')) }}">
@@ -424,6 +433,7 @@
             const paymentDate = paymentModal?.querySelector('[data-ff-payment-date]');
             const paymentAccount = paymentModal?.querySelector('[data-ff-payment-account]');
             const paymentBalance = paymentModal?.querySelector('[data-ff-payment-balance]');
+            const highlightedRow = document.querySelector('[data-ff-highlighted-ledger]');
 
             paymentModal?.addEventListener('show.bs.modal', (event) => {
                 const button = event.relatedTarget;
@@ -654,6 +664,13 @@
 
             updateHeaderState();
             renderRows();
+
+            if (highlightedRow) {
+                highlightedRow.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center',
+                });
+            }
         });
     </script>
 @endpush

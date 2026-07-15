@@ -8012,6 +8012,12 @@ html[data-theme="dark"] .ff-comparison-filter-form {
   border-color: color-mix(in srgb, var(--ff-border) 86%, transparent);
 }
 
+.ff-lancamentos-table tr.ff-row-highlight td {
+  background: color-mix(in srgb, var(--ff-warning) 14%, var(--ff-surface-2));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--ff-warning) 32%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--ff-warning) 32%, transparent);
+}
+
 .ff-lancamentos-table td strong {
   display: inline-block;
   color: var(--ff-text);

@@ -80,6 +80,7 @@ class FinanceiroPainelService
             : null;
 
         $contaId = (int) $request->query('conta_id', 0);
+        $lancamentoId = (int) $request->query('lancamento_id', 0);
 
         return [
             'tipo' => in_array($request->query('filtro'), ['despesas', 'receitas', 'transferencias', 'pagar', 'receber', 'solicitacoes'], true)
@@ -90,6 +91,7 @@ class FinanceiroPainelService
             'data_inicio' => $inicio,
             'data_fim' => $fim,
             'conta_id' => $contaId > 0 ? $contaId : null,
+            'lancamento_id' => $lancamentoId > 0 ? $lancamentoId : null,
         ];
     }
 
@@ -401,8 +403,19 @@ class FinanceiroPainelService
             default => $despesas->concat($receitas)->concat($transferencias),
         };
 
+        $highlightedExpenseId = (int) ($filtros['lancamento_id'] ?? 0);
+
         return $rows
-            ->sort(function ($a, $b) {
+            ->sort(function ($a, $b) use ($highlightedExpenseId) {
+                if ($highlightedExpenseId > 0) {
+                    $firstHighlighted = $a->tipo === 'despesa' && (int) $a->id === $highlightedExpenseId;
+                    $secondHighlighted = $b->tipo === 'despesa' && (int) $b->id === $highlightedExpenseId;
+
+                    if ($firstHighlighted !== $secondHighlighted) {
+                        return $firstHighlighted ? -1 : 1;
+                    }
+                }
+
                 if ($a->needs_approval !== $b->needs_approval) {
                     return $a->needs_approval ? -1 : 1;
                 }
