@@ -7,10 +7,27 @@ use App\Support\FarmContext;
 use App\Support\FarmFormat;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 class CompraPedidoService
 {
+    private const APPROVER_PROFILES = [
+        'administrador',
+        'administrador_sistema',
+        'financeiro',
+        'gerencia_sistema',
+        'gestao',
+        'gestor_financeiro',
+        'gestor_propriedade',
+    ];
+
+    private const GLOBAL_APPROVER_PROFILES = [
+        'administrador',
+        'administrador_sistema',
+        'gerencia_sistema',
+    ];
+
     public array $units = ['Quilograma', 'Grama', 'Tonelada', 'Litro', 'Mililitro', 'Metros', 'Unidade'];
 
     public function __construct(private readonly PurchaseOrderCapabilities $capabilities) {}
@@ -60,6 +77,7 @@ class CompraPedidoService
             'pedidos' => $pedidos->count(),
             'valor' => $pedidos->sum('total_value'),
             'pendentes' => $pedidos->whereIn('status', ['em_aberto', 'aguardando_aprovacao'])->count(),
+            'aguardando_aprovacao' => $pedidos->where('status', 'aguardando_aprovacao')->count(),
             'aprovados' => $pedidos->where('status', 'aprovado_baixado')->count(),
         ];
     }
@@ -73,16 +91,18 @@ class CompraPedidoService
         ];
     }
 
-    public function createOrder(Request $request, int $propertyId): int
+    public function createOrder(Request $request, int $propertyId, bool $requiresApproval = false): int
     {
         $items = $this->normalizeItems($request, $propertyId);
         abort_if(! $items, 422, 'Informe pelo menos um item válido no pedido.');
 
-        return DB::transaction(function () use ($request, $propertyId, $items): int {
+        return DB::transaction(function () use ($request, $propertyId, $items, $requiresApproval): int {
             $orderNumber = trim((string) $request->input('order_number'));
             if ($orderNumber === '') {
                 $orderNumber = 'PED-'.date('YmdHis');
             }
+
+            $totalValue = array_sum(array_column($items, 'total_value'));
 
             DB::table('fiscal_orders')->insert([
                 'propriedade_id' => $propertyId,
@@ -91,8 +111,8 @@ class CompraPedidoService
                 'supplier_cnpj' => preg_replace('/\D+/', '', (string) $request->input('supplier_cnpj')),
                 'order_type' => 'entrada',
                 'issue_date' => $request->input('issue_date'),
-                'total_value' => array_sum(array_column($items, 'total_value')),
-                'status' => 'em_aberto',
+                'total_value' => $totalValue,
+                'status' => $requiresApproval ? 'aguardando_aprovacao' : 'em_aberto',
                 'notes' => trim((string) $request->input('notes')),
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -107,8 +127,51 @@ class CompraPedidoService
                 ]);
             }
 
+            AuditService::log(
+                action: 'criar_pedido_fiscal',
+                table: 'fiscal_orders',
+                recordId: $orderId,
+                propertyId: $propertyId,
+                details: [
+                    'numero' => $orderNumber,
+                    'fornecedor' => trim((string) $request->input('supplier_name')),
+                    'status' => $requiresApproval ? 'aguardando_aprovacao' : 'em_aberto',
+                    'total' => $totalValue,
+                ],
+            );
+
             return $orderId;
         });
+    }
+
+    public function canApproveOrders(int $propertyId, ?int $userId): bool
+    {
+        if ((int) $userId <= 0) {
+            return false;
+        }
+
+        $usuario = DB::table('usuarios')
+            ->where('id', (int) $userId)
+            ->first(['id', 'perfil']);
+
+        if (! $usuario) {
+            return false;
+        }
+
+        $profile = (string) $usuario->perfil;
+        if (! in_array($profile, self::APPROVER_PROFILES, true)) {
+            return false;
+        }
+
+        if (in_array($profile, self::GLOBAL_APPROVER_PROFILES, true)) {
+            return true;
+        }
+
+        return Schema::hasTable('usuario_propriedades')
+            && DB::table('usuario_propriedades')
+                ->where('usuario_id', (int) $userId)
+                ->where('propriedade_id', $propertyId)
+                ->exists();
     }
 
     public function updateOrder(Request $request, int $propertyId, int $pedido): void
@@ -673,13 +736,17 @@ class CompraPedidoService
         return $comparison;
     }
 
-    public function approveOrder(int $propertyId, int $pedido, ?int $userId, bool $confirmed): void
+    public function approveOrder(int $propertyId, int $pedido, ?int $userId, bool $confirmed): int
     {
         if (! $confirmed) {
             throw new RuntimeException('Confirme explicitamente a aprovação do pedido.');
         }
 
-        DB::transaction(function () use ($propertyId, $pedido, $userId): void {
+        if (! $this->canApproveOrders($propertyId, $userId)) {
+            throw new RuntimeException('Seu usuário não tem permissão para aprovar pedidos fiscais desta propriedade.');
+        }
+
+        return DB::transaction(function () use ($propertyId, $pedido, $userId): int {
             $order = DB::table('fiscal_orders')
                 ->where('id', $pedido)
                 ->where('propriedade_id', $propertyId)
@@ -696,7 +763,7 @@ class CompraPedidoService
 
             $items = $this->orderItems($pedido);
             if ($items->isEmpty()) {
-                throw new RuntimeException('Nao e possivel aprovar um pedido sem itens.');
+                throw new RuntimeException('Não é possível aprovar um pedido sem itens.');
             }
 
             $metadata = [
@@ -737,6 +804,22 @@ class CompraPedidoService
                     'financial_expense_id' => $expenseId,
                     'approval_metadata' => json_encode($metadata, JSON_UNESCAPED_UNICODE),
                 ]);
+
+            AuditService::log(
+                action: 'aprovar_pedido_fiscal',
+                table: 'fiscal_orders',
+                recordId: $pedido,
+                propertyId: $propertyId,
+                details: [
+                    'numero' => (string) $approvedOrder->order_number,
+                    'despesa_financeira_id' => $expenseId,
+                    'nota_fiscal_vinculada' => (bool) $metadata['had_linked_invoices'],
+                    'itens_estoque' => $stockItems,
+                    'itens_patrimonio' => $patrimonioItems,
+                ],
+            );
+
+            return $expenseId;
         });
     }
 
@@ -748,6 +831,7 @@ class CompraPedidoService
             ->select([
                 'pedidos.id',
                 'pedidos.order_number',
+                'pedidos.financial_expense_id',
                 'pedidos.supplier_name',
                 'pedidos.supplier_cnpj',
                 'pedidos.issue_date',

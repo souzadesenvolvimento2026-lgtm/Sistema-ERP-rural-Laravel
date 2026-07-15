@@ -72,6 +72,22 @@
                         <span>Observações</span>
                         <input name="notes" value="{{ old('notes') }}">
                     </label>
+
+                    <div class="ff-purchase-order-field ff-purchase-order-field-notes">
+                        <span>Nota fiscal</span>
+                        <label class="form-check d-flex align-items-start gap-2 m-0">
+                            <input
+                                class="form-check-input mt-1"
+                                type="checkbox"
+                                name="vincular_nota_antes_aprovar"
+                                value="1"
+                                @checked(old('vincular_nota_antes_aprovar'))
+                            >
+                            <span class="form-check-label">
+                                Vou vincular ou importar a NF antes de aprovar este pedido.
+                            </span>
+                        </label>
+                    </div>
                 </div>
 
                 <div class="ff-purchase-order-items-head">

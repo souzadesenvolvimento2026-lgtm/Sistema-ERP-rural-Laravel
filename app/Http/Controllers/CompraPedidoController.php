@@ -25,6 +25,7 @@ class CompraPedidoController extends Controller
             'pedidos' => $pedidos,
             'statusOptions' => $this->pedidos->statusOptions(),
             'totais' => $this->pedidos->totals($pedidos),
+            'canApproveOrders' => $this->pedidos->canApproveOrders($propertyId, session('usuario_id')),
             ...$this->pedidos->formData($propertyId),
         ]);
     }
@@ -46,10 +47,29 @@ class CompraPedidoController extends Controller
             'notes' => ['nullable', 'string'],
             'item_description' => ['required', 'array'],
             'item_description.*' => ['nullable', 'string', 'max:255'],
+            'vincular_nota_antes_aprovar' => ['nullable', 'boolean'],
         ]);
 
         try {
-            $orderId = $this->pedidos->createOrder($request, $this->pedidos->propertyId());
+            $propertyId = $this->pedidos->propertyId();
+            $userId = session('usuario_id');
+            $canApproveOrders = $this->pedidos->canApproveOrders($propertyId, $userId);
+            $linkInvoiceBeforeApproval = $request->boolean('vincular_nota_antes_aprovar');
+            $orderId = $this->pedidos->createOrder($request, $propertyId, ! $canApproveOrders || $linkInvoiceBeforeApproval);
+
+            if ($canApproveOrders && ! $linkInvoiceBeforeApproval) {
+                $expenseId = $this->pedidos->approveOrder($propertyId, $orderId, $userId, true);
+
+                return redirect()
+                    ->route('financeiro.despesas.edit', $expenseId)
+                    ->with('success', 'Pedido fiscal criado, aprovado e lançado no financeiro. Confira o vencimento e informe a conta real na baixa do pagamento.');
+            }
+
+            if ($linkInvoiceBeforeApproval) {
+                return redirect()
+                    ->route('compras.pedidos.show', $orderId)
+                    ->with('success', 'Pedido fiscal criado. Vincule ou importe a nota fiscal antes de aprovar e lançar no financeiro.');
+            }
         } catch (RuntimeException $exception) {
             report($exception);
 
@@ -57,17 +77,22 @@ class CompraPedidoController extends Controller
         }
 
         return redirect()
-            ->route('compras.pedidos.show', $orderId)
-            ->with('success', 'Pedido fiscal criado com sucesso.');
+            ->route('compras.pedidos.index', ['status' => 'aguardando_aprovacao'])
+            ->with('success', 'Pedido fiscal criado e enviado para aprovação do gestor.');
     }
 
     public function show(int $pedido): View
     {
-        return view('compras.pedidos.show', $this->pedidos->showData(
-            $this->pedidos->propertyId(),
-            $pedido,
-            session('fiscal_order_invoice_preview'),
-        ));
+        $propertyId = $this->pedidos->propertyId();
+
+        return view('compras.pedidos.show', [
+            ...$this->pedidos->showData(
+                $propertyId,
+                $pedido,
+                session('fiscal_order_invoice_preview'),
+            ),
+            'canApproveOrders' => $this->pedidos->canApproveOrders($propertyId, session('usuario_id')),
+        ]);
     }
 
     public function edit(int $pedido): View
@@ -109,7 +134,7 @@ class CompraPedidoController extends Controller
     public function approve(Request $request, int $pedido): RedirectResponse
     {
         try {
-            $this->pedidos->approveOrder(
+            $expenseId = $this->pedidos->approveOrder(
                 $this->pedidos->propertyId(),
                 $pedido,
                 session('usuario_id'),
@@ -122,8 +147,8 @@ class CompraPedidoController extends Controller
         }
 
         return redirect()
-            ->route('compras.pedidos.show', $pedido)
-            ->with('success', 'Pedido aprovado/baixado, lançado no financeiro e incorporado ao estoque.');
+            ->route('financeiro.despesas.edit', $expenseId)
+            ->with('success', 'Pedido aprovado, lançado no financeiro e incorporado ao estoque. Confira o vencimento e informe a conta real na baixa do pagamento.');
     }
 
     public function linkInvoice(Request $request, int $pedido): RedirectResponse

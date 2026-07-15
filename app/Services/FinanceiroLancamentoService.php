@@ -7,6 +7,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
+use RuntimeException;
 
 class FinanceiroLancamentoService
 {
@@ -31,6 +32,9 @@ class FinanceiroLancamentoService
         $dataLancamento = Carbon::parse($dados['data_lancamento']);
         $dataVencimento = !empty($dados['data_vencimento']) ? Carbon::parse($dados['data_vencimento']) : null;
         $arquivoComprovante = $this->salvarComprovante($comprovante);
+        $contaId = !empty($dados['baixado'])
+            ? (int) $this->contaAtiva($propriedadeId, (int) ($dados['conta_id'] ?? 0))->id
+            : $this->idDaPropriedade('contas', $dados['conta_id'] ?? null, $propriedadeId);
         $ultimoId = 0;
 
         for ($parcela = 1; $parcela <= $numeroParcelas; $parcela++) {
@@ -42,7 +46,7 @@ class FinanceiroLancamentoService
                 'talhao_id' => $this->idDaPropriedade('talhoes', $dados['talhao_id'] ?? null, $propriedadeId),
                 'categoria_id' => (int)$dados['categoria_id'],
                 'subcategoria_id' => $this->subcategoriaId($dados['subcategoria_id'] ?? null, $dados['categoria_id'] ?? null),
-                'conta_id' => $this->idDaPropriedade('contas', $dados['conta_id'] ?? null, $propriedadeId),
+                'conta_id' => $contaId,
                 'produtor_id' => $this->idDaPropriedade('produtores', $dados['produtor_id'] ?? null, $propriedadeId),
                 'descricao' => trim($dados['descricao']),
                 'fornecedor' => trim($dados['pessoa'] ?? '') ?: null,
@@ -163,6 +167,25 @@ class FinanceiroLancamentoService
             ->where('id', $id)
             ->where('propriedade_id', $propriedadeId)
             ->exists() ? $id : null;
+    }
+
+    private function contaAtiva(int $propriedadeId, int $contaId): object
+    {
+        if ($contaId <= 0) {
+            throw new RuntimeException('Informe a conta real usada no pagamento.');
+        }
+
+        $conta = DB::table('contas')
+            ->where('id', $contaId)
+            ->where('propriedade_id', $propriedadeId)
+            ->where('ativo', 1)
+            ->first(['id']);
+
+        if (! $conta) {
+            throw new RuntimeException('Selecione uma conta ativa da propriedade para baixar o pagamento.');
+        }
+
+        return $conta;
     }
 
     private function subcategoriaId($id, $categoriaId): ?int

@@ -10,7 +10,7 @@
             @if ($order->can_edit)
                 <a class="btn" href="{{ route('compras.pedidos.edit', $order->id) }}">Editar</a>
             @endif
-            @if ($order->can_approve)
+            @if (($canApproveOrders ?? false) && $order->can_approve)
                 <form method="post" action="{{ route('compras.pedidos.approve', $order->id) }}">
                     @csrf
                     <input type="hidden" name="confirmar_aprovacao" value="1">

@@ -158,12 +158,17 @@ class DespesaFinanceiraController extends Controller
 
     public function pay(Request $request, int $despesa, DespesaFinanceiraService $service): RedirectResponse
     {
+        $dados = $request->validate([
+            'conta_id' => ['required', 'integer'],
+            'data_pagamento' => ['nullable', 'date'],
+        ]);
+
         try {
             $service->pagar(
                 app(FarmContext::class)->propertyId(),
                 $despesa,
-                $request->integer('conta_id') ?: null,
-                $request->input('data_pagamento'),
+                (int) $dados['conta_id'],
+                $dados['data_pagamento'] ?? null,
                 session('usuario_id')
             );
         } catch (RuntimeException $exception) {

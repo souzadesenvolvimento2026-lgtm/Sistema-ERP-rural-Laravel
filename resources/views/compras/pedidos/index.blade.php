@@ -62,6 +62,18 @@
             </button>
         </section>
 
+        @if (($canApproveOrders ?? false) && (int) ($totais['aguardando_aprovacao'] ?? 0) > 0)
+            <div class="alert alert-warning ff-purchase-approval-alert">
+                <div>
+                    <strong>{{ $totais['aguardando_aprovacao'] }} pedido(s) aguardando aprovação.</strong>
+                    <span>Confira os itens, vincule a nota fiscal quando existir e aprove para gerar o lançamento financeiro.</span>
+                </div>
+                <a class="btn btn-sm primary" href="{{ route('compras.pedidos.index', ['status' => 'aguardando_aprovacao']) }}">
+                    Ver pendentes
+                </a>
+            </div>
+        @endif
+
         <section class="stats ff-purchase-summary-cards" aria-label="Resumo dos pedidos">
             <div class="stat">
                 <span>Pedidos</span>
@@ -153,7 +165,7 @@
                             <td class="text-end">
                                 <div class="ff-purchase-row-actions">
                                     <a class="btn btn-sm btn-outline-primary" href="{{ route('compras.pedidos.show', $pedido->id) }}">Abrir</a>
-                                    @if ($pedido->can_approve)
+                                    @if (($canApproveOrders ?? false) && $pedido->can_approve)
                                         <form method="post" action="{{ route('compras.pedidos.approve', $pedido->id) }}" onsubmit="return confirm('Aprovar este pedido e lançar no financeiro/estoque?')">
                                             @csrf
                                             <input type="hidden" name="confirmar_aprovacao" value="1">

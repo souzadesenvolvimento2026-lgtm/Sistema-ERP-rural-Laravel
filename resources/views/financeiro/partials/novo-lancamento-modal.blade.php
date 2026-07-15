@@ -248,7 +248,7 @@
                             <option value="">Não informar</option>
                             @foreach ($contasLancamento as $conta)
                                 <option value="{{ $conta->id }}" @selected(old('conta_id') == $conta->id)>
-                                    {{ $conta->nome }}{{ $conta->banco ? ' - '.$conta->banco : '' }}
+                                    {{ $conta->nome }}{{ $conta->banco ? ' - '.$conta->banco : '' }}{{ isset($conta->saldo) ? ' | Saldo '.$conta->saldo : '' }}
                                 </option>
                             @endforeach
                         </select>
@@ -408,7 +408,7 @@
                             <option value="">Não informar</option>
                             @foreach ($contasLancamento as $conta)
                                 <option value="{{ $conta->id }}" @selected(old('conta_id') == $conta->id)>
-                                    {{ $conta->nome }}{{ $conta->banco ? ' - '.$conta->banco : '' }}
+                                    {{ $conta->nome }}{{ $conta->banco ? ' - '.$conta->banco : '' }}{{ isset($conta->saldo) ? ' | Saldo '.$conta->saldo : '' }}
                                 </option>
                             @endforeach
                         </select>

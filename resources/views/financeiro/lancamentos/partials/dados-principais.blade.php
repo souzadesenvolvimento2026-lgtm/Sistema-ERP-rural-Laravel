@@ -59,9 +59,12 @@
                 <select name="conta_id">
                     <option value="">Não informada</option>
                     @foreach ($contas as $conta)
-                        <option value="{{ $conta->id }}" @selected((int)$valorCampo('conta_id') === (int)$conta->id)>{{ $conta->nome }}{{ $conta->banco ? ' - '.$conta->banco : '' }}</option>
+                        <option value="{{ $conta->id }}" @selected((int)$valorCampo('conta_id') === (int)$conta->id)>
+                            {{ $conta->nome }}{{ $conta->banco ? ' - '.$conta->banco : '' }}{{ isset($conta->saldo) ? ' | Saldo '.$conta->saldo : '' }}
+                        </option>
                     @endforeach
                 </select>
+                <small>Obrigatória quando marcar a despesa como paga.</small>
             </div>
             <div class="field">
                 <label>Safra</label>

@@ -266,7 +266,7 @@ class DespesaFinanceiraService
         });
     }
 
-    public function pagar(int $propertyId, int $despesaId, ?int $contaId, ?string $dataPagamento, ?int $userId): void
+    public function pagar(int $propertyId, int $despesaId, int $contaId, ?string $dataPagamento, ?int $userId): void
     {
         DB::transaction(function () use ($propertyId, $despesaId, $contaId, $dataPagamento, $userId): void {
             $despesa = DB::table('despesas')
@@ -277,7 +277,7 @@ class DespesaFinanceiraService
                 ->first();
 
             if (! $despesa) {
-                throw new RuntimeException('Despesa nao encontrada para pagamento.');
+                throw new RuntimeException('Despesa não encontrada para pagamento.');
             }
 
             $capabilities = $this->workflowRules->expenseCapabilities(
@@ -286,12 +286,10 @@ class DespesaFinanceiraService
             );
 
             if (! $capabilities['can_pay']) {
-                throw new RuntimeException('Esta despesa nao esta disponivel para pagamento.');
+                throw new RuntimeException('Esta despesa não está disponível para pagamento.');
             }
 
-            if ($contaId && ! DB::table('contas')->where('id', $contaId)->where('propriedade_id', $propertyId)->exists()) {
-                $contaId = null;
-            }
+            $conta = $this->contaAtiva($propertyId, $contaId);
 
             $dataEfetiva = $dataPagamento ?: now()->toDateString();
 
@@ -304,7 +302,16 @@ class DespesaFinanceiraService
                     'conta_id' => $contaId,
                 ]);
 
-            $this->auditar($userId, 'pagar_despesa', 'despesas', $despesaId, $propertyId, 'Despesa paga | Data pagamento: '.$dataEfetiva);
+            $contaDescricao = trim($conta->nome.($conta->banco ? ' - '.$conta->banco : ''));
+
+            $this->auditar(
+                $userId,
+                'pagar_despesa',
+                'despesas',
+                $despesaId,
+                $propertyId,
+                'Despesa paga | Data pagamento: '.$dataEfetiva.' | Conta: '.$contaDescricao
+            );
         });
     }
 
@@ -411,6 +418,9 @@ class DespesaFinanceiraService
             $dataPagamento = $statusPagamento === 'pago'
                 ? (($dados['data_vencimento'] ?? null) ?: ($dados['data_lancamento'] ?? now()->toDateString()))
                 : null;
+            $contaId = $statusPagamento === 'pago'
+                ? (int) $this->contaAtiva($propertyId, (int) ($dados['conta_id'] ?? 0))->id
+                : $this->idDaPropriedade('contas', $dados['conta_id'] ?? null, $propertyId);
 
             DB::table('despesas')
                 ->where('id', $despesaId)
@@ -420,7 +430,7 @@ class DespesaFinanceiraService
                     'talhao_id' => $this->idDaPropriedade('talhoes', $dados['talhao_id'] ?? null, $propertyId),
                     'categoria_id' => (int) $dados['categoria_id'],
                     'subcategoria_id' => $this->subcategoriaId($dados['subcategoria_id'] ?? null, $dados['categoria_id'] ?? null),
-                    'conta_id' => $this->idDaPropriedade('contas', $dados['conta_id'] ?? null, $propertyId),
+                    'conta_id' => $contaId,
                     'produtor_id' => $this->idDaPropriedade('produtores', $dados['produtor_id'] ?? null, $propertyId),
                     'descricao' => trim((string) $dados['descricao']),
                     'fornecedor' => trim((string) ($dados['pessoa'] ?? '')) ?: null,
@@ -662,6 +672,25 @@ class DespesaFinanceiraService
             ->where('id', $id)
             ->where('propriedade_id', $propertyId)
             ->exists() ? $id : null;
+    }
+
+    private function contaAtiva(int $propertyId, int $contaId): object
+    {
+        if ($contaId <= 0) {
+            throw new RuntimeException('Informe a conta real usada no pagamento.');
+        }
+
+        $conta = DB::table('contas')
+            ->where('id', $contaId)
+            ->where('propriedade_id', $propertyId)
+            ->where('ativo', 1)
+            ->first(['id', 'nome', 'banco']);
+
+        if (! $conta) {
+            throw new RuntimeException('Selecione uma conta ativa da propriedade para baixar o pagamento.');
+        }
+
+        return $conta;
     }
 
     private function subcategoriaId(mixed $id, mixed $categoriaId): ?int

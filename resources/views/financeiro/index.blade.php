@@ -287,11 +287,18 @@
 
                                             @if ($podeAprovarFinanceiro && $row->tipo === 'despesa' && $row->can_pay)
                                                 <li>
-                                                    <form method="post" action="{{ $row->pay_url }}">
-                                                        @csrf
-                                                        <input type="hidden" name="data_pagamento" value="{{ date('Y-m-d') }}">
-                                                        <button class="dropdown-item" type="submit"><i class="bi bi-cash-coin me-2"></i>Confirmar pagamento</button>
-                                                    </form>
+                                                    <button
+                                                        class="dropdown-item"
+                                                        type="button"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#financeiroPagamentoModal"
+                                                        data-ff-pay-url="{{ $row->pay_url }}"
+                                                        data-ff-pay-description="{{ $row->descricao }}"
+                                                        data-ff-pay-value="{{ $fmtMoney($row->valor) }}"
+                                                        data-ff-pay-date="{{ date('Y-m-d') }}"
+                                                    >
+                                                        <i class="bi bi-cash-coin me-2"></i>Confirmar pagamento
+                                                    </button>
                                                 </li>
                                             @endif
 
@@ -343,6 +350,61 @@
     </div>
 
     @include('financeiro.partials.novo-lancamento-modal')
+
+    <div class="modal fade ff-financial-form-modal" id="financeiroPagamentoModal" tabindex="-1" aria-labelledby="financeiroPagamentoModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <form method="POST" class="modal-content ff-financial-form-content" data-ff-payment-form>
+                @csrf
+                <div class="modal-header modal-header-green ff-financial-form-header">
+                    <div class="ff-financial-form-title">
+                        <h5 class="modal-title" id="financeiroPagamentoModalLabel">
+                            <i class="bi bi-cash-coin"></i> Confirmar pagamento
+                        </h5>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+
+                <div class="modal-body">
+                    <p class="ff-financial-launch-help" data-ff-payment-summary>
+                        Selecione a conta real usada para pagar a despesa.
+                    </p>
+
+                    <div class="ff-financial-form-grid">
+                        <label class="ff-financial-field">
+                            <span>Data do pagamento</span>
+                            <input type="date" name="data_pagamento" value="{{ date('Y-m-d') }}" data-ff-payment-date>
+                        </label>
+
+                        <label class="ff-financial-field ff-span-2">
+                            <span>Conta real usada no pagamento *</span>
+                            <select name="conta_id" required data-ff-payment-account>
+                                <option value="">Selecione a conta...</option>
+                                @foreach ($contas as $conta)
+                                    <option value="{{ $conta->id }}" data-balance="{{ $conta->saldo }}">
+                                        {{ $conta->nome }}{{ $conta->detalhe ? ' - '.$conta->detalhe : '' }} | Saldo {{ $conta->saldo }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <small data-ff-payment-balance>O saldo será exibido ao selecionar a conta.</small>
+                        </label>
+                    </div>
+
+                    @if ($contas->isEmpty())
+                        <div class="alert alert-warning mt-3">
+                            Cadastre uma conta ativa antes de confirmar pagamentos.
+                        </div>
+                    @endif
+                </div>
+
+                <div class="modal-footer ff-modal-footer-split">
+                    <button type="button" class="btn" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn primary" @disabled($contas->isEmpty())>
+                        <i class="bi bi-check2-circle"></i> Confirmar pagamento
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
 @endsection
 
 @push('scripts')
@@ -356,6 +418,48 @@
             const pageIndicator = document.querySelector('[data-ff-ledger-page]');
             const previousButton = document.querySelector('[data-ff-ledger-prev]');
             const nextButton = document.querySelector('[data-ff-ledger-next]');
+            const paymentModal = document.getElementById('financeiroPagamentoModal');
+            const paymentForm = paymentModal?.querySelector('[data-ff-payment-form]');
+            const paymentSummary = paymentModal?.querySelector('[data-ff-payment-summary]');
+            const paymentDate = paymentModal?.querySelector('[data-ff-payment-date]');
+            const paymentAccount = paymentModal?.querySelector('[data-ff-payment-account]');
+            const paymentBalance = paymentModal?.querySelector('[data-ff-payment-balance]');
+
+            paymentModal?.addEventListener('show.bs.modal', (event) => {
+                const button = event.relatedTarget;
+
+                if (!button || !paymentForm) {
+                    return;
+                }
+
+                paymentForm.action = button.getAttribute('data-ff-pay-url') || '';
+
+                if (paymentSummary) {
+                    const description = button.getAttribute('data-ff-pay-description') || 'despesa';
+                    const value = button.getAttribute('data-ff-pay-value') || '';
+                    paymentSummary.textContent = `Baixar ${description}${value ? ` no valor de ${value}` : ''}. Informe a conta real para registrar a saída.`;
+                }
+
+                if (paymentDate) {
+                    paymentDate.value = button.getAttribute('data-ff-pay-date') || paymentDate.value;
+                }
+
+                if (paymentAccount) {
+                    paymentAccount.value = '';
+                    paymentAccount.dispatchEvent(new Event('change'));
+                }
+            });
+
+            paymentAccount?.addEventListener('change', () => {
+                const selected = paymentAccount.options[paymentAccount.selectedIndex];
+                const balance = selected?.getAttribute('data-balance') || '';
+
+                if (paymentBalance) {
+                    paymentBalance.textContent = balance
+                        ? `Saldo atual da conta selecionada: ${balance}.`
+                        : 'O saldo será exibido ao selecionar a conta.';
+                }
+            });
 
             if (!table || !tbody) {
                 return;
