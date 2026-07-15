@@ -8,19 +8,19 @@
         <table>
             <thead>
                 <tr>
-                    <th>Numero</th>
-                    <th>Emissao</th>
+                    <th>Número</th>
+                    <th>Emissão</th>
                     <th>Fornecedor</th>
                     <th>Total</th>
                     <th>Status</th>
-                    <th>Vinculo</th>
-                    <th>Acoes</th>
+                    <th>Vínculo</th>
+                    <th>Ações</th>
                 </tr>
             </thead>
             <tbody>
                 @forelse ($linkedInvoices as $nota)
                     <tr>
-                        <td><strong>{{ $nota->invoice_number ?: '-' }}</strong>{{ $nota->series ? ' / Serie '.$nota->series : '' }}</td>
+                        <td><strong>{{ $nota->invoice_number ?: '-' }}</strong>{{ $nota->series ? ' / Série '.$nota->series : '' }}</td>
                         <td>{{ $nota->issue_date ? \Illuminate\Support\Carbon::parse($nota->issue_date)->format('d/m/Y') : '-' }}</td>
                         <td>{{ $nota->issuer_name ?: '-' }}<br><span class="muted">{{ $nota->issuer_cnpj ?: '-' }}</span></td>
                         <td><strong>R$ {{ number_format((float)$nota->total_value, 2, ',', '.') }}</strong></td>
@@ -48,7 +48,7 @@
     @if ($invoiceComparison)
         <div class="stats" style="margin-top:14px">
             <div class="stat"><span>Itens conferidos</span><strong>{{ $invoiceComparison['match_count'] }}</strong></div>
-            <div class="stat"><span>Divergencias</span><strong>{{ $invoiceComparison['divergence_count'] }}</strong></div>
+            <div class="stat"><span>Divergências</span><strong>{{ $invoiceComparison['divergence_count'] }}</strong></div>
             <div class="stat"><span>Faltam na nota</span><strong>{{ $invoiceComparison['missing_in_invoice_count'] }}</strong></div>
             <div class="stat"><span>Sobram na nota</span><strong>{{ $invoiceComparison['missing_in_order_count'] }}</strong></div>
         </div>
@@ -64,7 +64,7 @@
                     </ul>
                 @endif
                 @if ($invoiceComparison['missing_in_invoice'])
-                    <h3>Nao encontrados na nota</h3>
+                    <h3>Não encontrados na nota</h3>
                     <ul>
                         @foreach ($invoiceComparison['missing_in_invoice'] as $item)
                             <li>{{ $item['description'] }} - {{ number_format($item['quantity'], 4, ',', '.') }} {{ $item['unit'] }}</li>
@@ -72,7 +72,7 @@
                     </ul>
                 @endif
                 @if ($invoiceComparison['missing_in_order'])
-                    <h3>Nao encontrados no pedido</h3>
+                    <h3>Não encontrados no pedido</h3>
                     <ul>
                         @foreach ($invoiceComparison['missing_in_order'] as $item)
                             <li>{{ $item['description'] }} - {{ number_format($item['quantity'], 4, ',', '.') }} {{ $item['unit'] }}</li>
@@ -85,15 +85,15 @@
 
     @if ($invoiceLinkPreview)
         <div class="panel-body" id="comparacao-nf">
-            <h3>Conferencia da nota fiscal</h3>
+            <h3>Conferência da nota fiscal</h3>
             <p class="muted">
-                NF {{ $previewInvoice['invoice_number'] ?? '-' }}{{ !empty($previewInvoice['series']) ? ' / Serie '.$previewInvoice['series'] : '' }}
+                NF {{ $previewInvoice['invoice_number'] ?? '-' }}{{ !empty($previewInvoice['series']) ? ' / Série '.$previewInvoice['series'] : '' }}
                 - {{ $previewInvoice['issuer_name'] ?? '-' }}
                 - R$ {{ number_format((float)($previewInvoice['total_value'] ?? 0), 2, ',', '.') }}
             </p>
             <div class="stats">
                 <div class="stat"><span>Itens conferidos</span><strong>{{ $previewComparison['match_count'] ?? 0 }}</strong></div>
-                <div class="stat"><span>Divergencias</span><strong>{{ $previewComparison['divergence_count'] }}</strong></div>
+                <div class="stat"><span>Divergências</span><strong>{{ $previewComparison['divergence_count'] }}</strong></div>
                 <div class="stat"><span>Faltam na nota</span><strong>{{ $previewComparison['missing_in_invoice_count'] }}</strong></div>
                 <div class="stat"><span>Sobram na nota</span><strong>{{ $previewComparison['missing_in_order_count'] }}</strong></div>
             </div>
@@ -107,7 +107,7 @@
                 </ul>
             @endif
             @if (!empty($previewComparison['missing_in_invoice']))
-                <h3>Nao encontrados na nota</h3>
+                <h3>Não encontrados na nota</h3>
                 <ul>
                     @foreach ($previewComparison['missing_in_invoice'] as $item)
                         <li>{{ $item['description'] }} - {{ number_format($item['quantity'], 4, ',', '.') }} {{ $item['unit'] }}</li>
@@ -115,7 +115,7 @@
                 </ul>
             @endif
             @if (!empty($previewComparison['missing_in_order']))
-                <h3>Nao encontrados no pedido</h3>
+                <h3>Não encontrados no pedido</h3>
                 <ul>
                     @foreach ($previewComparison['missing_in_order'] as $item)
                         <li>{{ $item['description'] }} - {{ number_format($item['quantity'], 4, ',', '.') }} {{ $item['unit'] }}</li>
@@ -126,11 +126,11 @@
             <div class="actions">
                 <form method="post" action="{{ route('compras.pedidos.notas.preview.cancel', $order->id) }}">
                     @csrf
-                    <button class="btn" type="submit">Cancelar comparacao</button>
+                    <button class="btn" type="submit">Cancelar comparação</button>
                 </form>
                 <form method="post" action="{{ route('compras.pedidos.notas.confirm', $order->id) }}">
                     @csrf
-                    <button class="btn primary" type="submit" @disabled(! $order->can_confirm_invoice_link)>Confirmar vinculo</button>
+                    <button class="btn primary" type="submit" @disabled(! $order->can_confirm_invoice_link)>Confirmar vínculo</button>
                 </form>
             </div>
         </div>
@@ -145,7 +145,7 @@
                     <option value="">Selecione</option>
                     @foreach ($availableInvoices as $nota)
                         <option value="{{ $nota->id }}">
-                            {{ $nota->invoice_number ?: 'Sem numero' }}{{ $nota->series ? ' / Serie '.$nota->series : '' }}
+                            {{ $nota->invoice_number ?: 'Sem número' }}{{ $nota->series ? ' / Série '.$nota->series : '' }}
                             - {{ $nota->issuer_name ?: '-' }}
                             - R$ {{ number_format((float)$nota->total_value, 2, ',', '.') }}
                         </option>

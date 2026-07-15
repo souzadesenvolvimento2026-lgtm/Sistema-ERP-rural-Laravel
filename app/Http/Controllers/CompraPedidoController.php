@@ -25,6 +25,7 @@ class CompraPedidoController extends Controller
             'pedidos' => $pedidos,
             'statusOptions' => $this->pedidos->statusOptions(),
             'totais' => $this->pedidos->totals($pedidos),
+            ...$this->pedidos->formData($propertyId),
         ]);
     }
 
@@ -47,11 +48,17 @@ class CompraPedidoController extends Controller
             'item_description.*' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $orderId = $this->pedidos->createOrder($request, $this->pedidos->propertyId());
+        try {
+            $orderId = $this->pedidos->createOrder($request, $this->pedidos->propertyId());
+        } catch (RuntimeException $exception) {
+            report($exception);
+
+            return back()->withInput()->withErrors($exception->getMessage());
+        }
 
         return redirect()
             ->route('compras.pedidos.show', $orderId)
-            ->with('success', 'Pedido criado no banco atual pelo Laravel.');
+            ->with('success', 'Pedido fiscal criado com sucesso.');
     }
 
     public function show(int $pedido): View
@@ -96,7 +103,7 @@ class CompraPedidoController extends Controller
 
         return redirect()
             ->route('compras.pedidos.show', $pedido)
-            ->with('success', 'Pedido atualizado pelo Laravel.');
+            ->with('success', 'Pedido fiscal atualizado com sucesso.');
     }
 
     public function approve(Request $request, int $pedido): RedirectResponse
@@ -116,7 +123,7 @@ class CompraPedidoController extends Controller
 
         return redirect()
             ->route('compras.pedidos.show', $pedido)
-            ->with('success', 'Pedido aprovado/baixado, lancado no financeiro e incorporado ao estoque.');
+            ->with('success', 'Pedido aprovado/baixado, lançado no financeiro e incorporado ao estoque.');
     }
 
     public function linkInvoice(Request $request, int $pedido): RedirectResponse
@@ -140,7 +147,7 @@ class CompraPedidoController extends Controller
 
         return redirect()
             ->route('compras.pedidos.show', $pedido)
-            ->with('success', 'Comparacao gerada. Confira antes de confirmar o vinculo.');
+            ->with('success', 'Comparação gerada. Confira antes de confirmar o vínculo.');
     }
 
     public function importInvoice(Request $request, int $pedido, NotaFiscalXmlService $xmlService): RedirectResponse
@@ -168,7 +175,7 @@ class CompraPedidoController extends Controller
 
         return redirect()
             ->route('compras.pedidos.show', $pedido)
-            ->with('success', 'XML importado e comparacao gerada. Confira antes de confirmar o vinculo.');
+            ->with('success', 'XML importado e comparação gerada. Confira antes de confirmar o vínculo.');
     }
 
     public function confirmInvoiceLink(int $pedido): RedirectResponse
@@ -200,7 +207,7 @@ class CompraPedidoController extends Controller
 
         return redirect()
             ->route('compras.pedidos.show', $pedido)
-            ->with('success', 'Comparacao de nota fiscal cancelada.');
+            ->with('success', 'Comparação de nota fiscal cancelada.');
     }
 
     public function unlinkInvoice(int $pedido, int $nota): RedirectResponse
@@ -215,6 +222,6 @@ class CompraPedidoController extends Controller
 
         return redirect()
             ->route('compras.pedidos.show', $pedido)
-            ->with('success', 'Vinculo com nota fiscal removido.');
+            ->with('success', 'Vínculo com nota fiscal removido.');
     }
 }

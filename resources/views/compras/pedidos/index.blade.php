@@ -52,9 +52,14 @@
                     <p>Cadastre o pedido, adicione itens, vincule notas e aprove quando estiver conferido.</p>
                 </div>
             </div>
-            <a class="btn primary ff-purchase-hero-button" href="{{ route('compras.pedidos.create') }}">
+            <button
+                class="btn primary ff-purchase-hero-button"
+                type="button"
+                data-bs-toggle="modal"
+                data-bs-target="#pedidoCreateModal"
+            >
                 <i class="bi bi-plus-lg"></i> Novo Pedido
-            </a>
+            </button>
         </section>
 
         <section class="stats ff-purchase-summary-cards" aria-label="Resumo dos pedidos">
@@ -75,9 +80,9 @@
         <section class="panel ff-purchase-orders-panel">
             <div class="panel-head">
                 <h2><i class="bi bi-clipboard-check me-2"></i>Pedidos Fiscais</h2>
-                <a class="btn primary" href="{{ route('compras.pedidos.create') }}">
+                <button class="btn primary" type="button" data-bs-toggle="modal" data-bs-target="#pedidoCreateModal">
                     <i class="bi bi-plus-lg"></i> Novo Pedido
-                </a>
+                </button>
             </div>
 
             <div class="ff-purchase-datatable-toolbar">
@@ -180,9 +185,12 @@
             </div>
         </section>
     </div>
+
+    @include('compras.pedidos.partials.create-modal')
 @endsection
 
 @push('scripts')
+    <script src="{{ asset('js/pedido-form.js') }}?v={{ @filemtime(public_path('js/pedido-form.js')) }}"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const table = document.querySelector('[data-ff-purchase-table]');

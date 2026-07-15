@@ -76,7 +76,7 @@ class CompraPedidoService
     public function createOrder(Request $request, int $propertyId): int
     {
         $items = $this->normalizeItems($request, $propertyId);
-        abort_if(! $items, 422, 'Informe pelo menos um item valido no pedido.');
+        abort_if(! $items, 422, 'Informe pelo menos um item válido no pedido.');
 
         return DB::transaction(function () use ($request, $propertyId, $items): int {
             $orderNumber = trim((string) $request->input('order_number'));
@@ -114,7 +114,7 @@ class CompraPedidoService
     public function updateOrder(Request $request, int $propertyId, int $pedido): void
     {
         $items = $this->normalizeItems($request, $propertyId);
-        abort_if(! $items, 422, 'Informe pelo menos um item valido no pedido.');
+        abort_if(! $items, 422, 'Informe pelo menos um item válido no pedido.');
 
         DB::transaction(function () use ($request, $propertyId, $pedido, $items): void {
             $order = DB::table('fiscal_orders')
@@ -124,11 +124,11 @@ class CompraPedidoService
                 ->first();
 
             if (! $order) {
-                throw new RuntimeException('Pedido fiscal nao encontrado.');
+                throw new RuntimeException('Pedido fiscal não encontrado.');
             }
 
             if (! $this->capabilities->for($order->status)['can_edit']) {
-                throw new RuntimeException('Este pedido nao pode ser alterado no status atual.');
+                throw new RuntimeException('Este pedido não pode ser alterado no status atual.');
             }
 
             $orderNumber = trim((string) $request->input('order_number'));
@@ -292,11 +292,11 @@ class CompraPedidoService
                 ->first();
 
             if (! $order) {
-                throw new RuntimeException('Pedido fiscal nao encontrado.');
+                throw new RuntimeException('Pedido fiscal não encontrado.');
             }
 
             if (! $this->capabilities->for($order->status)['can_link_invoice']) {
-                throw new RuntimeException('Este pedido nao pode receber nova nota fiscal no status atual.');
+                throw new RuntimeException('Este pedido não pode receber nova nota fiscal no status atual.');
             }
 
             $invoice = DB::table('fiscal_invoices')
@@ -306,7 +306,7 @@ class CompraPedidoService
                 ->first();
 
             if (! $invoice) {
-                throw new RuntimeException('Nota fiscal nao encontrada para esta propriedade.');
+                throw new RuntimeException('Nota fiscal não encontrada para esta propriedade.');
             }
 
             $linkedOrder = DB::table('fiscal_order_invoices')
@@ -314,7 +314,7 @@ class CompraPedidoService
                 ->value('order_id');
 
             if ($linkedOrder && (int) $linkedOrder !== $pedido) {
-                throw new RuntimeException('Esta nota fiscal ja esta vinculada a outro pedido.');
+                throw new RuntimeException('Esta nota fiscal já está vinculada a outro pedido.');
             }
 
             $comparison = $this->compareOrderInvoiceItems(
@@ -344,11 +344,11 @@ class CompraPedidoService
             ->first();
 
         if (! $order) {
-            throw new RuntimeException('Pedido fiscal nao encontrado.');
+            throw new RuntimeException('Pedido fiscal não encontrado.');
         }
 
         if (! $this->capabilities->for($order->status)['can_link_invoice']) {
-            throw new RuntimeException('Este pedido nao pode receber nova nota fiscal no status atual.');
+            throw new RuntimeException('Este pedido não pode receber nova nota fiscal no status atual.');
         }
 
         $invoice = DB::table('fiscal_invoices')
@@ -357,7 +357,7 @@ class CompraPedidoService
             ->first();
 
         if (! $invoice) {
-            throw new RuntimeException('Nota fiscal nao encontrada para esta propriedade.');
+            throw new RuntimeException('Nota fiscal não encontrada para esta propriedade.');
         }
 
         $linkedOrder = DB::table('fiscal_order_invoices')
@@ -365,7 +365,7 @@ class CompraPedidoService
             ->value('order_id');
 
         if ($linkedOrder && (int) $linkedOrder !== $pedido) {
-            throw new RuntimeException('Esta nota fiscal ja esta vinculada a outro pedido.');
+            throw new RuntimeException('Esta nota fiscal já está vinculada a outro pedido.');
         }
 
         return [
@@ -390,7 +390,7 @@ class CompraPedidoService
     public function confirmInvoicePreview(int $propertyId, int $pedido, array $preview, ?int $userId): void
     {
         if ((int) ($preview['order_id'] ?? 0) !== $pedido || empty($preview['invoice_id'])) {
-            throw new RuntimeException('Nao ha comparacao de nota fiscal para confirmar.');
+            throw new RuntimeException('Não há comparação de nota fiscal para confirmar.');
         }
 
         $order = DB::table('fiscal_orders')
@@ -399,7 +399,7 @@ class CompraPedidoService
             ->first(['id', 'status']);
 
         if (! $order) {
-            throw new RuntimeException('Pedido fiscal nao encontrado.');
+            throw new RuntimeException('Pedido fiscal não encontrado.');
         }
 
         $invoiceId = (int) $preview['invoice_id'];
@@ -416,10 +416,10 @@ class CompraPedidoService
 
         if (! $canConfirm) {
             if (! $this->capabilities->for($order->status)['can_link_invoice']) {
-                throw new RuntimeException('Este pedido nao pode confirmar vinculo de nota fiscal no status atual.');
+                throw new RuntimeException('Este pedido não pode confirmar vínculo de nota fiscal no status atual.');
             }
 
-            throw new RuntimeException('Nao foi encontrado nenhum item compativel entre o pedido e a nota fiscal. Edite os itens do pedido ou remova esta nota antes de continuar.');
+            throw new RuntimeException('Não foi encontrado nenhum item compatível entre o pedido e a nota fiscal. Edite os itens do pedido ou remova esta nota antes de continuar.');
         }
 
         $this->linkInvoice($propertyId, $pedido, $invoiceId, $userId);
@@ -435,11 +435,11 @@ class CompraPedidoService
                 ->first();
 
             if (! $order) {
-                throw new RuntimeException('Pedido fiscal nao encontrado.');
+                throw new RuntimeException('Pedido fiscal não encontrado.');
             }
 
             if (! $this->capabilities->for($order->status)['can_unlink_invoice']) {
-                throw new RuntimeException('Este pedido nao pode remover nota fiscal no status atual.');
+                throw new RuntimeException('Este pedido não pode remover nota fiscal no status atual.');
             }
 
             DB::table('fiscal_order_invoices')
@@ -527,25 +527,25 @@ class CompraPedidoService
         $orderCode = strtolower(trim((string) ($order->product_code ?? '')));
         $invoiceCode = strtolower(trim((string) ($invoice->product_code ?? '')));
         if ($orderCode !== '' && $invoiceCode !== '' && $orderCode === $invoiceCode) {
-            return 'Codigo do produto igual';
+            return 'Código do produto igual';
         }
 
         $orderDesc = $this->itemText((string) ($order->description ?? ''));
         $invoiceDesc = $this->itemText((string) ($invoice->description ?? ''));
         if ($orderDesc !== '' && $invoiceDesc !== '') {
             if ($orderDesc === $invoiceDesc) {
-                return 'Descricao igual';
+                return 'Descrição igual';
             }
 
             similar_text($orderDesc, $invoiceDesc, $percent);
             if ($percent >= 82) {
-                return 'Descricao semelhante';
+                return 'Descrição semelhante';
             }
 
             $orderUnit = strtolower(trim((string) ($order->unit ?? '')));
             $invoiceUnit = strtolower(trim((string) ($invoice->unit ?? '')));
             if ($orderUnit !== '' && $invoiceUnit !== '' && $orderUnit === $invoiceUnit && (str_contains($orderDesc, $invoiceDesc) || str_contains($invoiceDesc, $orderDesc))) {
-                return 'Descricao e unidade compativeis';
+                return 'Descrição e unidade compatíveis';
             }
         }
 
@@ -556,7 +556,7 @@ class CompraPedidoService
     {
         $issues = [];
         if ($this->differentText($order->product_code ?? '', $invoice->product_code ?? '')) {
-            $issues[] = 'Codigo do produto divergente';
+            $issues[] = 'Código do produto divergente';
         }
         if (strcasecmp(trim((string) ($order->unit ?? '')), trim((string) ($invoice->unit ?? ''))) !== 0) {
             $issues[] = 'Unidade de medida divergente';
@@ -571,7 +571,7 @@ class CompraPedidoService
             $issues[] = 'Valor total divergente';
         }
         if (strcasecmp(trim((string) ($order->description ?? '')), trim((string) ($invoice->description ?? ''))) !== 0) {
-            $issues[] = 'Descricao divergente';
+            $issues[] = 'Descrição divergente';
         }
 
         return $issues;
@@ -580,7 +580,7 @@ class CompraPedidoService
     private function comparisonSummary(array $comparison): string
     {
         return sprintf(
-            'Itens conferidos: %d. Divergencias: %d. Nao encontrados na nota: %d. Nao encontrados no pedido: %d.',
+            'Itens conferidos: %d. Divergências: %d. Não encontrados na nota: %d. Não encontrados no pedido: %d.',
             $comparison['match_count'],
             count($comparison['divergences']),
             count($comparison['missing_in_invoice']),
@@ -676,7 +676,7 @@ class CompraPedidoService
     public function approveOrder(int $propertyId, int $pedido, ?int $userId, bool $confirmed): void
     {
         if (! $confirmed) {
-            throw new RuntimeException('Confirme explicitamente a aprovacao do pedido.');
+            throw new RuntimeException('Confirme explicitamente a aprovação do pedido.');
         }
 
         DB::transaction(function () use ($propertyId, $pedido, $userId): void {
@@ -687,11 +687,11 @@ class CompraPedidoService
                 ->first();
 
             if (! $order) {
-                throw new RuntimeException('Pedido fiscal nao encontrado.');
+                throw new RuntimeException('Pedido fiscal não encontrado.');
             }
 
             if (! $this->capabilities->for($order->status)['can_approve']) {
-                throw new RuntimeException('Este pedido nao esta em status pendente para aprovacao.');
+                throw new RuntimeException('Este pedido não está em status pendente para aprovação.');
             }
 
             $items = $this->orderItems($pedido);
@@ -841,7 +841,7 @@ class CompraPedidoService
             'numero_parcelas' => 1,
             'parcela_atual' => 1,
             'nota_fiscal' => $this->linkedInvoiceNumbers((int) $order->id),
-            'observacoes' => trim($marker."\nLancamento financeiro gerado automaticamente pela aprovacao do pedido fiscal.".($order->notes ? "\n".$order->notes : '')),
+            'observacoes' => trim($marker."\nLançamento financeiro gerado automaticamente pela aprovação do pedido fiscal.".($order->notes ? "\n".$order->notes : '')),
             'usuario_id' => $userId,
         ]);
 
@@ -923,7 +923,7 @@ class CompraPedidoService
                 'unidade' => trim((string) ($item->unit ?? 'un')) ?: 'un',
                 'valor_unitario' => (float) $item->unit_value,
                 'valor_total' => round($usedQuantity * (float) $item->unit_value, 2),
-                'observacoes' => trim($marker."\nLancamento gerado automaticamente pela aprovacao do pedido fiscal."),
+                'observacoes' => trim($marker."\nLançamento gerado automaticamente pela aprovação do pedido fiscal."),
                 'usuario_id' => $userId,
             ];
 
@@ -1025,7 +1025,7 @@ class CompraPedidoService
             'unidade_medida' => $unit,
             'categoria_id' => $categoryId,
             'ativo' => 1,
-            'informacoes_fiscais' => 'Criado automaticamente pela aprovacao do pedido fiscal '.(string) ($order->order_number ?? ''),
+            'informacoes_fiscais' => 'Criado automaticamente pela aprovação do pedido fiscal '.(string) ($order->order_number ?? ''),
         ]);
 
         return (int) DB::getPdo()->lastInsertId();

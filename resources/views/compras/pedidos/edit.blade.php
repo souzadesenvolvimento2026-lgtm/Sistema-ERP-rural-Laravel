@@ -4,7 +4,7 @@
     <div class="page-head">
         <div>
             <h1>Editar Pedido</h1>
-            <p class="subtitle">Ajuste os dados e itens antes da aprovacao.</p>
+            <p class="subtitle">Ajuste os dados e itens antes da aprovação.</p>
         </div>
         <a class="btn" href="{{ route('compras.pedidos.show', $order->id) }}">Voltar</a>
     </div>
