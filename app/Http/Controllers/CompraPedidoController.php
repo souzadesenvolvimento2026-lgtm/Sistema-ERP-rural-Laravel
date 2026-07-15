@@ -58,7 +58,7 @@ class CompraPedidoController extends Controller
             $orderId = $this->pedidos->createOrder($request, $propertyId, ! $canApproveOrders || $linkInvoiceBeforeApproval);
 
             if ($canApproveOrders && ! $linkInvoiceBeforeApproval) {
-                $expenseId = $this->pedidos->approveOrder($propertyId, $orderId, $userId, true);
+                $expenseId = $this->pedidos->approveOrder($propertyId, $orderId, $userId, true, true);
 
                 return $this->redirectToFinancialPanel($expenseId)
                     ->with('success', 'Pedido fiscal criado, aprovado e lançado no financeiro. Confira o lançamento no painel e informe a conta real na baixa do pagamento.');
@@ -137,7 +137,9 @@ class CompraPedidoController extends Controller
                 $this->pedidos->propertyId(),
                 $pedido,
                 session('usuario_id'),
-                $request->boolean('confirmar_aprovacao')
+                $request->boolean('confirmar_aprovacao'),
+                $request->boolean('confirmar_sem_nota'),
+                $request->boolean('confirmar_divergencias')
             );
         } catch (RuntimeException $exception) {
             report($exception);
@@ -147,6 +149,30 @@ class CompraPedidoController extends Controller
 
         return $this->redirectToFinancialPanel($expenseId)
             ->with('success', 'Pedido aprovado, lançado no financeiro e incorporado ao estoque. Confira o lançamento no painel e informe a conta real na baixa do pagamento.');
+    }
+
+    public function reject(Request $request, int $pedido): RedirectResponse
+    {
+        $dados = $request->validate([
+            'motivo_rejeicao' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        try {
+            $this->pedidos->rejectOrder(
+                $this->pedidos->propertyId(),
+                $pedido,
+                session('usuario_id'),
+                $dados['motivo_rejeicao'] ?? null,
+            );
+        } catch (RuntimeException $exception) {
+            report($exception);
+
+            return back()->withErrors($exception->getMessage());
+        }
+
+        return redirect()
+            ->route('compras.pedidos.index', ['status' => 'rejeitado'])
+            ->with('success', 'Pedido fiscal rejeitado com sucesso.');
     }
 
     public function linkInvoice(Request $request, int $pedido): RedirectResponse

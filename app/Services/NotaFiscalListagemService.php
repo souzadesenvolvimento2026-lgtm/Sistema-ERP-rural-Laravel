@@ -78,6 +78,51 @@ class NotaFiscalListagemService
         });
     }
 
+    public function rejeitar(int $propertyId, int $invoiceId, ?int $userId, ?string $reason = null): void
+    {
+        DB::transaction(function () use ($propertyId, $invoiceId, $userId, $reason): void {
+            $invoice = DB::table('fiscal_invoices')
+                ->where('id', $invoiceId)
+                ->where('propriedade_id', $propertyId)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $invoice) {
+                throw new RuntimeException('Nota fiscal não encontrada.');
+            }
+
+            if ((string) $invoice->status !== 'aguardando_aprovacao') {
+                throw new RuntimeException('Esta nota fiscal não está aguardando aprovação.');
+            }
+
+            $cleanReason = trim((string) $reason);
+
+            DB::table('fiscal_invoices')
+                ->where('id', $invoiceId)
+                ->where('propriedade_id', $propertyId)
+                ->update([
+                    'previous_status' => $invoice->status,
+                    'status' => 'rejeitada',
+                    'approval_metadata' => json_encode([
+                        'rejected_by' => $userId,
+                        'rejected_at' => now()->toIso8601String(),
+                        'previous_status' => $invoice->status,
+                        'reason' => $cleanReason,
+                    ], JSON_UNESCAPED_UNICODE),
+                    'updated_at' => now(),
+                ]);
+
+            $this->auditar(
+                $userId,
+                'rejeitar_nota_fiscal',
+                'fiscal_invoices',
+                $invoiceId,
+                $propertyId,
+                'Nota fiscal rejeitada no módulo fiscal'.($cleanReason !== '' ? ': '.$cleanReason : '')
+            );
+        });
+    }
+
     public function detalhe(int $propertyId, int $invoiceId): array
     {
         $nota = DB::table('fiscal_invoices')
@@ -118,8 +163,9 @@ class NotaFiscalListagemService
                 'total' => FarmFormat::money($nota->total_value),
                 'status_key' => (string) $nota->status,
                 'status' => $this->statusLabel((string) $nota->status),
-                'status_tone' => (string) $nota->status === 'aprovada' ? 'success' : '',
+                'status_tone' => $this->statusTone((string) $nota->status),
                 'can_approve' => (string) $nota->status === 'aguardando_aprovacao',
+                'can_reject' => (string) $nota->status === 'aguardando_aprovacao',
                 'item_count' => $itens->count(),
                 'tem_xml' => ! empty($nota->xml_file_path),
             ],
@@ -218,8 +264,9 @@ class NotaFiscalListagemService
                 'total' => FarmFormat::money($nota->total_value),
                 'status_key' => (string) $nota->status,
                 'status' => $this->statusLabel((string) $nota->status),
-                'status_tone' => (string) $nota->status === 'aprovada' ? 'success' : '',
+                'status_tone' => $this->statusTone((string) $nota->status),
                 'can_approve' => (string) $nota->status === 'aguardando_aprovacao',
+                'can_reject' => (string) $nota->status === 'aguardando_aprovacao',
                 'item_count' => (int) $nota->item_count,
                 'linked_orders' => (int) $nota->linked_orders,
                 'tem_xml' => ! empty($nota->xml_file_path),
@@ -240,6 +287,15 @@ class NotaFiscalListagemService
     private function statusLabel(string $status): string
     {
         return FarmFormat::statusLabel($status);
+    }
+
+    private function statusTone(string $status): string
+    {
+        return match ($status) {
+            'aprovada', 'aprovado' => 'success',
+            'rejeitada', 'cancelada' => 'danger',
+            default => 'warning',
+        };
     }
 
     private function auditar(?int $usuarioId, string $acao, string $tabela, int $registroId, int $propriedadeId, string $detalhes): void

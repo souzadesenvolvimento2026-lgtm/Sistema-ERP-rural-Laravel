@@ -166,10 +166,22 @@
                                 <div class="ff-purchase-row-actions">
                                     <a class="btn btn-sm btn-outline-primary" href="{{ route('compras.pedidos.show', $pedido->id) }}">Abrir</a>
                                     @if (($canApproveOrders ?? false) && $pedido->can_approve)
-                                        <form method="post" action="{{ route('compras.pedidos.approve', $pedido->id) }}" onsubmit="return confirm('Aprovar este pedido e lançar no financeiro/estoque?')">
+                                        <form
+                                            method="post"
+                                            action="{{ route('compras.pedidos.approve', $pedido->id) }}"
+                                            data-purchase-order-approval-form
+                                            data-requires-without-invoice-confirmation="{{ $pedido->has_linked_invoices ? '0' : '1' }}"
+                                            data-requires-divergence-confirmation="{{ $pedido->has_invoice_divergences ? '1' : '0' }}"
+                                        >
                                             @csrf
                                             <input type="hidden" name="confirmar_aprovacao" value="1">
                                             <button class="btn btn-sm primary" type="submit">Aprovar</button>
+                                        </form>
+                                    @endif
+                                    @if (($canApproveOrders ?? false) && $pedido->can_reject)
+                                        <form method="post" action="{{ route('compras.pedidos.reject', $pedido->id) }}" onsubmit="return confirm('Rejeitar este pedido fiscal?')">
+                                            @csrf
+                                            <button class="btn btn-sm danger" type="submit">Rejeitar</button>
                                         </form>
                                     @endif
                                 </div>
@@ -202,6 +214,7 @@
 @endsection
 
 @push('scripts')
+    @include('compras.pedidos.partials.approval-script')
     <script src="{{ asset('js/pedido-form.js') }}?v={{ @filemtime(public_path('js/pedido-form.js')) }}"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {

@@ -17,6 +17,12 @@
                     <button class="btn primary" type="submit">Aprovar nota</button>
                 </form>
             @endif
+            @if ($nota->can_reject)
+                <form method="post" action="{{ route('fiscal.notas.reject', $nota->id) }}" onsubmit="return confirm('Rejeitar esta nota fiscal?')">
+                    @csrf
+                    <button class="btn danger" type="submit">Rejeitar nota</button>
+                </form>
+            @endif
         </div>
     </div>
 

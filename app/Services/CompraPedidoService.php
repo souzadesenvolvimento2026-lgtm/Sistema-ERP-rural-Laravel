@@ -699,11 +699,15 @@ class CompraPedidoService
         }
 
         $order->status_label = FarmFormat::statusLabel((string) $order->status);
-        $order->status_tone = in_array(
-            (string) $order->status,
-            ['aprovado', 'aprovado_baixado', 'baixado'],
-            true,
-        ) ? 'success' : 'warning';
+        $order->status_tone = match ((string) $order->status) {
+            'aprovado', 'aprovado_baixado', 'baixado' => 'success',
+            'rejeitado', 'cancelado' => 'danger',
+            default => 'warning',
+        };
+        $order->linked_invoice_count = (int) ($order->linked_invoice_count ?? 0);
+        $order->divergent_invoice_count = (int) ($order->divergent_invoice_count ?? 0);
+        $order->has_linked_invoices = $order->linked_invoice_count > 0;
+        $order->has_invoice_divergences = $order->divergent_invoice_count > 0;
 
         return $order;
     }
@@ -736,7 +740,14 @@ class CompraPedidoService
         return $comparison;
     }
 
-    public function approveOrder(int $propertyId, int $pedido, ?int $userId, bool $confirmed): int
+    public function approveOrder(
+        int $propertyId,
+        int $pedido,
+        ?int $userId,
+        bool $confirmed,
+        bool $confirmWithoutInvoice = false,
+        bool $confirmDivergences = false,
+    ): int
     {
         if (! $confirmed) {
             throw new RuntimeException('Confirme explicitamente a aprovação do pedido.');
@@ -746,7 +757,13 @@ class CompraPedidoService
             throw new RuntimeException('Seu usuário não tem permissão para aprovar pedidos fiscais desta propriedade.');
         }
 
-        return DB::transaction(function () use ($propertyId, $pedido, $userId): int {
+        return DB::transaction(function () use (
+            $propertyId,
+            $pedido,
+            $userId,
+            $confirmWithoutInvoice,
+            $confirmDivergences,
+        ): int {
             $order = DB::table('fiscal_orders')
                 ->where('id', $pedido)
                 ->where('propriedade_id', $propertyId)
@@ -766,10 +783,26 @@ class CompraPedidoService
                 throw new RuntimeException('Não é possível aprovar um pedido sem itens.');
             }
 
+            $hasLinkedInvoices = DB::table('fiscal_order_invoices')
+                ->where('order_id', $pedido)
+                ->exists();
+            $hasInvoiceDivergences = $this->hasInvoiceDivergences($pedido);
+
+            if (! $hasLinkedInvoices && ! $confirmWithoutInvoice) {
+                throw new RuntimeException('Confirme que deseja aprovar este pedido sem nota fiscal vinculada.');
+            }
+
+            if ($hasLinkedInvoices && $hasInvoiceDivergences && ! $confirmDivergences) {
+                throw new RuntimeException('Existem divergências entre o pedido e a nota fiscal vinculada. Confira as divergências e confirme antes de aprovar.');
+            }
+
             $metadata = [
                 'approved_by' => $userId,
                 'approved_at' => now()->toIso8601String(),
-                'had_linked_invoices' => DB::table('fiscal_order_invoices')->where('order_id', $pedido)->exists(),
+                'had_linked_invoices' => $hasLinkedInvoices,
+                'had_invoice_divergences' => $hasInvoiceDivergences,
+                'confirmed_without_invoice' => ! $hasLinkedInvoices && $confirmWithoutInvoice,
+                'confirmed_with_divergences' => $hasLinkedInvoices && $hasInvoiceDivergences && $confirmDivergences,
             ];
 
             DB::table('fiscal_orders')
@@ -814,6 +847,8 @@ class CompraPedidoService
                     'numero' => (string) $approvedOrder->order_number,
                     'despesa_financeira_id' => $expenseId,
                     'nota_fiscal_vinculada' => (bool) $metadata['had_linked_invoices'],
+                    'aprovado_sem_nota_confirmado' => (bool) $metadata['confirmed_without_invoice'],
+                    'aprovado_com_divergencias_confirmado' => (bool) $metadata['confirmed_with_divergences'],
                     'itens_estoque' => $stockItems,
                     'itens_patrimonio' => $patrimonioItems,
                 ],
@@ -821,6 +856,72 @@ class CompraPedidoService
 
             return $expenseId;
         });
+    }
+
+    public function rejectOrder(int $propertyId, int $pedido, ?int $userId, ?string $reason = null): void
+    {
+        if (! $this->canApproveOrders($propertyId, $userId)) {
+            throw new RuntimeException('Seu usuário não tem permissão para rejeitar pedidos fiscais desta propriedade.');
+        }
+
+        DB::transaction(function () use ($propertyId, $pedido, $userId, $reason): void {
+            $order = DB::table('fiscal_orders')
+                ->where('id', $pedido)
+                ->where('propriedade_id', $propertyId)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $order) {
+                throw new RuntimeException('Pedido fiscal não encontrado.');
+            }
+
+            if (! $this->capabilities->for($order->status)['can_reject']) {
+                throw new RuntimeException('Este pedido não pode ser rejeitado no status atual.');
+            }
+
+            $cleanReason = trim((string) $reason);
+            $metadata = [
+                'rejected_by' => $userId,
+                'rejected_at' => now()->toIso8601String(),
+                'previous_status' => $order->status,
+                'reason' => $cleanReason,
+                'linked_invoice_count' => DB::table('fiscal_order_invoices')->where('order_id', $pedido)->count(),
+            ];
+
+            DB::table('fiscal_orders')
+                ->where('id', $pedido)
+                ->where('propriedade_id', $propertyId)
+                ->update([
+                    'previous_status' => $order->status,
+                    'status' => 'rejeitado',
+                    'approval_metadata' => json_encode($metadata, JSON_UNESCAPED_UNICODE),
+                    'updated_at' => now(),
+                ]);
+
+            AuditService::log(
+                action: 'rejeitar_pedido_fiscal',
+                table: 'fiscal_orders',
+                recordId: $pedido,
+                propertyId: $propertyId,
+                details: [
+                    'numero' => (string) $order->order_number,
+                    'status_anterior' => (string) $order->status,
+                    'motivo' => $cleanReason,
+                ],
+            );
+        });
+    }
+
+    private function hasInvoiceDivergences(int $pedido): bool
+    {
+        if (DB::table('fiscal_order_invoices')
+            ->where('order_id', $pedido)
+            ->where('match_status', 'divergente')
+            ->exists()) {
+            return true;
+        }
+
+        return (bool) ($this->invoiceComparison($pedido)['has_divergences'] ?? false);
     }
 
     private function baseOrderQuery(int $propertyId)
@@ -839,6 +940,8 @@ class CompraPedidoService
                 'pedidos.status',
                 'pedidos.notes',
                 'propriedades.nome as propriedade_nome',
+                DB::raw('(SELECT COUNT(*) FROM fiscal_order_invoices foi WHERE foi.order_id = pedidos.id) as linked_invoice_count'),
+                DB::raw("(SELECT COUNT(*) FROM fiscal_order_invoices foi WHERE foi.order_id = pedidos.id AND foi.match_status = 'divergente') as divergent_invoice_count"),
             ]);
     }
 

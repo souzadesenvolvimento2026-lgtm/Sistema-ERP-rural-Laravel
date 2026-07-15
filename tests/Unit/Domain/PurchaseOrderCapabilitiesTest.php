@@ -13,6 +13,7 @@ class PurchaseOrderCapabilitiesTest extends TestCase
 
         $this->assertTrue($capabilities['can_edit']);
         $this->assertTrue($capabilities['can_approve']);
+        $this->assertTrue($capabilities['can_reject']);
         $this->assertTrue($capabilities['can_link_invoice']);
         $this->assertTrue($capabilities['can_unlink_invoice']);
         $this->assertTrue($capabilities['can_confirm_invoice_link']);
@@ -26,5 +27,6 @@ class PurchaseOrderCapabilitiesTest extends TestCase
         $this->assertFalse($rules->for('em_aberto', false, 1)['can_confirm_invoice_link']);
         $this->assertFalse($rules->for('aprovado_baixado', true, 1)['can_confirm_invoice_link']);
         $this->assertFalse($rules->for('aprovado_baixado')['can_edit']);
+        $this->assertFalse($rules->for('aprovado_baixado')['can_reject']);
     }
 }

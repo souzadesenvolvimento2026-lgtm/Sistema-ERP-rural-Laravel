@@ -99,6 +99,30 @@ class NotaFiscalController extends Controller
             ->with('success', 'Nota fiscal aprovada pelo Laravel.');
     }
 
+    public function reject(Request $request, int $nota, NotaFiscalListagemService $service): RedirectResponse
+    {
+        $dados = $request->validate([
+            'motivo_rejeicao' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        try {
+            $service->rejeitar(
+                app(FarmContext::class)->propertyId(),
+                $nota,
+                session('usuario_id'),
+                $dados['motivo_rejeicao'] ?? null,
+            );
+        } catch (RuntimeException $exception) {
+            report($exception);
+
+            return back()->withErrors($exception->getMessage());
+        }
+
+        return redirect()
+            ->route('fiscal.notas.index', ['status' => 'rejeitada'])
+            ->with('success', 'Nota fiscal rejeitada com sucesso.');
+    }
+
     public function xml(int $nota, NotaFiscalListagemService $service): BinaryFileResponse
     {
         return $service->baixarXml(app(FarmContext::class)->propertyId(), $nota);

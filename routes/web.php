@@ -221,6 +221,7 @@ Route::post('/fiscal/notas/importar/cancelar', [NotaFiscalController::class, 'ca
 Route::get('/fiscal/notas/{nota}', [NotaFiscalController::class, 'show'])->name('fiscal.notas.show');
 Route::get('/fiscal/notas/{nota}/xml', [NotaFiscalController::class, 'xml'])->name('fiscal.notas.xml');
 Route::post('/fiscal/notas/{nota}/aprovar', [NotaFiscalController::class, 'approve'])->name('fiscal.notas.approve');
+Route::post('/fiscal/notas/{nota}/rejeitar', [NotaFiscalController::class, 'reject'])->name('fiscal.notas.reject');
 Route::get('/fiscal/certificados', [CertificadoDigitalController::class, 'index'])->name('fiscal.certificados.index');
 Route::post('/fiscal/certificados', [CertificadoDigitalController::class, 'store'])->name('fiscal.certificados.store');
 Route::post('/fiscal/certificados/{certificado}/principal', [CertificadoDigitalController::class, 'principal'])->name('fiscal.certificados.principal');
@@ -279,6 +280,7 @@ Route::prefix('compras')->name('compras.')->group(function () {
     Route::post('/pedidos/{pedido}/notas/cancelar-preview', [CompraPedidoController::class, 'cancelInvoicePreview'])->name('pedidos.notas.preview.cancel');
     Route::delete('/pedidos/{pedido}/notas/{nota}', [CompraPedidoController::class, 'unlinkInvoice'])->name('pedidos.notas.unlink');
     Route::post('/pedidos/{pedido}/aprovar', [CompraPedidoController::class, 'approve'])->name('pedidos.approve');
+    Route::post('/pedidos/{pedido}/rejeitar', [CompraPedidoController::class, 'reject'])->name('pedidos.reject');
 });
 
 Route::get('/pages/{legacy}', function (Request $request, string $legacy) {

@@ -10,6 +10,7 @@ final class PurchaseOrderCapabilities
      * @return array{
      *     can_edit: bool,
      *     can_approve: bool,
+     *     can_reject: bool,
      *     can_link_invoice: bool,
      *     can_unlink_invoice: bool,
      *     can_confirm_invoice_link: bool
@@ -25,6 +26,7 @@ final class PurchaseOrderCapabilities
         return [
             'can_edit' => $isMutable,
             'can_approve' => $isMutable,
+            'can_reject' => $isMutable,
             'can_link_invoice' => $isMutable,
             'can_unlink_invoice' => $isMutable,
             'can_confirm_invoice_link' => $isMutable

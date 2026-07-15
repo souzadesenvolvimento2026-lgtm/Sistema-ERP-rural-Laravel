@@ -1035,7 +1035,7 @@ class ExampleTest extends TestCase
             $this->withSession([...$this->loggedSession(propertyId: $propertyId), 'fiscal_order_invoice_preview' => $preview])
                 ->get('/compras/pedidos/'.$orderId)
                 ->assertStatus(200)
-                ->assertSee('Conferencia da nota fiscal')
+                ->assertSee('Conferência da nota fiscal')
                 ->assertSee('Valor unitario divergente');
 
             $this->withSession([...$this->loggedSession(propertyId: $propertyId), 'fiscal_order_invoice_preview' => $preview])
@@ -1286,8 +1286,11 @@ XML;
             ]);
 
             $this->withSession($this->loggedSession(propertyId: $propertyId))
-                ->post('/compras/pedidos/'.$orderId.'/aprovar', ['confirmar_aprovacao' => '1'])
-                ->assertRedirect('/compras/pedidos/'.$orderId);
+                ->post('/compras/pedidos/'.$orderId.'/aprovar', [
+                    'confirmar_aprovacao' => '1',
+                    'confirmar_sem_nota' => '1',
+                ])
+                ->assertRedirect();
 
             $this->assertDatabaseHas('fiscal_orders', [
                 'id' => $orderId,
@@ -1303,6 +1306,190 @@ XML;
                 'fiscal_order_id' => $orderId,
                 'tipo' => 'entrada',
                 'quantidade' => '3.0000',
+            ]);
+        } finally {
+            DB::rollBack();
+        }
+    }
+
+    public function test_purchase_order_approval_requires_confirmation_without_invoice(): void
+    {
+        DB::beginTransaction();
+
+        try {
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
+            $this->assertGreaterThan(0, $propertyId);
+
+            DB::table('fiscal_orders')->insert([
+                'propriedade_id' => $propertyId,
+                'order_number' => 'PED-LARAVEL-SEM-NF',
+                'supplier_name' => 'Fornecedor sem NF',
+                'supplier_cnpj' => '12345678000190',
+                'order_type' => 'entrada',
+                'issue_date' => '2026-07-09',
+                'total_value' => 80,
+                'status' => 'em_aberto',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $orderId = (int) DB::getPdo()->lastInsertId();
+
+            DB::table('fiscal_order_items')->insert([
+                'order_id' => $orderId,
+                'product_code' => 'SEM-NF-001',
+                'description' => 'Produto sem nota vinculada',
+                'unit' => 'Unidade',
+                'quantity' => 1,
+                'unit_value' => 80,
+                'total_value' => 80,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
+                ->from('/compras/pedidos/'.$orderId)
+                ->post('/compras/pedidos/'.$orderId.'/aprovar', ['confirmar_aprovacao' => '1'])
+                ->assertRedirect('/compras/pedidos/'.$orderId)
+                ->assertSessionHasErrors();
+
+            $this->assertDatabaseHas('fiscal_orders', [
+                'id' => $orderId,
+                'status' => 'em_aberto',
+            ]);
+        } finally {
+            DB::rollBack();
+        }
+    }
+
+    public function test_purchase_order_approval_requires_confirmation_with_invoice_divergence(): void
+    {
+        DB::beginTransaction();
+
+        try {
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
+            $this->assertGreaterThan(0, $propertyId);
+
+            DB::table('fiscal_orders')->insert([
+                'propriedade_id' => $propertyId,
+                'order_number' => 'PED-LARAVEL-DIVERGENCIA',
+                'supplier_name' => 'Fornecedor Divergente',
+                'supplier_cnpj' => '12345678000190',
+                'order_type' => 'entrada',
+                'issue_date' => '2026-07-09',
+                'total_value' => 120,
+                'status' => 'em_aberto',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $orderId = (int) DB::getPdo()->lastInsertId();
+
+            DB::table('fiscal_order_items')->insert([
+                'order_id' => $orderId,
+                'product_code' => 'DIV-001',
+                'description' => 'Produto divergente',
+                'unit' => 'Unidade',
+                'quantity' => 1,
+                'unit_value' => 120,
+                'total_value' => 120,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            DB::table('fiscal_invoices')->insert([
+                'propriedade_id' => $propertyId,
+                'user_id' => $this->userId(),
+                'access_key' => 'NFE-LARAVEL-DIVERGENCIA-'.uniqid(),
+                'invoice_number' => 'NF-LARAVEL-DIVERGENCIA',
+                'series' => '1',
+                'issue_date' => '2026-07-09',
+                'issuer_cnpj' => '12345678000190',
+                'issuer_name' => 'Fornecedor Divergente',
+                'recipient_cnpj' => '98765432000110',
+                'recipient_name' => 'Fazenda Teste',
+                'total_value' => 100,
+                'status' => 'aguardando_aprovacao',
+                'created_by' => $this->userId(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $invoiceId = (int) DB::getPdo()->lastInsertId();
+
+            DB::table('fiscal_order_invoices')->insert([
+                'order_id' => $orderId,
+                'invoice_id' => $invoiceId,
+                'match_status' => 'divergente',
+                'match_summary' => 'Teste automatizado com divergência.',
+                'linked_by' => $this->userId(),
+                'linked_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
+                ->from('/compras/pedidos/'.$orderId)
+                ->post('/compras/pedidos/'.$orderId.'/aprovar', ['confirmar_aprovacao' => '1'])
+                ->assertRedirect('/compras/pedidos/'.$orderId)
+                ->assertSessionHasErrors();
+
+            $this->assertDatabaseHas('fiscal_orders', [
+                'id' => $orderId,
+                'status' => 'em_aberto',
+            ]);
+
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
+                ->post('/compras/pedidos/'.$orderId.'/aprovar', [
+                    'confirmar_aprovacao' => '1',
+                    'confirmar_divergencias' => '1',
+                ])
+                ->assertRedirect();
+
+            $this->assertDatabaseHas('fiscal_orders', [
+                'id' => $orderId,
+                'status' => 'aprovado_baixado',
+            ]);
+        } finally {
+            DB::rollBack();
+        }
+    }
+
+    public function test_purchase_order_can_be_rejected(): void
+    {
+        DB::beginTransaction();
+
+        try {
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
+            $this->assertGreaterThan(0, $propertyId);
+
+            DB::table('fiscal_orders')->insert([
+                'propriedade_id' => $propertyId,
+                'order_number' => 'PED-LARAVEL-REJEITAR',
+                'supplier_name' => 'Fornecedor Rejeição',
+                'supplier_cnpj' => '12345678000190',
+                'order_type' => 'entrada',
+                'issue_date' => '2026-07-09',
+                'total_value' => 50,
+                'status' => 'aguardando_aprovacao',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $orderId = (int) DB::getPdo()->lastInsertId();
+
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
+                ->post('/compras/pedidos/'.$orderId.'/rejeitar', [
+                    'motivo_rejeicao' => 'Dados fiscais inconsistentes.',
+                ])
+                ->assertRedirect('/compras/pedidos?status=rejeitado');
+
+            $this->assertDatabaseHas('fiscal_orders', [
+                'id' => $orderId,
+                'status' => 'rejeitado',
+                'previous_status' => 'aguardando_aprovacao',
+            ]);
+            $this->assertDatabaseHas('logs_auditoria', [
+                'acao' => 'rejeitar_pedido_fiscal',
+                'tabela' => 'fiscal_orders',
+                'registro_id' => $orderId,
+                'propriedade_id' => $propertyId,
             ]);
         } finally {
             DB::rollBack();
@@ -10061,6 +10248,58 @@ XML;
             $this->assertNotNull(DB::table('fiscal_invoices')->where('id', $invoiceId)->value('approval_metadata'));
             $this->assertDatabaseHas('logs_auditoria', [
                 'acao' => 'aprovar_nota_fiscal',
+                'tabela' => 'fiscal_invoices',
+                'registro_id' => $invoiceId,
+                'propriedade_id' => $propertyId,
+            ]);
+        } finally {
+            DB::rollBack();
+        }
+    }
+
+    public function test_fiscal_invoice_can_be_rejected(): void
+    {
+        DB::beginTransaction();
+
+        try {
+            $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
+            $this->assertGreaterThan(0, $propertyId);
+            session(['propriedade_id' => $propertyId]);
+
+            DB::table('fiscal_invoices')->insert([
+                'propriedade_id' => $propertyId,
+                'user_id' => $this->userId(),
+                'access_key' => 'NFE-LARAVEL-REJEITAR-'.uniqid(),
+                'invoice_number' => 'NF-LARAVEL-REJEITAR',
+                'series' => '1',
+                'issue_date' => '2026-07-09',
+                'issuer_cnpj' => '12345678000195',
+                'issuer_name' => 'Fornecedor rejeição Laravel',
+                'recipient_cnpj' => '98765432000110',
+                'recipient_name' => 'Fazenda Teste',
+                'total_value' => 210,
+                'status' => 'aguardando_aprovacao',
+                'xml_file_path' => 'storage/app/private/teste-rejeitar.xml',
+                'created_by' => $this->userId(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $invoiceId = (int) DB::getPdo()->lastInsertId();
+
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
+                ->post('/fiscal/notas/'.$invoiceId.'/rejeitar', [
+                    'motivo_rejeicao' => 'XML não corresponde ao pedido conferido.',
+                ])
+                ->assertRedirect('/fiscal/notas?status=rejeitada');
+
+            $this->assertDatabaseHas('fiscal_invoices', [
+                'id' => $invoiceId,
+                'status' => 'rejeitada',
+                'previous_status' => 'aguardando_aprovacao',
+            ]);
+            $this->assertNotNull(DB::table('fiscal_invoices')->where('id', $invoiceId)->value('approval_metadata'));
+            $this->assertDatabaseHas('logs_auditoria', [
+                'acao' => 'rejeitar_nota_fiscal',
                 'tabela' => 'fiscal_invoices',
                 'registro_id' => $invoiceId,
                 'propriedade_id' => $propertyId,
