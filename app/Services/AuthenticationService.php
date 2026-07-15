@@ -102,7 +102,7 @@ final class AuthenticationService
     {
         $this->audit(
             'liberar_edicao_sistema',
-            'Usuario liberou edicao operacional nas propriedades por senha',
+            'Usuário liberou edição operacional por senha',
             $userId,
             $propertyId,
             $ip,

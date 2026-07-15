@@ -79,8 +79,32 @@ class SecurityHardeningTest extends TestCase
         $this->assertStringContainsString('canTrustProxyHeaders', $requestContext);
         $this->assertStringContainsString('X-Forwarded-For', $requestContext);
         $this->assertStringContainsString('ip_cliente', $auditService);
+        $this->assertStringContainsString('public static function log', $auditService);
+        $this->assertStringContainsString("\$usuarioId ??= (int) session('usuario_id') ?: null;", $auditService);
         $this->assertStringContainsString('sanitizarArray', $auditService);
         $this->assertStringContainsString('[removido]', $auditService);
+    }
+
+    public function test_system_write_unlock_is_scoped_to_selected_property(): void
+    {
+        $controller = $this->contents('app/Http/Controllers/SystemUnlockController.php');
+        $contextController = $this->contents('app/Http/Controllers/PropertyContextController.php');
+        $service = $this->contents('app/Services/SystemWriteUnlockService.php');
+        $properties = $this->contents('app/Services/PropriedadeService.php');
+        $layout = $this->contents('resources/views/layouts/farmfort.blade.php');
+        $script = $this->contents('public/js/farmfort.js');
+
+        $this->assertStringContainsString('DURATION_SECONDS = 300', $service);
+        $this->assertStringContainsString('SESSION_PROPERTY_ID', $service);
+        $this->assertStringContainsString('isActiveFor', $service);
+        $this->assertStringContainsString('refresh(Request $request)', $controller);
+        $this->assertStringContainsString('renovar_edicao_sistema', $controller);
+        $this->assertStringContainsString('$this->writeUnlock->forget($request);', $contextController);
+        $this->assertStringContainsString('exigirEdicaoSistemaLiberada', $properties);
+        $this->assertStringContainsString('$selectedPropertyId === (int) $row->id', $properties);
+        $this->assertStringContainsString('data-ff-system-unlock', $layout);
+        $this->assertStringContainsString('initSystemWriteUnlockReminder', $script);
+        $this->assertStringContainsString('systemWriteUnlockReminderModal', $script);
     }
 
     private function contents(string $path): string

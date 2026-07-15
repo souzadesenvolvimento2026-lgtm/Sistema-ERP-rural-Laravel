@@ -47,8 +47,10 @@ class PropriedadeService
         'premium' => 'Premium - até 10 usuários',
     ];
 
-    public function __construct(private readonly ProfileAccess $access)
-    {
+    public function __construct(
+        private readonly ProfileAccess $access,
+        private readonly SystemWriteUnlockService $writeUnlock,
+    ) {
     }
 
     public function pagina(Request $request): array
@@ -59,7 +61,18 @@ class PropriedadeService
         $isSystemAdmin = $this->access->isSystemAdministrator($perfil);
         $canEditProperties = $isSystemAdmin || in_array($perfil, self::PROPERTY_MANAGER_PROFILES, true);
         $canToggleProperties = $isSystemAdmin;
-        $rows = $this->rows($filtros, $usuarioId, $perfil, $canEditProperties, $canToggleProperties);
+        $selectedPropertyId = (int) session('propriedade_id', 0);
+        $systemWriteUnlocked = $isSystemAdmin && $this->writeUnlock->isActiveFor($selectedPropertyId);
+        $rows = $this->rows(
+            $filtros,
+            $usuarioId,
+            $perfil,
+            $canEditProperties,
+            $canToggleProperties,
+            $isSystemAdmin,
+            $selectedPropertyId,
+            $systemWriteUnlocked,
+        );
         $usuariosPorPropriedade = $this->usuariosPorPropriedade($rows->pluck('id')->all());
 
         $rows = $rows->map(function ($row) use ($usuariosPorPropriedade) {
@@ -72,10 +85,12 @@ class PropriedadeService
         $propriedadeAtual = DB::table('propriedades')
             ->where('id', (int) session('propriedade_id'))
             ->first(['id', 'nome', 'plano']);
-        $canCreateProperty = $isSystemAdmin || (
-            $canEditProperties
-            && (string) ($propriedadeAtual->plano ?? '') === 'premium'
-        );
+        $canCreateProperty = $isSystemAdmin
+            ? $systemWriteUnlocked
+            : (
+                $canEditProperties
+                && (string) ($propriedadeAtual->plano ?? '') === 'premium'
+            );
 
         return [
             'activeModule' => 'propriedades',
@@ -229,7 +244,16 @@ class PropriedadeService
         ];
     }
 
-    private function rows(array $filtros, int $usuarioId, string $perfil, bool $canEditProperties, bool $canToggleProperties): Collection
+    private function rows(
+        array $filtros,
+        int $usuarioId,
+        string $perfil,
+        bool $canEditProperties,
+        bool $canToggleProperties,
+        bool $isSystemAdmin,
+        int $selectedPropertyId,
+        bool $systemWriteUnlocked,
+    ): Collection
     {
         $query = DB::table('propriedades as p')
             ->leftJoin('usuarios as aprovador', 'aprovador.id', '=', 'p.aprovador_usuario_id')
@@ -320,16 +344,33 @@ class PropriedadeService
                 DB::raw('COALESCE(talhoes.talhoes_total, 0) as talhoes_total'),
                 DB::raw('COALESCE(grupos.grupos_nomes, "") as grupos_nomes'),
             ])
-            ->map(fn ($row) => $this->normalizar($row, $canEditProperties, $canToggleProperties));
+            ->map(fn ($row) => $this->normalizar(
+                $row,
+                $canEditProperties,
+                $canToggleProperties,
+                $isSystemAdmin,
+                $selectedPropertyId,
+                $systemWriteUnlocked,
+            ));
     }
 
-    private function normalizar($row, bool $canEditProperties, bool $canToggleProperties): object
+    private function normalizar(
+        $row,
+        bool $canEditProperties,
+        bool $canToggleProperties,
+        bool $isSystemAdmin,
+        int $selectedPropertyId,
+        bool $systemWriteUnlocked,
+    ): object
     {
         $plano = (string) ($row->plano ?: 'basico');
         $latitude = $row->latitude !== null ? (string) $row->latitude : '';
         $longitude = $row->longitude !== null ? (string) $row->longitude : '';
         $hasGeo = $latitude !== '' && $longitude !== '';
         $mapUrl = $hasGeo ? 'https://www.google.com/maps?q='.rawurlencode($latitude.','.$longitude) : null;
+        $canEditRow = $isSystemAdmin
+            ? ($systemWriteUnlocked && $selectedPropertyId === (int) $row->id)
+            : $canEditProperties;
 
         return (object) [
             'id' => (int) $row->id,
@@ -370,7 +411,7 @@ class PropriedadeService
             'has_geo' => $hasGeo,
             'geo' => $hasGeo ? $latitude.', '.$longitude : 'Sem KML',
             'geo_url' => $mapUrl,
-            'can_edit' => $canEditProperties,
+            'can_edit' => $canEditRow,
             'can_toggle' => $canToggleProperties,
         ];
     }
@@ -728,6 +769,8 @@ class PropriedadeService
     {
         $perfil = (string) session('perfil', '');
         if ($this->access->isSystemAdministrator($perfil)) {
+            $this->exigirEdicaoSistemaLiberada((int) session('propriedade_id', 0));
+
             return;
         }
 
@@ -749,6 +792,8 @@ class PropriedadeService
         $perfil = (string) session('perfil', '');
         $usuarioId = (int) session('usuario_id');
         if ($this->access->isSystemAdministrator($perfil)) {
+            $this->exigirEdicaoSistemaLiberada($propriedadeId);
+
             return;
         }
 
@@ -773,6 +818,19 @@ class PropriedadeService
 
         if (! $acessa) {
             throw new RuntimeException('Você não tem acesso a esta propriedade.');
+        }
+    }
+
+    private function exigirEdicaoSistemaLiberada(int $propriedadeId): void
+    {
+        $propriedadeSelecionadaId = (int) session('propriedade_id', 0);
+
+        if ($propriedadeSelecionadaId !== $propriedadeId) {
+            throw new RuntimeException('A liberação de edição vale apenas para a propriedade selecionada. Selecione esta fazenda e libere novamente.');
+        }
+
+        if (! $this->writeUnlock->isActiveFor($propriedadeId)) {
+            throw new RuntimeException('Libere a edição da propriedade selecionada antes de alterar esta fazenda.');
         }
     }
 

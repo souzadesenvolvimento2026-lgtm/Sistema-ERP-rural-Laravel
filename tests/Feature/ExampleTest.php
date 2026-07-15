@@ -285,20 +285,183 @@ class ExampleTest extends TestCase
         DB::beginTransaction();
         try {
             $userId = $this->userId();
+            $propertyId = (int) DB::table('propriedades')->where('ativo', 1)->orderBy('id')->value('id');
             DB::table('usuarios')->where('id', $userId)->update([
                 'senha' => password_hash('senha-teste', PASSWORD_DEFAULT),
                 'perfil' => 'gerencia_sistema',
                 'ativo' => 1,
             ]);
 
-            $this->withSession($this->loggedSession(profile: 'gerencia_sistema', userId: $userId))
+            $this->withSession($this->loggedSession(propertyId: $propertyId, profile: 'gerencia_sistema', userId: $userId))
                 ->post('/sistema/liberar-edicao', [
                     'senha_confirmacao' => 'senha-teste',
                     'return_to' => '/dashboard',
                 ])
                 ->assertRedirect('/dashboard')
                 ->assertSessionHas('success')
-                ->assertSessionHas('system_write_unlocked_until');
+                ->assertSessionHas('system_write_unlocked_until')
+                ->assertSessionHas('system_write_unlocked_property_id', $propertyId);
+        } finally {
+            DB::rollBack();
+        }
+    }
+
+    public function test_system_unlock_is_cleared_when_selected_property_changes(): void
+    {
+        DB::beginTransaction();
+
+        try {
+            $userId = $this->userId();
+            DB::table('usuarios')->where('id', $userId)->update([
+                'senha' => password_hash('senha-teste', PASSWORD_DEFAULT),
+                'perfil' => 'gerencia_sistema',
+                'ativo' => 1,
+            ]);
+
+            $firstPropertyId = (int) DB::table('propriedades')->where('ativo', 1)->orderBy('id')->value('id');
+            DB::table('propriedades')->insert([
+                'nome' => 'Fazenda troca desbloqueio Laravel '.uniqid(),
+                'municipio' => 'Rio Verde',
+                'estado' => 'GO',
+                'area_total' => 100,
+                'responsavel' => 'Responsável troca',
+                'cnpj_cpf' => '12345678904',
+                'plano' => 'premium',
+                'pecuaria_ativa' => 0,
+                'ativo' => 1,
+            ]);
+            $secondPropertyId = (int) DB::getPdo()->lastInsertId();
+
+            $session = $this->loggedSession(
+                propertyId: $firstPropertyId,
+                profile: 'gerencia_sistema',
+                userId: $userId,
+            );
+
+            $this->withSession($session)
+                ->post('/sistema/liberar-edicao', [
+                    'senha_confirmacao' => 'senha-teste',
+                    'return_to' => '/dashboard',
+                ])
+                ->assertSessionHas('system_write_unlocked_property_id', $firstPropertyId);
+
+            $this->withSession($session + [
+                    'system_write_unlocked_until' => time() + 300,
+                    'system_write_unlocked_property_id' => $firstPropertyId,
+                ])
+                ->post('/propriedades/selecionar', [
+                    'propriedade_id' => $secondPropertyId,
+                ])
+                ->assertSessionMissing('system_write_unlocked_until')
+                ->assertSessionMissing('system_write_unlocked_property_id');
+        } finally {
+            DB::rollBack();
+        }
+    }
+
+    public function test_system_admin_property_update_requires_selected_property_unlock(): void
+    {
+        DB::beginTransaction();
+
+        try {
+            DB::table('propriedades')->insert([
+                'nome' => 'Fazenda bloqueio edicao Laravel',
+                'municipio' => 'Rio Verde',
+                'estado' => 'GO',
+                'area_total' => 100,
+                'responsavel' => 'Responsavel bloqueio',
+                'cnpj_cpf' => '12345678905',
+                'plano' => 'premium',
+                'pecuaria_ativa' => 0,
+                'ativo' => 1,
+            ]);
+            $propertyId = (int) DB::getPdo()->lastInsertId();
+
+            $this->withSession($this->loggedSession(propertyId: $propertyId, profile: 'gerencia_sistema'))
+                ->from('/propriedades/'.$propertyId.'/editar')
+                ->put('/propriedades/'.$propertyId, [
+                    'nome' => 'Fazenda bloqueio alterada',
+                    'municipio' => 'Rio Verde',
+                    'estado' => 'GO',
+                    'area_total' => '100',
+                    'responsavel' => 'Responsavel bloqueio',
+                    'inscricao_estadual' => '',
+                    'cnpj_cpf' => '12345678905',
+                    'plano' => 'premium',
+                    'pecuaria_ativa' => '0',
+                    'latitude' => '',
+                    'longitude' => '',
+                    'regiao_cotacao' => '',
+                ])
+                ->assertRedirect('/propriedades/'.$propertyId.'/editar')
+                ->assertSessionHasErrors();
+
+            $this->assertDatabaseHas('propriedades', [
+                'id' => $propertyId,
+                'nome' => 'Fazenda bloqueio edicao Laravel',
+            ]);
+        } finally {
+            DB::rollBack();
+        }
+    }
+
+    public function test_system_admin_property_unlock_is_scoped_to_selected_property(): void
+    {
+        DB::beginTransaction();
+
+        try {
+            DB::table('propriedades')->insert([
+                'nome' => 'Fazenda liberada Laravel',
+                'municipio' => 'Rio Verde',
+                'estado' => 'GO',
+                'area_total' => 100,
+                'responsavel' => 'Responsavel liberada',
+                'cnpj_cpf' => '12345678906',
+                'plano' => 'premium',
+                'pecuaria_ativa' => 0,
+                'ativo' => 1,
+            ]);
+            $selectedPropertyId = (int) DB::getPdo()->lastInsertId();
+
+            DB::table('propriedades')->insert([
+                'nome' => 'Fazenda nao liberada Laravel',
+                'municipio' => 'Jatai',
+                'estado' => 'GO',
+                'area_total' => 80,
+                'responsavel' => 'Responsavel nao liberada',
+                'cnpj_cpf' => '12345678907',
+                'plano' => 'premium',
+                'pecuaria_ativa' => 0,
+                'ativo' => 1,
+            ]);
+            $otherPropertyId = (int) DB::getPdo()->lastInsertId();
+
+            $this->withSession($this->loggedSession(propertyId: $selectedPropertyId, profile: 'gerencia_sistema') + [
+                    'system_write_unlocked_until' => time() + 300,
+                    'system_write_unlocked_property_id' => $selectedPropertyId,
+                ])
+                ->from('/propriedades/'.$otherPropertyId.'/editar')
+                ->put('/propriedades/'.$otherPropertyId, [
+                    'nome' => 'Fazenda nao liberada alterada',
+                    'municipio' => 'Jatai',
+                    'estado' => 'GO',
+                    'area_total' => '80',
+                    'responsavel' => 'Responsavel nao liberada',
+                    'inscricao_estadual' => '',
+                    'cnpj_cpf' => '12345678907',
+                    'plano' => 'premium',
+                    'pecuaria_ativa' => '0',
+                    'latitude' => '',
+                    'longitude' => '',
+                    'regiao_cotacao' => '',
+                ])
+                ->assertRedirect('/propriedades/'.$otherPropertyId.'/editar')
+                ->assertSessionHasErrors();
+
+            $this->assertDatabaseHas('propriedades', [
+                'id' => $otherPropertyId,
+                'nome' => 'Fazenda nao liberada Laravel',
+            ]);
         } finally {
             DB::rollBack();
         }

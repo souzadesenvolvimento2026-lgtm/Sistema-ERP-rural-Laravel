@@ -9,7 +9,29 @@ use Throwable;
 
 class AuditService
 {
-    public function __construct(private readonly RequestContextService $context) {}
+    public function __construct(private readonly RequestContextService $context)
+    {
+    }
+
+    public static function log(
+        string $action,
+        string $table,
+        ?int $recordId = null,
+        ?int $propertyId = null,
+        mixed $details = null,
+        ?Request $request = null,
+        ?int $userId = null,
+    ): void {
+        app(self::class)->registrar(
+            $userId,
+            $action,
+            $table,
+            $recordId,
+            $propertyId,
+            $details,
+            $request,
+        );
+    }
 
     public function registrar(
         ?int $usuarioId,
@@ -21,6 +43,7 @@ class AuditService
         ?Request $request = null,
     ): void {
         try {
+            $usuarioId ??= (int) session('usuario_id') ?: null;
             $contexto = $this->context->auditContext($request);
             $payload = [
                 'usuario_id' => $usuarioId,

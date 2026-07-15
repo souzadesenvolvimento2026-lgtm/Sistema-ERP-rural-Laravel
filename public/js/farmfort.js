@@ -1884,6 +1884,119 @@ function initFarmFortChartMaximizer() {
   });
 }
 
+function initSystemWriteUnlockReminder() {
+  const unlockButton = document.querySelector('[data-ff-system-unlock]');
+  if (!unlockButton || unlockButton.dataset.active !== '1') return;
+
+  const refreshUrl = unlockButton.dataset.refreshUrl || '';
+  const propertyName = unlockButton.dataset.propertyName || 'a propriedade selecionada';
+  let expiresAt = Number(unlockButton.dataset.expiresAt || 0) * 1000;
+  if (!refreshUrl || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) return;
+
+  const escapeHtml = (value) => String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+  const askToKeepEditing = () => new Promise((resolve) => {
+    if (!window.bootstrap) {
+      resolve(window.confirm(
+        `A liberação de edição para ${propertyName} expira em instantes. Deseja continuar editando?`
+      ));
+      return;
+    }
+
+    document.getElementById('systemWriteUnlockReminderModal')?.remove();
+
+    const modalElement = document.createElement('div');
+    modalElement.id = 'systemWriteUnlockReminderModal';
+    modalElement.className = 'modal fade';
+    modalElement.tabIndex = -1;
+    modalElement.setAttribute('aria-hidden', 'true');
+    modalElement.innerHTML = `
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header modal-header-green">
+            <h5 class="modal-title">
+              <i class="bi bi-unlock me-2"></i>Continuar editando?
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <p class="mb-2">A liberação de edição para <strong>${escapeHtml(propertyName)}</strong> expira em instantes.</p>
+            <p class="text-muted mb-0">Se você não confirmar até o prazo, será necessário digitar a senha novamente.</p>
+          </div>
+          <div class="modal-footer ff-modal-footer-split">
+            <button type="button" class="btn" data-ff-unlock-dismiss>Não continuar</button>
+            <button type="button" class="btn btn-success" data-ff-unlock-continue>Continuar editando</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modalElement);
+
+    const modal = bootstrap.Modal.getOrCreateInstance(modalElement, {
+      backdrop: 'static'
+    });
+    let settled = false;
+    const timeout = window.setTimeout(() => settle(false), Math.max(0, expiresAt - Date.now()));
+
+    function settle(shouldRefresh) {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      modal.hide();
+      resolve(shouldRefresh);
+    }
+
+    modalElement.querySelector('[data-ff-unlock-continue]')?.addEventListener('click', () => settle(true));
+    modalElement.querySelector('[data-ff-unlock-dismiss]')?.addEventListener('click', () => settle(false));
+    modalElement.addEventListener('hidden.bs.modal', () => {
+      if (!settled) {
+        settled = true;
+        window.clearTimeout(timeout);
+        resolve(false);
+      }
+      modalElement.remove();
+    }, { once: true });
+
+    modal.show();
+  });
+
+  const schedule = () => {
+    const warningDelay = Math.max(0, expiresAt - Date.now() - 30000);
+    window.setTimeout(async () => {
+      const keepEditing = await askToKeepEditing();
+      if (!keepEditing) return;
+
+      try {
+        const response = await fetch(refreshUrl, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+          }
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.expires_at) {
+          window.alert(payload.message || 'A liberação expirou. Digite a senha novamente.');
+          return;
+        }
+
+        expiresAt = Number(payload.expires_at) * 1000;
+        unlockButton.dataset.expiresAt = String(payload.expires_at);
+        schedule();
+      } catch (error) {
+        window.alert('Não foi possível renovar a liberação de edição. Digite a senha novamente.');
+      }
+    }, warningDelay);
+  };
+
+  schedule();
+}
+
 document.addEventListener('DOMContentLoaded', function () {
   initFarmFortTheme();
   initModuleRailScroll();
@@ -1891,6 +2004,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   initDataTable('.datatable');
   initFarmFortChartMaximizer();
+  initSystemWriteUnlockReminder();
 
   document.querySelectorAll('.moeda').forEach(el => {
     el.addEventListener('input', () => mascaraMoeda(el));

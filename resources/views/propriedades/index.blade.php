@@ -22,7 +22,7 @@
                             <i class="bi bi-plus-lg"></i> Adicionar Fazenda
                         </button>
                     @else
-                        <button class="btn primary small" type="button" disabled title="Adicionar fazenda exige plano Premium ou admin do sistema.">
+                        <button class="btn primary small" type="button" disabled title="{{ $isSystemAdmin && !($systemWriteUnlocked ?? false) ? 'Libere a edição da propriedade selecionada antes de adicionar fazenda.' : 'Adicionar fazenda exige plano Premium ou admin do sistema.' }}">
                             <i class="bi bi-plus-lg"></i> Adicionar Fazenda
                         </button>
                     @endif

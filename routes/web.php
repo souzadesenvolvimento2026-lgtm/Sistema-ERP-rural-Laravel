@@ -61,6 +61,7 @@ Route::get('/admin', [AdminPainelController::class, 'index'])->name('admin.index
 Route::get('/dashboard', [MigrationModuleController::class, 'dashboard'])->name('dashboard');
 Route::get('/logout.php', [AuthSessionController::class, 'destroy']);
 Route::post('/sistema/liberar-edicao', [SystemUnlockController::class, 'store'])->name('system.unlock.store');
+Route::post('/sistema/liberar-edicao/renovar', [SystemUnlockController::class, 'refresh'])->name('system.unlock.refresh');
 Route::post('/propriedades/selecionar', [PropertyContextController::class, 'store'])->name('propriedades.contexto.store');
 Route::get('/suporte', [SuporteAdminController::class, 'index'])->name('suporte.admin.index');
 Route::get('/suporte/chat', [SuporteChatController::class, 'atual'])->name('suporte.chat.atual');

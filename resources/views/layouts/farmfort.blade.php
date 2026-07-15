@@ -122,9 +122,19 @@
             </button>
 
             @if ($isSystemAdmin)
-                <button type="button" class="ff-unlock-button" data-bs-toggle="modal" data-bs-target="#systemUnlockModal">
-                    <i class="bi bi-lock-fill"></i>
-                    <span>Liberar edição</span>
+                <button
+                    type="button"
+                    class="ff-unlock-button {{ $systemWriteUnlocked ? 'is-active' : '' }}"
+                    data-bs-toggle="modal"
+                    data-bs-target="#systemUnlockModal"
+                    data-ff-system-unlock
+                    data-active="{{ $systemWriteUnlocked ? '1' : '0' }}"
+                    data-expires-at="{{ $systemWriteUnlockExpiresAt ?? '' }}"
+                    data-refresh-url="{{ route('system.unlock.refresh') }}"
+                    data-property-name="{{ $propertyName }}"
+                >
+                    <i class="bi {{ $systemWriteUnlocked ? 'bi-unlock-fill' : 'bi-lock-fill' }}"></i>
+                    <span>{{ $systemWriteUnlocked ? 'Edição liberada' : 'Liberar edição' }}</span>
                 </button>
             @endif
 
@@ -178,6 +188,10 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                 </div>
                 <div class="modal-body">
+                    <p class="muted mb-3">
+                        A liberação vale somente para a propriedade selecionada:
+                        <strong>{{ $propertyName }}</strong>. Após 5 minutos, o sistema perguntará se você precisa continuar editando.
+                    </p>
                     <label class="field">
                         <span>Senha do administrador</span>
                         <input type="password" name="senha_confirmacao" required autocomplete="current-password">

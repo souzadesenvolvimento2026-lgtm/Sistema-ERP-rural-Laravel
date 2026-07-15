@@ -4,6 +4,7 @@ namespace App\View\Composers;
 
 use App\Domain\Access\ProfileAccess;
 use App\Services\AuthenticationService;
+use App\Services\SystemWriteUnlockService;
 use Illuminate\View\View;
 
 final class FarmfortLayoutComposer
@@ -11,7 +12,9 @@ final class FarmfortLayoutComposer
     public function __construct(
         private readonly ProfileAccess $access,
         private readonly AuthenticationService $authentication,
-    ) {}
+        private readonly SystemWriteUnlockService $writeUnlock,
+    ) {
+    }
 
     public function compose(View $view): void
     {
@@ -24,6 +27,8 @@ final class FarmfortLayoutComposer
         $propertyOptions = $userId > 0
             ? $this->authentication->propertyOptions($userId, $profile)
             : collect();
+        $selectedPropertyId = (int) session('propriedade_id', 0);
+        $systemWriteUnlocked = $isSystemAdmin && $this->writeUnlock->isActiveFor($selectedPropertyId);
         $menu = $this->mainMenu();
         if ($isSystemAdmin) {
             $menu = array_values(array_filter($menu, fn (array $item) => $item['key'] !== 'usuarios'));
@@ -46,8 +51,10 @@ final class FarmfortLayoutComposer
             'isSystemAdmin' => $isSystemAdmin,
             'userName' => session('usuario_nome', session('nome', 'Usuário')),
             'propertyName' => $data['property']->nome ?? session('propriedade_nome', 'Fazenda teste'),
-            'selectedPropertyId' => (int) session('propriedade_id', 0),
+            'selectedPropertyId' => $selectedPropertyId,
             'propertyOptions' => $propertyOptions,
+            'systemWriteUnlocked' => $systemWriteUnlocked,
+            'systemWriteUnlockExpiresAt' => $systemWriteUnlocked ? $this->writeUnlock->expiresAt() : null,
             'adminMenu' => $this->adminMenu(),
             'menu' => $menu,
             'financeTabs' => $this->financeTabs(),
