@@ -13,14 +13,17 @@ class CompraPedidoController extends Controller
 {
     public function __construct(private CompraPedidoService $pedidos) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
         $propertyId = $this->pedidos->propertyId();
-        $pedidos = $this->pedidos->listOrders($propertyId);
+        $filters = $this->pedidos->filters($request);
+        $pedidos = $this->pedidos->listOrders($propertyId, $filters);
 
         return view('compras.pedidos.index', [
             'activeModule' => 'compras',
+            'filters' => $filters,
             'pedidos' => $pedidos,
+            'statusOptions' => $this->pedidos->statusOptions(),
             'totais' => $this->pedidos->totals($pedidos),
         ]);
     }

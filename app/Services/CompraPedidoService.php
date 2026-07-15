@@ -20,12 +20,36 @@ class CompraPedidoService
         return app(FarmContext::class)->propertyId();
     }
 
-    public function listOrders(int $propertyId)
+    public function statusOptions(): array
     {
-        return $this->baseOrderQuery($propertyId)
+        return [
+            'todos' => 'Todos',
+            'em_aberto' => 'Em aberto',
+            'aguardando_aprovacao' => 'Aguardando aprovação',
+            'aprovado_baixado' => 'Aprovado/Baixado',
+            'rejeitado' => 'Rejeitado',
+            'cancelado' => 'Cancelado',
+        ];
+    }
+
+    public function filters(Request $request): array
+    {
+        $status = (string) $request->query('status', 'todos');
+
+        return [
+            'status' => array_key_exists($status, $this->statusOptions()) ? $status : 'todos',
+            'date_from' => trim((string) $request->query('date_from', '')),
+            'date_to' => trim((string) $request->query('date_to', '')),
+            'supplier' => trim((string) $request->query('supplier', '')),
+        ];
+    }
+
+    public function listOrders(int $propertyId, array $filters = [])
+    {
+        return $this->applyListFilters($this->baseOrderQuery($propertyId), $filters)
             ->orderByDesc('pedidos.issue_date')
             ->orderByDesc('pedidos.id')
-            ->limit(50)
+            ->limit(500)
             ->get()
             ->map(fn (object $order): object => $this->prepareOrder($order));
     }
@@ -35,7 +59,7 @@ class CompraPedidoService
         return [
             'pedidos' => $pedidos->count(),
             'valor' => $pedidos->sum('total_value'),
-            'pendentes' => $pedidos->where('status', 'em_aberto')->count(),
+            'pendentes' => $pedidos->whereIn('status', ['em_aberto', 'aguardando_aprovacao'])->count(),
             'aprovados' => $pedidos->where('status', 'aprovado_baixado')->count(),
         ];
     }
@@ -732,6 +756,38 @@ class CompraPedidoService
                 'pedidos.notes',
                 'propriedades.nome as propriedade_nome',
             ]);
+    }
+
+    private function applyListFilters($query, array $filters)
+    {
+        $status = (string) ($filters['status'] ?? 'todos');
+        if ($status !== 'todos' && array_key_exists($status, $this->statusOptions())) {
+            $query->where('pedidos.status', $status);
+        }
+
+        $dtInicio = (string) ($filters['date_from'] ?? '');
+        if ($dtInicio !== '') {
+            $query->whereDate('pedidos.issue_date', '>=', $dtInicio);
+        }
+
+        $dtFim = (string) ($filters['date_to'] ?? '');
+        if ($dtFim !== '') {
+            $query->whereDate('pedidos.issue_date', '<=', $dtFim);
+        }
+
+        $supplier = trim((string) ($filters['supplier'] ?? ''));
+        if ($supplier !== '') {
+            $supplierDigits = preg_replace('/\D+/', '', $supplier);
+            $query->where(function ($subQuery) use ($supplier, $supplierDigits): void {
+                $subQuery->where('pedidos.supplier_name', 'like', '%'.$supplier.'%');
+
+                if ($supplierDigits !== '') {
+                    $subQuery->orWhere('pedidos.supplier_cnpj', 'like', '%'.$supplierDigits.'%');
+                }
+            });
+        }
+
+        return $query;
     }
 
     private function orderCategories()
