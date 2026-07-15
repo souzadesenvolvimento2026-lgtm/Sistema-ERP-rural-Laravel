@@ -43,8 +43,8 @@ class PatrimonioController extends Controller
         $service->criarLancamento($dados, app(FarmContext::class)->propertyId(), $patrimonio, session('usuario_id'), $request->file('comprovante'));
 
         return redirect()
-            ->route('patrimonio.show', $patrimonio)
-            ->with('success', 'Lancamento do patrimonio salvo pelo Laravel.');
+            ->route('patrimonio.index', ['patrimonio' => $patrimonio])
+            ->with('success', 'Lançamento do patrimônio salvo.');
     }
 
     public function create(PatrimonioService $service): View
@@ -60,11 +60,11 @@ class PatrimonioController extends Controller
     {
         $dados = $this->validarPatrimonio($request);
 
-        $service->criar($dados, app(FarmContext::class)->propertyId(), session('usuario_id'), $request->file('nota_fiscal_arquivo'));
+        $patrimonioId = $service->criar($dados, app(FarmContext::class)->propertyId(), session('usuario_id'), $request->file('nota_fiscal_arquivo'));
 
         return redirect()
-            ->route('modules.show', ['module' => 'patrimonio'])
-            ->with('success', 'Patrimônio criado pelo Laravel.');
+            ->route('patrimonio.index', ['patrimonio' => $patrimonioId])
+            ->with('success', 'Patrimônio criado.');
     }
 
     public function edit(int $patrimonio, PatrimonioService $service): View
@@ -83,8 +83,8 @@ class PatrimonioController extends Controller
         $service->atualizar($dados, app(FarmContext::class)->propertyId(), $patrimonio, session('usuario_id'), $request->file('nota_fiscal_arquivo'));
 
         return redirect()
-            ->route('patrimonio.show', $patrimonio)
-            ->with('success', 'Patrimônio atualizado pelo Laravel.');
+            ->route('patrimonio.index', ['patrimonio' => $patrimonio])
+            ->with('success', 'Patrimônio atualizado.');
     }
 
     public function toggleStatus(int $patrimonio, PatrimonioService $service): RedirectResponse
@@ -92,7 +92,7 @@ class PatrimonioController extends Controller
         $ativo = $service->alternarStatus(app(FarmContext::class)->propertyId(), $patrimonio, session('usuario_id'));
 
         return redirect()
-            ->route('modules.show', ['module' => 'patrimonio'])
+            ->route('patrimonio.index')
             ->with('success', $ativo ? 'Patrimônio reativado.' : 'Patrimônio inativado.');
     }
 
@@ -105,8 +105,8 @@ class PatrimonioController extends Controller
         $service->atualizarValor(app(FarmContext::class)->propertyId(), $patrimonio, $dados['valor_aquisicao'] ?? '0', session('usuario_id'));
 
         return redirect()
-            ->route('patrimonio.show', $patrimonio)
-            ->with('success', 'Valor do patrimonio atualizado.');
+            ->route('patrimonio.index', ['patrimonio' => $patrimonio])
+            ->with('success', 'Valor do patrimônio atualizado.');
     }
 
     private function validarPatrimonio(Request $request): array

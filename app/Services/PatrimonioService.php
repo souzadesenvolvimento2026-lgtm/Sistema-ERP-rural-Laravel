@@ -16,6 +16,19 @@ class PatrimonioService
     {
         $filtros = $this->filtros($request);
         $rows = $this->rows($propriedadeId, $filtros);
+        $selectedPatrimonioId = (int) $request->query('patrimonio', 0);
+        $selectedPatrimonio = $selectedPatrimonioId > 0
+            ? $this->patrimonioComCustos($propriedadeId, $selectedPatrimonioId)
+            : null;
+        $selectedPatrimonioForm = $selectedPatrimonio
+            ? DB::table('maquinas')
+                ->where('id', (int) $selectedPatrimonio->id)
+                ->where('propriedade_id', $propriedadeId)
+                ->first()
+            : null;
+        $lancamentos = $selectedPatrimonio
+            ? $this->lancamentos($propriedadeId, (int) $selectedPatrimonio->id)
+            : collect();
 
         return [
             'activeModule' => 'patrimonio',
@@ -23,12 +36,19 @@ class PatrimonioService
             'subtitle' => 'Controle de bens, máquinas, implementos, medidores e custos registrados.',
             'filtros' => $filtros,
             'tipos' => $this->tipos(),
+            'tiposLancamento' => $this->tiposLancamento(),
             'rows' => $rows,
+            'selectedPatrimonio' => $selectedPatrimonio,
+            'selectedPatrimonioForm' => $selectedPatrimonioForm,
+            'selectedPatrimonioId' => $selectedPatrimonio?->id,
+            'lancamentos' => $lancamentos,
+            'safras' => DB::table('safras')->where('propriedade_id', $propriedadeId)->orderByDesc('data_inicio')->get(['id', 'descricao']),
+            'talhoes' => DB::table('talhoes')->where('propriedade_id', $propriedadeId)->where('ativo', 1)->orderBy('nome')->get(['id', 'nome']),
             'cards' => [
-                ['label' => 'Ativos', 'value' => (string) $rows->where('ativo', true)->count(), 'tone' => 'success'],
-                ['label' => 'Valor de aquisição', 'value' => FarmFormat::money($rows->sum('valor_aquisicao_raw')), 'tone' => 'success'],
+                ['label' => 'Patrimônios ativos', 'value' => (string) $rows->where('ativo', true)->count(), 'tone' => 'neutral'],
+                ['label' => 'Preço total dos patrimônios', 'value' => FarmFormat::money($rows->sum('valor_aquisicao_raw')), 'tone' => 'success'],
                 ['label' => 'Custo registrado', 'value' => FarmFormat::money($rows->sum('custo_total_raw')), 'tone' => 'danger'],
-                ['label' => 'Combustível', 'value' => FarmFormat::money($rows->sum('combustivel_raw')), 'tone' => 'warning'],
+                ['label' => 'Combustível', 'value' => FarmFormat::money($rows->sum('combustivel_raw')), 'tone' => 'neutral'],
             ],
         ];
     }
@@ -105,7 +125,7 @@ class PatrimonioService
             'maquinas',
             $patrimonioId,
             $propriedadeId,
-            $ativo ? 'Patrimonio reativado no cadastro ativo: '.(string) $patrimonio->nome : 'Patrimonio apagado do cadastro ativo: '.(string) $patrimonio->nome
+            $ativo ? 'Patrimônio reativado no cadastro ativo: '.(string) $patrimonio->nome : 'Patrimônio apagado do cadastro ativo: '.(string) $patrimonio->nome
         );
 
         return $ativo;
@@ -133,7 +153,7 @@ class PatrimonioService
             'maquinas',
             $patrimonioId,
             $propriedadeId,
-            'Valor do patrimonio atualizado para '.FarmFormat::money($valor)
+            'Valor do patrimônio atualizado para '.FarmFormat::money($valor)
         );
     }
 
@@ -157,17 +177,17 @@ class PatrimonioService
         return [
             'activeModule' => 'patrimonio',
             'title' => $row->nome,
-            'subtitle' => 'Historico de custos, abastecimentos e manutencoes do patrimonio.',
+            'subtitle' => 'Histórico de custos, abastecimentos e manutenções do patrimônio.',
             'patrimonio' => $row,
             'lancamentos' => $lancamentos,
             'safras' => DB::table('safras')->where('propriedade_id', $propriedadeId)->orderByDesc('data_inicio')->get(['id', 'descricao']),
             'talhoes' => DB::table('talhoes')->where('propriedade_id', $propriedadeId)->where('ativo', 1)->orderBy('nome')->get(['id', 'nome']),
             'tiposLancamento' => $this->tiposLancamento(),
             'cards' => [
-                ['label' => 'Valor de aquisicao', 'value' => $row->valor_aquisicao, 'tone' => 'success'],
+                ['label' => 'Valor de aquisição', 'value' => $row->valor_aquisicao, 'tone' => 'success'],
                 ['label' => 'Custo registrado', 'value' => $row->custo_total, 'tone' => 'danger'],
-                ['label' => 'Combustivel', 'value' => $row->combustivel, 'tone' => 'warning'],
-                ['label' => 'Lancamentos', 'value' => (string) $lancamentos->count(), 'tone' => 'success'],
+                ['label' => 'Combustível', 'value' => $row->combustivel, 'tone' => 'warning'],
+                ['label' => 'Lançamentos', 'value' => (string) $lancamentos->count(), 'tone' => 'success'],
             ],
         ];
     }
@@ -347,9 +367,9 @@ class PatrimonioService
             'valor_total' => $valor,
             'valor_produtos' => $valor,
             'valor_financeiro_final' => $valor,
-            'condicao_pagamento' => 'Aquisicao de patrimonio',
+            'condicao_pagamento' => 'Aquisição de patrimônio',
             'forma_pagamento' => 'transferencia',
-            'observacoes_nota' => 'Entrada criada/atualizada pelo cadastro de patrimonio.',
+            'observacoes_nota' => 'Entrada criada/atualizada pelo cadastro de patrimônio.',
             'status' => 'rascunho',
             'usuario_id' => $usuarioId,
             'classificar_patrimonio' => 1,
@@ -381,13 +401,13 @@ class PatrimonioService
         $payload = [
             'propriedade_id' => $propriedadeId,
             'tipo' => 'nota_fiscal',
-            'titulo' => 'NF patrimonio - '.trim($dados['nome'] ?? ('Patrimonio #'.$patrimonioId)),
+            'titulo' => 'NF patrimônio - '.trim($dados['nome'] ?? ('Patrimônio #'.$patrimonioId)),
             'numero' => trim($dados['nota_fiscal_numero'] ?? '') ?: null,
             'pessoa' => trim($dados['fornecedor'] ?? '') ?: null,
             'data_documento' => ($dados['data_aquisicao'] ?? null) ?: date('Y-m-d'),
             'valor' => $this->money($dados['valor_aquisicao'] ?? 0),
             'status' => 'conferido',
-            'observacoes' => 'Documento vinculado ao patrimonio #'.$patrimonioId.'.',
+            'observacoes' => 'Documento vinculado ao patrimônio #'.$patrimonioId.'.',
             'usuario_id' => $usuarioId,
         ];
         if ($arquivoNf !== '') {
@@ -479,6 +499,22 @@ class PatrimonioService
                 DB::raw('(SELECT COUNT(*) FROM maquina_lancamentos ml WHERE ml.maquina_id = m.id) as lancamentos_count'),
             ])
             ->map(fn ($row) => $this->normalizar($row));
+    }
+
+    private function patrimonioComCustos(int $propriedadeId, int $patrimonioId): ?object
+    {
+        $row = DB::table('maquinas as m')
+            ->where('m.id', $patrimonioId)
+            ->where('m.propriedade_id', $propriedadeId)
+            ->select([
+                'm.*',
+                DB::raw('(SELECT COALESCE(SUM(valor_total), 0) FROM maquina_lancamentos ml WHERE ml.maquina_id = m.id) as custo_total'),
+                DB::raw("(SELECT COALESCE(SUM(valor_total), 0) FROM maquina_lancamentos ml WHERE ml.maquina_id = m.id AND ml.tipo = 'abastecimento') as combustivel"),
+                DB::raw('(SELECT COUNT(*) FROM maquina_lancamentos ml WHERE ml.maquina_id = m.id) as lancamentos_count'),
+            ])
+            ->first();
+
+        return $row ? $this->normalizar($row) : null;
     }
 
     private function normalizar($row): object
@@ -576,10 +612,10 @@ class PatrimonioService
     {
         return [
             'abastecimento' => 'Abastecimento',
-            'manutencao_preventiva' => 'Manutencao preventiva',
-            'manutencao_corretiva' => 'Manutencao corretiva',
-            'troca_oleo' => 'Troca de oleo',
-            'pecas' => 'Pecas',
+            'manutencao_preventiva' => 'Manutenção preventiva',
+            'manutencao_corretiva' => 'Manutenção corretiva',
+            'troca_oleo' => 'Troca de óleo',
+            'pecas' => 'Peças',
             'seguro' => 'Seguro',
             'outro' => 'Outro',
         ];

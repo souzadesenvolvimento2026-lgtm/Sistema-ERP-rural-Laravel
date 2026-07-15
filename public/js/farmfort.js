@@ -1997,6 +1997,39 @@ function initSystemWriteUnlockReminder() {
   schedule();
 }
 
+function initPatrimonyForms() {
+  document.querySelectorAll('[data-patrimony-form]').forEach(form => {
+    const typeSelect = form.querySelector('[data-patrimony-type]');
+    const typeOther = form.querySelector('[data-patrimony-type-other]');
+    const nfToggle = form.querySelector('[data-patrimony-nf-toggle]');
+    const nfFields = form.querySelector('[data-patrimony-nf-fields]');
+
+    const applyState = () => {
+      if (typeOther) {
+        typeOther.hidden = typeSelect?.value !== 'outro';
+      }
+
+      if (nfFields) {
+        nfFields.hidden = !nfToggle?.checked;
+      }
+
+      form.querySelectorAll('[data-patrimony-meter-field]').forEach(field => {
+        const meterType = field.getAttribute('data-patrimony-meter-field');
+        const toggle = form.querySelector(`[data-patrimony-meter-toggle="${meterType}"]`);
+        field.hidden = !toggle?.checked;
+      });
+    };
+
+    typeSelect?.addEventListener('change', applyState);
+    nfToggle?.addEventListener('change', applyState);
+    form.querySelectorAll('[data-patrimony-meter-toggle]').forEach(toggle => {
+      toggle.addEventListener('change', applyState);
+    });
+
+    applyState();
+  });
+}
+
 document.addEventListener('DOMContentLoaded', function () {
   initFarmFortTheme();
   initModuleRailScroll();
@@ -2005,6 +2038,7 @@ document.addEventListener('DOMContentLoaded', function () {
   initDataTable('.datatable');
   initFarmFortChartMaximizer();
   initSystemWriteUnlockReminder();
+  initPatrimonyForms();
 
   document.querySelectorAll('.moeda').forEach(el => {
     el.addEventListener('input', () => mascaraMoeda(el));

@@ -1314,27 +1314,38 @@ XML;
         $this->withSession($this->loggedSession())
             ->get('/patrimonio')
             ->assertStatus(200)
-            ->assertSee('Patrimônios cadastrados')
-            ->assertSee('Filtros');
+            ->assertSee('Patrimônios')
+            ->assertSee('Novo patrimônio')
+            ->assertSee('Selecione um patrimônio para ver custos, abastecimentos e manutenções.');
     }
 
     public function test_patrimony_detail_page_returns_a_successful_response(): void
     {
-        $patrimonioId = DB::table('maquinas')->where('ativo', 1)->orderBy('id')->value('id');
+        $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
+        $patrimonioId = DB::table('maquinas')
+            ->where('propriedade_id', $propertyId)
+            ->where('ativo', 1)
+            ->orderBy('id')
+            ->value('id');
         if (! $patrimonioId) {
             $this->markTestSkipped('Sem patrimonio cadastrado para testar detalhe.');
         }
 
-        $this->withSession($this->loggedSession())
-            ->get('/patrimonio/'.$patrimonioId)
+        $this->withSession($this->loggedSession(propertyId: $propertyId))
+            ->get('/patrimonio?patrimonio='.$patrimonioId)
             ->assertStatus(200)
-            ->assertSee('Dados do patrimonio')
-            ->assertSee('Historico de lancamentos');
+            ->assertSee('Preço do patrimônio')
+            ->assertSee('Lançamentos');
     }
 
     public function test_patrimony_entry_can_be_stored(): void
     {
-        $patrimonioId = DB::table('maquinas')->where('ativo', 1)->orderBy('id')->value('id');
+        $propertyId = (int) DB::table('propriedades')->orderBy('id')->value('id');
+        $patrimonioId = DB::table('maquinas')
+            ->where('propriedade_id', $propertyId)
+            ->where('ativo', 1)
+            ->orderBy('id')
+            ->value('id');
         if (! $patrimonioId) {
             $this->markTestSkipped('Sem patrimonio cadastrado para testar lancamento.');
         }
@@ -1344,7 +1355,7 @@ XML;
         try {
             $descricao = 'Lancamento patrimonio teste '.uniqid();
 
-            $this->withSession($this->loggedSession())
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/patrimonio/'.$patrimonioId.'/lancamentos', [
                     'tipo' => 'manutencao_preventiva',
                     'data_lancamento' => '2026-07-09',
@@ -1358,7 +1369,7 @@ XML;
                     'comprovante' => UploadedFile::fake()->create('comprovante-patrimonio.pdf', 8, 'application/pdf'),
                     'observacoes' => 'Teste automatizado',
                 ])
-                ->assertRedirect('/patrimonio/'.$patrimonioId);
+                ->assertRedirect('/patrimonio?patrimonio='.$patrimonioId);
 
             $this->assertDatabaseHas('maquina_lancamentos', [
                 'maquina_id' => $patrimonioId,
@@ -1374,10 +1385,10 @@ XML;
             $this->assertNotEmpty($arquivoNome);
             $this->assertFileExists(base_path('../uploads/comprovantes/'.$arquivoNome));
 
-            $this->withSession($this->loggedSession())
-                ->get('/patrimonio/'.$patrimonioId)
+            $this->withSession($this->loggedSession(propertyId: $propertyId))
+                ->get('/patrimonio?patrimonio='.$patrimonioId)
                 ->assertStatus(200)
-                ->assertSee('uploads/comprovantes/'.$arquivoNome);
+                ->assertSee($descricao);
         } finally {
             if ($arquivoNome) {
                 @unlink(base_path('../uploads/comprovantes/'.$arquivoNome));
@@ -1433,7 +1444,7 @@ XML;
                     'horimetro_atual' => '999,9',
                     'odometro_atual' => '12.345,6',
                 ])
-                ->assertRedirect('/patrimonio/'.$patrimonioId);
+                ->assertRedirect('/patrimonio?patrimonio='.$patrimonioId);
 
             $this->assertDatabaseHas('maquinas', [
                 'id' => $patrimonioId,
@@ -1456,7 +1467,7 @@ XML;
 
             $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/patrimonio/'.$patrimonioId.'/alternar-status')
-                ->assertRedirect('/modulos/patrimonio');
+                ->assertRedirect('/patrimonio');
 
             $this->assertDatabaseHas('maquinas', [
                 'id' => $patrimonioId,
@@ -1493,15 +1504,15 @@ XML;
             $nfCountBefore = DB::table('nf_entradas')->where('propriedade_id', $propertyId)->count();
 
             $this->withSession($this->loggedSession(propertyId: $propertyId))
-                ->get('/patrimonio/'.$patrimonioId)
+                ->get('/patrimonio?patrimonio='.$patrimonioId)
                 ->assertStatus(200)
-                ->assertSee('Salvar preco');
+                ->assertSee('Salvar preço');
 
             $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/patrimonio/'.$patrimonioId.'/valor', [
                     'valor_aquisicao' => '45.500,75',
                 ])
-                ->assertRedirect('/patrimonio/'.$patrimonioId);
+                ->assertRedirect('/patrimonio?patrimonio='.$patrimonioId);
 
             $this->assertDatabaseHas('maquinas', [
                 'id' => $patrimonioId,
@@ -1530,7 +1541,7 @@ XML;
 
             $nome = 'Patrimonio medidores Laravel '.uniqid();
 
-            $this->withSession($this->loggedSession(propertyId: $propertyId))
+            $response = $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/patrimonio', [
                     'nome' => $nome,
                     'tipo' => 'trator',
@@ -1546,8 +1557,10 @@ XML;
                     'controla_odometro' => '1',
                     'horimetro_atual' => '123,4',
                     'odometro_atual' => '5.678,9',
-                ])
-                ->assertRedirect('/modulos/patrimonio');
+                ]);
+
+            $response->assertRedirect();
+            $this->assertStringContainsString('/patrimonio?patrimonio=', (string) $response->headers->get('Location'));
 
             $this->assertDatabaseHas('maquinas', [
                 'propriedade_id' => $propertyId,
@@ -1583,7 +1596,7 @@ XML;
             $this->assertGreaterThan(0, $propertyId);
             $nome = 'Patrimonio NF Laravel '.uniqid();
 
-            $this->withSession($this->loggedSession(propertyId: $propertyId))
+            $response = $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/patrimonio', [
                     'nome' => $nome,
                     'tipo' => 'implemento',
@@ -1602,8 +1615,10 @@ XML;
                     'nota_fiscal_arquivo' => UploadedFile::fake()->create('nf-patrimonio.pdf', 8, 'application/pdf'),
                     'controla_horimetro' => '0',
                     'controla_odometro' => '0',
-                ])
-                ->assertRedirect('/modulos/patrimonio');
+                ]);
+
+            $response->assertRedirect();
+            $this->assertStringContainsString('/patrimonio?patrimonio=', (string) $response->headers->get('Location'));
 
             $patrimonio = DB::table('maquinas')->where('propriedade_id', $propertyId)->where('nome', $nome)->first();
             $this->assertNotNull($patrimonio);
@@ -1627,10 +1642,10 @@ XML;
             $this->assertFileExists(base_path('../uploads/comprovantes/'.$arquivoNome));
 
             $this->withSession($this->loggedSession(propertyId: $propertyId))
-                ->get('/patrimonio/'.$patrimonio->id)
+                ->get('/patrimonio?patrimonio='.$patrimonio->id)
                 ->assertStatus(200)
-                ->assertSee('Entrada fiscal')
-                ->assertSee('Documento NF');
+                ->assertSee('Abrir no fiscal')
+                ->assertSee('Abrir arquivo');
         } finally {
             if ($arquivoNome) {
                 @unlink(base_path('../uploads/comprovantes/'.$arquivoNome));
@@ -8733,6 +8748,60 @@ KML;
         $this->withSession($this->loggedSession(profile: 'visualizador'))
             ->get('/auditoria')
             ->assertStatus(403);
+    }
+
+    public function test_audit_page_shows_only_selected_property_logs(): void
+    {
+        DB::beginTransaction();
+
+        try {
+            DB::table('propriedades')->insert([
+                'nome' => 'Fazenda auditoria isolada A',
+                'municipio' => 'Rio Verde',
+                'estado' => 'GO',
+                'area_total' => 100,
+                'responsavel' => 'Responsável auditoria',
+                'plano' => 'premium',
+                'ativo' => 1,
+            ]);
+            $propertyId = (int) DB::getPdo()->lastInsertId();
+
+            DB::table('propriedades')->insert([
+                'nome' => 'Fazenda auditoria isolada B',
+                'municipio' => 'Jataí',
+                'estado' => 'GO',
+                'area_total' => 80,
+                'responsavel' => 'Responsável auditoria',
+                'plano' => 'premium',
+                'ativo' => 1,
+            ]);
+            $otherPropertyId = (int) DB::getPdo()->lastInsertId();
+
+            foreach ([
+                ['acao' => 'salvar_usuario', 'tabela' => 'usuarios', 'registro_id' => 10, 'propriedade_id' => $propertyId, 'detalhes' => 'auditoria-propriedade-correta'],
+                ['acao' => 'salvar_usuario', 'tabela' => 'usuarios', 'registro_id' => 11, 'propriedade_id' => $otherPropertyId, 'detalhes' => 'auditoria-outra-propriedade'],
+                ['acao' => 'login', 'tabela' => 'usuarios', 'registro_id' => $this->userId(), 'propriedade_id' => null, 'detalhes' => 'auditoria-login-global'],
+                ['acao' => 'editar_propriedade', 'tabela' => 'propriedades', 'registro_id' => $propertyId, 'propriedade_id' => null, 'detalhes' => 'auditoria-admin-sem-propriedade'],
+                ['acao' => 'liberar_edicao_sistema', 'tabela' => 'usuarios', 'registro_id' => $this->userId(), 'propriedade_id' => $propertyId, 'detalhes' => 'auditoria-admin-liberado-na-propriedade'],
+            ] as $log) {
+                DB::table('logs_auditoria')->insert($log + [
+                    'usuario_id' => $this->userId(),
+                    'ip' => '127.0.0.1',
+                    'criado_em' => now(),
+                ]);
+            }
+
+            $this->withSession($this->loggedSession(propertyId: $propertyId, profile: 'gestor_propriedade'))
+                ->get('/auditoria')
+                ->assertStatus(200)
+                ->assertSee('auditoria-propriedade-correta')
+                ->assertSee('auditoria-admin-liberado-na-propriedade')
+                ->assertDontSee('auditoria-outra-propriedade')
+                ->assertDontSee('auditoria-login-global')
+                ->assertDontSee('auditoria-admin-sem-propriedade');
+        } finally {
+            DB::rollBack();
+        }
     }
 
     public function test_audit_export_downloads_filtered_csv(): void

@@ -10,7 +10,9 @@ use Illuminate\Support\Str;
 
 class AuditoriaService
 {
-    public function __construct(private readonly AuditService $audit) {}
+    public function __construct(private readonly AuditService $audit)
+    {
+    }
 
     public function dados(Request $request): array
     {
@@ -181,22 +183,7 @@ class AuditoriaService
                 $join->on('dlog.id', '=', 'l.registro_id')->where('l.tabela', 'despesas');
             })
             ->leftJoin('categorias as cd', 'cd.id', '=', 'dlog.categoria_id')
-            ->where(function ($query) use ($propertyId) {
-                $query->where('l.propriedade_id', $propertyId)
-                    ->orWhere(function ($q) use ($propertyId) {
-                        $q->where('l.tabela', 'propriedades')->where('l.registro_id', $propertyId);
-                    })
-                    ->orWhere(function ($q) use ($propertyId) {
-                        $q->whereNull('l.propriedade_id')
-                            ->whereIn('l.acao', ['login', 'logout'])
-                            ->whereExists(function ($sub) use ($propertyId) {
-                                $sub->selectRaw('1')
-                                    ->from('usuario_propriedades as up')
-                                    ->whereColumn('up.usuario_id', 'l.usuario_id')
-                                    ->where('up.propriedade_id', $propertyId);
-                            });
-                    });
-            })
+            ->where('l.propriedade_id', $propertyId)
             ->select([
                 'l.id',
                 'l.usuario_id',

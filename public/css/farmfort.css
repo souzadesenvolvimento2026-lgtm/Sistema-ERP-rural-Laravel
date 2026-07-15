@@ -11173,7 +11173,7 @@ html[data-theme="dark"] .ff-property-user-row select {
   }
 }
 
-/* Usuários / permissões por fazenda */
+/* UsuÃ¡rios / permissÃµes por fazenda */
 .ff-users-page {
   display: grid;
   gap: 16px;
@@ -11318,6 +11318,17 @@ html[data-theme="dark"] .ff-property-user-row select {
   color: #0284c7;
 }
 
+.btn.outline-success {
+  border-color: var(--ff-accent);
+  color: var(--ff-accent);
+  background: transparent;
+}
+
+.btn.outline-success:hover {
+  background: var(--ff-accent-soft);
+  color: var(--ff-accent-strong);
+}
+
 .ff-users-pagination {
   display: flex;
   align-items: center;
@@ -11374,7 +11385,317 @@ html[data-theme="dark"] .btn.outline-info {
   color: #7dd3fc;
 }
 
+html[data-theme="dark"] .btn.outline-success {
+  border-color: var(--ff-accent);
+  color: var(--ff-accent-strong);
+}
+
+.ff-patrimony-page .stats {
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+.ff-patrimony-page .stat {
+  min-height: 88px;
+  border-color: var(--ff-border);
+  border-radius: 8px;
+  background: var(--ff-surface);
+  box-shadow: var(--ff-shadow-sm);
+}
+
+.ff-patrimony-page .stat strong.neutral {
+  color: var(--ff-text);
+}
+
+.ff-patrimony-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 35%) minmax(0, 65%);
+  gap: 16px;
+  align-items: start;
+}
+
+.ff-patrimony-list-card,
+.ff-patrimony-detail-card,
+.ff-patrimony-launch-card,
+.ff-patrimony-empty-detail {
+  border-color: var(--ff-border);
+  border-radius: 8px;
+  background: var(--ff-surface);
+  box-shadow: var(--ff-shadow-sm);
+}
+
+.ff-patrimony-list-card .panel-head,
+.ff-patrimony-detail-card .panel-head,
+.ff-patrimony-launch-card .panel-head {
+  min-height: 54px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--ff-border);
+}
+
+.ff-patrimony-list-card .panel-head h2,
+.ff-patrimony-detail-card .panel-head h2,
+.ff-patrimony-launch-card .panel-head h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--ff-accent);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.ff-patrimony-list {
+  display: grid;
+}
+
+.ff-patrimony-list-item {
+  display: grid;
+  gap: 4px;
+  min-height: 60px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--ff-border);
+  color: var(--ff-text);
+  text-decoration: none;
+  transition: background .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+
+.ff-patrimony-list-item:last-child {
+  border-bottom: 0;
+}
+
+.ff-patrimony-list-item strong {
+  color: var(--ff-text);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.ff-patrimony-list-item span {
+  color: var(--ff-muted);
+  font-size: 13px;
+}
+
+.ff-patrimony-list-item:hover {
+  background: var(--ff-surface-2);
+  color: var(--ff-text);
+}
+
+.ff-patrimony-list-item.is-selected {
+  border-left: 4px solid var(--ff-accent);
+  background: var(--ff-accent-soft);
+}
+
+.ff-patrimony-empty-list {
+  padding: 18px 16px;
+  color: var(--ff-muted);
+}
+
+.ff-patrimony-empty-detail {
+  padding: 18px 20px;
+  color: var(--ff-text);
+}
+
+.ff-patrimony-detail-column {
+  min-width: 0;
+}
+
+.ff-patrimony-detail-card .panel-body {
+  padding: 16px;
+}
+
+.ff-patrimony-info-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ff-patrimony-info-grid > div,
+.ff-patrimony-price-form {
+  border: 1px solid var(--ff-border);
+  border-radius: 8px;
+  background: var(--ff-surface-2);
+  padding: 12px;
+}
+
+.ff-patrimony-info-grid span,
+.ff-patrimony-price-form span,
+.ff-patrimony-field span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--ff-muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.ff-patrimony-info-grid strong {
+  color: var(--ff-text);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.ff-patrimony-info-grid strong.danger {
+  color: var(--ff-danger);
+}
+
+.ff-patrimony-info-wide {
+  grid-column: span 2;
+}
+
+.ff-patrimony-price-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 280px) auto;
+  gap: 10px;
+  align-items: end;
+  margin-top: 14px;
+}
+
+.ff-patrimony-price-form label {
+  margin: 0;
+}
+
+.ff-patrimony-launch-table-wrap {
+  margin: 0;
+  border: 0;
+}
+
+.ff-patrimony-launch-table {
+  width: 100%;
+  min-width: 760px;
+}
+
+.ff-patrimony-launch-table th,
+.ff-patrimony-launch-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ff-border);
+  vertical-align: top;
+}
+
+.ff-patrimony-launch-table th {
+  color: var(--ff-accent);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.ff-patrimony-form-grid,
+.ff-patrimony-nf-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 14px;
+}
+
+.ff-patrimony-field {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.ff-patrimony-field-wide {
+  grid-column: span 2;
+}
+
+.ff-patrimony-field-full {
+  grid-column: 1 / -1;
+}
+
+.ff-patrimony-check-row {
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  margin: 0;
+}
+
+.ff-patrimony-check-row .form-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.ff-patrimony-check-row .form-check-label {
+  color: var(--ff-text);
+  font-weight: 800;
+}
+
+.ff-patrimony-modal .modal-content {
+  overflow: hidden;
+  border: 1px solid var(--ff-border);
+  border-radius: 8px;
+  background: var(--ff-surface);
+  color: var(--ff-text);
+}
+
+.ff-patrimony-modal .modal-header-green {
+  min-height: 60px;
+  background: #00764b;
+  color: #ffffff;
+}
+
+.ff-patrimony-modal .modal-title {
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.ff-patrimony-modal .btn-close {
+  filter: invert(1) grayscale(1) brightness(2);
+  opacity: .85;
+}
+
+.ff-patrimony-modal .modal-body {
+  background: var(--ff-surface);
+}
+
+.ff-patrimony-modal .modal-footer {
+  background: var(--ff-surface);
+  border-top-color: var(--ff-border);
+}
+
+.ff-patrimony-modal .form-control,
+.ff-patrimony-modal .form-select {
+  min-height: 38px;
+  border-color: var(--ff-border-strong);
+  background-color: var(--ff-surface-2);
+  color: var(--ff-text);
+  font-weight: 700;
+}
+
+.ff-patrimony-modal textarea.form-control {
+  min-height: 82px;
+}
+
+html[data-theme="dark"] .ff-patrimony-list-item.is-selected {
+  background: rgba(53, 189, 145, .12);
+}
+
+html[data-theme="dark"] .ff-patrimony-modal .modal-header-green {
+  background: #006a43;
+}
+
+html[data-theme="dark"] .ff-patrimony-modal .btn-close {
+  filter: invert(1) grayscale(1) brightness(2);
+}
+
 @media (max-width: 900px) {
+  .ff-patrimony-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ff-patrimony-info-grid,
+  .ff-patrimony-form-grid,
+  .ff-patrimony-nf-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ff-patrimony-field-wide,
+  .ff-patrimony-info-wide {
+    grid-column: 1 / -1;
+  }
+
+  .ff-patrimony-price-form {
+    grid-template-columns: 1fr;
+  }
+
   .ff-users-table-tools {
     grid-template-columns: 1fr;
   }
