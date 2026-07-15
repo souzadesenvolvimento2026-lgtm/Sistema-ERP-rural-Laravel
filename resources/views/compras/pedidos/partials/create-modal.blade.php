@@ -63,12 +63,12 @@
                         <input name="supplier_cnpj" value="{{ old('supplier_cnpj') }}" inputmode="numeric" required>
                     </label>
 
-                    <label class="ff-purchase-order-field ff-purchase-order-field-wide">
+                    <label class="ff-purchase-order-field ff-purchase-order-field-supplier">
                         <span>Fornecedor *</span>
                         <input name="supplier_name" value="{{ old('supplier_name') }}" required>
                     </label>
 
-                    <label class="ff-purchase-order-field ff-purchase-order-field-wide">
+                    <label class="ff-purchase-order-field ff-purchase-order-field-notes">
                         <span>Observações</span>
                         <input name="notes" value="{{ old('notes') }}">
                     </label>
