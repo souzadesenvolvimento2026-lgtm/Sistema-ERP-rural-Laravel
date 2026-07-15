@@ -92,9 +92,6 @@
         <section class="panel ff-purchase-orders-panel">
             <div class="panel-head">
                 <h2><i class="bi bi-clipboard-check me-2"></i>Pedidos Fiscais</h2>
-                <button class="btn primary" type="button" data-bs-toggle="modal" data-bs-target="#pedidoCreateModal">
-                    <i class="bi bi-plus-lg"></i> Novo Pedido
-                </button>
             </div>
 
             <div class="ff-purchase-datatable-toolbar">
