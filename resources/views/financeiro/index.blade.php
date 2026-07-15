@@ -377,7 +377,7 @@
 
     @include('financeiro.partials.novo-lancamento-modal')
 
-    <div class="modal fade ff-financial-form-modal" id="financeiroPagamentoModal" tabindex="-1" aria-labelledby="financeiroPagamentoModalLabel" aria-hidden="true">
+    <div class="modal fade ff-financial-form-modal ff-payment-modal" id="financeiroPagamentoModal" tabindex="-1" aria-labelledby="financeiroPagamentoModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <form method="POST" class="modal-content ff-financial-form-content" data-ff-payment-form>
                 @csrf
@@ -395,24 +395,29 @@
                         Selecione a conta real usada para pagar a despesa.
                     </p>
 
-                    <div class="ff-financial-form-grid">
+                    <div class="ff-financial-form-grid ff-payment-grid">
                         <label class="ff-financial-field">
                             <span>Data do pagamento</span>
                             <input type="date" name="data_pagamento" value="{{ date('Y-m-d') }}" data-ff-payment-date>
                         </label>
 
-                        <label class="ff-financial-field ff-span-2">
+                        <label class="ff-financial-field">
                             <span>Conta real usada no pagamento *</span>
                             <select name="conta_id" required data-ff-payment-account>
                                 <option value="">Selecione a conta...</option>
                                 @foreach ($contas as $conta)
-                                    <option value="{{ $conta->id }}" data-balance="{{ $conta->saldo }}">
+                                    <option value="{{ $conta->id }}" data-balance="{{ $conta->saldo }}" data-balance-number="{{ $conta->saldo_numero }}">
                                         {{ $conta->nome }}{{ $conta->detalhe ? ' - '.$conta->detalhe : '' }} | Saldo {{ $conta->saldo }}
                                     </option>
                                 @endforeach
                             </select>
                             <small data-ff-payment-balance>O saldo será exibido ao selecionar a conta.</small>
                         </label>
+
+                        <div class="ff-payment-warning" data-ff-payment-warning hidden>
+                            <i class="bi bi-exclamation-triangle"></i>
+                            <span></span>
+                        </div>
                     </div>
 
                     @if ($contas->isEmpty())
@@ -467,6 +472,7 @@
             const paymentDate = paymentModal?.querySelector('[data-ff-payment-date]');
             const paymentAccount = paymentModal?.querySelector('[data-ff-payment-account]');
             const paymentBalance = paymentModal?.querySelector('[data-ff-payment-balance]');
+            const paymentWarning = paymentModal?.querySelector('[data-ff-payment-warning]');
             const expenseEditModal = document.getElementById('financeiroEditarDespesaModal');
             const expenseEditContainer = expenseEditModal?.querySelector('[data-ff-expense-edit-container]');
             const highlightedRow = document.querySelector('[data-ff-highlighted-ledger]');
@@ -559,9 +565,44 @@
                 }
             });
 
+            const parseBalance = (value) => {
+                const original = String(value || '0').trim();
+
+                if (/^-?\d+(\.\d+)?$/.test(original)) {
+                    return Number(original);
+                }
+
+                const normalized = original
+                    .replace(/\s/g, '')
+                    .replace(/\./g, '')
+                    .replace(',', '.')
+                    .replace(/[^0-9.-]/g, '');
+
+                return Number(normalized) || 0;
+            };
+
             paymentAccount?.addEventListener('change', () => {
                 const selected = paymentAccount.options[paymentAccount.selectedIndex];
                 const balance = selected?.getAttribute('data-balance') || '';
+                const balanceNumber = parseBalance(selected?.getAttribute('data-balance-number') || balance);
+
+                if (paymentWarning) {
+                    const messageTarget = paymentWarning.querySelector('span');
+
+                    paymentWarning.hidden = true;
+                    paymentWarning.classList.remove('is-negative', 'is-empty');
+
+                    if (balance && balanceNumber <= 0) {
+                        paymentWarning.hidden = false;
+                        paymentWarning.classList.add(balanceNumber < 0 ? 'is-negative' : 'is-empty');
+
+                        if (messageTarget) {
+                            messageTarget.textContent = balanceNumber < 0
+                                ? `Atenção: a conta selecionada está com saldo negativo (${balance}). Confirme se esta é a conta correta antes de baixar o pagamento.`
+                                : `Atenção: a conta selecionada está sem saldo (${balance}). Confirme se esta é a conta correta antes de baixar o pagamento.`;
+                        }
+                    }
+                }
 
                 if (paymentBalance) {
                     paymentBalance.textContent = balance

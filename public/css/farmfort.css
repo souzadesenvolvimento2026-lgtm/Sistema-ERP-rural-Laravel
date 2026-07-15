@@ -10200,6 +10200,72 @@ body.ff-map-fixed-body .ff-map-hidden-forms {
   line-height: 1.45;
 }
 
+.ff-payment-modal .modal-dialog {
+  max-width: min(620px, calc(100vw - 32px));
+}
+
+.ff-payment-modal .modal-body {
+  padding: 18px;
+}
+
+.ff-payment-modal .ff-financial-launch-help {
+  margin-bottom: 16px;
+}
+
+.ff-payment-grid {
+  align-items: start;
+  gap: 14px 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ff-payment-grid .ff-financial-field {
+  margin: 0;
+  min-width: 0;
+}
+
+.ff-payment-grid .ff-financial-field input,
+.ff-payment-grid .ff-financial-field select {
+  min-height: 40px;
+}
+
+.ff-payment-warning {
+  align-items: flex-start;
+  background: var(--ff-warning-soft);
+  border: 1px solid color-mix(in srgb, var(--ff-warning) 45%, var(--ff-border));
+  border-radius: 8px;
+  color: var(--ff-warning);
+  display: flex;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 8px;
+  grid-column: 1 / -1;
+  line-height: 1.4;
+  padding: 10px 12px;
+}
+
+.ff-payment-warning[hidden] {
+  display: none !important;
+}
+
+.ff-payment-warning.is-negative {
+  background: var(--ff-danger-soft);
+  border-color: color-mix(in srgb, var(--ff-danger) 48%, var(--ff-border));
+  color: var(--ff-danger);
+}
+
+.ff-payment-warning i {
+  flex: 0 0 auto;
+  font-size: 15px;
+  line-height: 1.1;
+  margin-top: 1px;
+}
+
+@media (max-width: 640px) {
+  .ff-payment-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 760px) {
   .ff-financial-form-grid,
   .ff-transfer-grid {
