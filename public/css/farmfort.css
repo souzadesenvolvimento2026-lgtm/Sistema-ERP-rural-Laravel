@@ -8399,7 +8399,8 @@ html[data-theme="dark"] .ff-comparison-filter-form {
 }
 
 .ff-purchase-order-dialog {
-  width: min(96vw, 1130px);
+  width: min(94vw, 620px);
+  max-width: 620px;
 }
 
 .ff-purchase-order-modal .modal-content {
@@ -8417,6 +8418,10 @@ html[data-theme="dark"] .ff-comparison-filter-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+}
+
+.ff-purchase-order-field-wide {
+  grid-column: 1 / -1;
 }
 
 .ff-purchase-order-field {
@@ -8493,35 +8498,35 @@ html[data-theme="dark"] .ff-comparison-filter-form {
 
 .ff-purchase-order-modal .item-card .form-grid {
   display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 12px;
 }
 
 .ff-purchase-order-modal .item-card .field {
   display: grid;
-  grid-column: span 4;
+  grid-column: span 3;
   gap: 7px;
   min-width: 0;
 }
 
 .ff-purchase-order-modal .item-card .field:nth-child(1) {
-  grid-column: span 3;
+  grid-column: span 2;
 }
 
 .ff-purchase-order-modal .item-card .field:nth-child(2) {
-  grid-column: span 5;
+  grid-column: span 4;
 }
 
 .ff-purchase-order-modal .item-card .field:nth-child(3) {
-  grid-column: span 4;
+  grid-column: span 6;
 }
 
 .ff-purchase-order-modal .item-card .field:nth-child(4) {
-  grid-column: span 5;
+  grid-column: span 3;
 }
 
 .ff-purchase-order-modal .item-card .field:nth-child(5) {
-  grid-column: span 4;
+  grid-column: span 3;
 }
 
 .ff-purchase-order-modal .item-card .field:nth-child(6) {

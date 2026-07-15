@@ -68,7 +68,7 @@
                         <input name="supplier_name" value="{{ old('supplier_name') }}" required>
                     </label>
 
-                    <label class="ff-purchase-order-field">
+                    <label class="ff-purchase-order-field ff-purchase-order-field-wide">
                         <span>Observações</span>
                         <input name="notes" value="{{ old('notes') }}">
                     </label>
