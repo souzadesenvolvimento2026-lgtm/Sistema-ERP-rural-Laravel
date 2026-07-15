@@ -282,7 +282,24 @@
                                             <li><a class="dropdown-item" href="{{ route('financeiro.contas.index', [], false) }}"><i class="bi bi-bank me-2"></i>Ver bancos</a></li>
                                             <li><button class="dropdown-item" type="button" data-bs-toggle="modal" data-bs-target="#financeiroTransferenciaModal"><i class="bi bi-arrow-left-right me-2"></i>Nova transferência</button></li>
                                         @else
-                                            <li><a class="dropdown-item" href="{{ $row->action_url }}"><i class="bi bi-pencil-square me-2"></i>Editar</a></li>
+                                            <li>
+                                                @if ($row->tipo === 'despesa')
+                                                    <a
+                                                        class="dropdown-item"
+                                                        href="{{ $row->action_url }}"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#financeiroEditarDespesaModal"
+                                                        data-ff-expense-edit-trigger
+                                                        data-ff-expense-edit-url="{{ $row->action_url }}{{ str_contains($row->action_url, '?') ? '&' : '?' }}modal=1"
+                                                    >
+                                                        <i class="bi bi-pencil-square me-2"></i>Editar
+                                                    </a>
+                                                @else
+                                                    <a class="dropdown-item" href="{{ $row->action_url }}">
+                                                        <i class="bi bi-pencil-square me-2"></i>Editar
+                                                    </a>
+                                                @endif
+                                            </li>
                                             <li><a class="dropdown-item" href="{{ $row->duplicate_url }}"><i class="bi bi-files me-2"></i>Duplicar</a></li>
 
                                             @if ($podeAprovarFinanceiro && $row->can_approve)
@@ -414,6 +431,23 @@
             </form>
         </div>
     </div>
+
+    <div class="modal fade ff-expense-edit-ajax-modal" id="financeiroEditarDespesaModal" tabindex="-1" aria-labelledby="financeiroEditarDespesaModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered ff-expense-edit-dialog" data-ff-expense-edit-container>
+            <div class="modal-content ff-expense-edit-loading">
+                <div class="modal-header modal-header-green ff-expense-edit-header">
+                    <h5 class="modal-title" id="financeiroEditarDespesaModalLabel">
+                        <i class="bi bi-pencil-square"></i>
+                        Editar Despesa
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    Carregando formulário...
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @push('scripts')
@@ -433,7 +467,72 @@
             const paymentDate = paymentModal?.querySelector('[data-ff-payment-date]');
             const paymentAccount = paymentModal?.querySelector('[data-ff-payment-account]');
             const paymentBalance = paymentModal?.querySelector('[data-ff-payment-balance]');
+            const expenseEditModal = document.getElementById('financeiroEditarDespesaModal');
+            const expenseEditContainer = expenseEditModal?.querySelector('[data-ff-expense-edit-container]');
             const highlightedRow = document.querySelector('[data-ff-highlighted-ledger]');
+
+            const loadingEditModal = () => `
+                <div class="modal-content ff-expense-edit-loading">
+                    <div class="modal-header modal-header-green ff-expense-edit-header">
+                        <h5 class="modal-title" id="financeiroEditarDespesaModalLabel">
+                            <i class="bi bi-pencil-square"></i>
+                            Editar Despesa
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                    </div>
+                    <div class="modal-body">Carregando formulário...</div>
+                </div>
+            `;
+
+            const errorEditModal = (fallbackUrl) => `
+                <div class="modal-content ff-expense-edit-loading">
+                    <div class="modal-header modal-header-green ff-expense-edit-header">
+                        <h5 class="modal-title" id="financeiroEditarDespesaModalLabel">
+                            <i class="bi bi-exclamation-triangle"></i>
+                            Não foi possível abrir a edição
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="mb-3">Tente novamente ou abra a tela de edição em modo completo.</p>
+                        <a class="btn primary" href="${fallbackUrl}">Abrir edição</a>
+                    </div>
+                </div>
+            `;
+
+            expenseEditModal?.addEventListener('show.bs.modal', async (event) => {
+                const trigger = event.relatedTarget;
+                const modalUrl = trigger?.getAttribute('data-ff-expense-edit-url');
+                const fallbackUrl = trigger?.getAttribute('href') || modalUrl || '#';
+
+                if (!expenseEditContainer || !modalUrl) {
+                    return;
+                }
+
+                expenseEditContainer.innerHTML = loadingEditModal();
+
+                try {
+                    const response = await fetch(modalUrl, {
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('Falha ao carregar formulário');
+                    }
+
+                    expenseEditContainer.innerHTML = await response.text();
+                } catch (error) {
+                    expenseEditContainer.innerHTML = errorEditModal(fallbackUrl);
+                }
+            });
+
+            expenseEditModal?.addEventListener('hidden.bs.modal', () => {
+                if (expenseEditContainer) {
+                    expenseEditContainer.innerHTML = loadingEditModal();
+                }
+            });
 
             paymentModal?.addEventListener('show.bs.modal', (event) => {
                 const button = event.relatedTarget;

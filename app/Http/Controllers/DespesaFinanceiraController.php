@@ -19,7 +19,7 @@ class DespesaFinanceiraController extends Controller
         return view('financeiro.despesas.index', $service->pagina(app(FarmContext::class)->propertyId(), $request));
     }
 
-    public function edit(int $despesa, DespesaFinanceiraService $service): View|RedirectResponse
+    public function edit(Request $request, int $despesa, DespesaFinanceiraService $service): View|RedirectResponse
     {
         $propertyId = app(FarmContext::class)->propertyId();
 
@@ -31,11 +31,20 @@ class DespesaFinanceiraController extends Controller
             return $this->redirectToFinancialPanel()->withErrors($exception->getMessage());
         }
 
-        return view('financeiro.despesas.edit', [
+        $viewData = [
             ...$this->formData($propertyId),
             'lancamento' => $lancamento,
             'despesa' => $despesa,
-        ]);
+        ];
+
+        if ($request->boolean('modal')) {
+            return view('financeiro.despesas.partials.modal-edicao', [
+                ...$viewData,
+                'modalOnly' => true,
+            ]);
+        }
+
+        return view('financeiro.despesas.edit', $viewData);
     }
 
     public function duplicate(int $despesa, DespesaFinanceiraService $service): View|RedirectResponse

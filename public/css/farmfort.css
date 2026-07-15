@@ -45,6 +45,151 @@
   --bs-border-color: var(--ff-border);
 }
 
+.ff-expense-edit-standalone {
+  min-height: calc(100vh - 120px);
+  position: relative;
+}
+
+.ff-expense-edit-context {
+  filter: grayscale(0.1);
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.ff-expense-edit-context-panel {
+  margin-top: 1rem;
+}
+
+.ff-expense-edit-page-modal {
+  background: rgba(2, 8, 23, 0.46);
+}
+
+.ff-expense-edit-dialog {
+  max-width: min(760px, calc(100vw - 44px));
+}
+
+.ff-expense-edit-content {
+  background: var(--ff-surface);
+  border: 1px solid var(--ff-border);
+  border-radius: 10px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+}
+
+.ff-expense-edit-header {
+  align-items: center;
+  border-bottom: 0;
+  min-height: 56px;
+  padding: 0.85rem 1rem;
+}
+
+.ff-expense-edit-header .modal-title {
+  align-items: center;
+  color: #fff;
+  display: inline-flex;
+  font-size: 1.1rem;
+  font-weight: 800;
+  gap: 0.45rem;
+}
+
+.ff-expense-edit-header .btn-close {
+  filter: invert(1) grayscale(1) brightness(2);
+  opacity: 0.9;
+}
+
+.ff-expense-edit-body {
+  background: var(--ff-surface);
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+  padding: 1rem;
+}
+
+.ff-expense-edit-footer {
+  background: var(--ff-surface);
+  border-top: 1px solid var(--ff-border);
+  bottom: 0;
+  padding: 0.85rem 1rem;
+  position: sticky;
+  z-index: 2;
+}
+
+.ff-expense-edit-form .form-grid {
+  display: grid;
+  gap: 0.8rem 0.75rem;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+
+.ff-expense-edit-form .field {
+  grid-column: span 4;
+}
+
+.ff-expense-edit-form .field.wide {
+  grid-column: span 8;
+}
+
+.ff-expense-edit-form .field.full {
+  grid-column: 1 / -1;
+}
+
+.ff-expense-edit-form label {
+  color: var(--ff-text);
+  font-size: 0.78rem;
+  font-weight: 800;
+  margin-bottom: 0.3rem;
+}
+
+.ff-expense-edit-form input,
+.ff-expense-edit-form select,
+.ff-expense-edit-form textarea {
+  background: var(--ff-surface);
+  border: 1px solid var(--ff-border);
+  border-radius: 8px;
+  color: var(--ff-text);
+  min-height: 38px;
+  width: 100%;
+}
+
+.ff-expense-edit-form textarea {
+  min-height: 70px;
+  resize: vertical;
+}
+
+.ff-expense-edit-form small {
+  color: var(--ff-muted);
+  display: block;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  margin-top: 0.3rem;
+}
+
+.ff-expense-edit-loading {
+  background: var(--ff-surface);
+  border: 1px solid var(--ff-border);
+  border-radius: 10px;
+  color: var(--ff-text);
+  overflow: hidden;
+}
+
+@media (max-width: 900px) {
+  .ff-expense-edit-dialog {
+    max-width: calc(100vw - 22px);
+  }
+
+  .ff-expense-edit-form .field,
+  .ff-expense-edit-form .field.wide {
+    grid-column: span 6;
+  }
+}
+
+@media (max-width: 640px) {
+  .ff-expense-edit-form .field,
+  .ff-expense-edit-form .field.wide,
+  .ff-expense-edit-form .field.full {
+    grid-column: 1 / -1;
+  }
+}
+
 html[data-theme="dark"] {
   color-scheme: dark;
   --green-dark: #64d8b0;
@@ -12409,4 +12554,20 @@ html[data-theme="dark"] .ff-patrimony-modal .btn-close {
   .ff-users-heading-panel .actions {
     margin-left: 0;
   }
+}
+
+.ff-expense-edit-content .ff-expense-edit-form input,
+.ff-expense-edit-content .ff-expense-edit-form select,
+.ff-expense-edit-content .ff-expense-edit-form textarea {
+  background: var(--ff-surface);
+  border-color: var(--ff-border);
+  color: var(--ff-text);
+}
+
+.ff-expense-edit-content .ff-expense-edit-form input:focus,
+.ff-expense-edit-content .ff-expense-edit-form select:focus,
+.ff-expense-edit-content .ff-expense-edit-form textarea:focus {
+  border-color: var(--ff-accent);
+  box-shadow: 0 0 0 0.18rem color-mix(in srgb, var(--ff-accent) 20%, transparent);
+  outline: 0;
 }
