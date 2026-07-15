@@ -161,6 +161,24 @@
                 </button>
             </div>
 
+            <div class="ff-finance-datatable-toolbar">
+                <label>
+                    <span>Exibir</span>
+                    <select class="form-select form-select-sm" data-ff-ledger-page-size>
+                        <option value="25" selected>25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="all">Todos</option>
+                    </select>
+                    <span>resultados por página</span>
+                </label>
+
+                <label class="ff-finance-datatable-search">
+                    <span>Pesquisar</span>
+                    <input class="form-control form-control-sm" type="search" placeholder="Buscar registros" data-ff-ledger-search>
+                </label>
+            </div>
+
             <div class="table-wrap ff-finance-ledger-wrap">
                 <table class="ff-lancamentos-table" data-ff-ledger-table>
                     <thead>
@@ -302,8 +320,18 @@
                     @empty
                         <tr data-ff-ledger-empty><td colspan="10" class="text-center py-4">Nenhum lançamento encontrado para o filtro selecionado.</td></tr>
                     @endforelse
+                        <tr data-ff-ledger-filter-empty hidden><td colspan="10" class="text-center py-4">Nenhum lançamento encontrado para a busca informada.</td></tr>
                     </tbody>
                 </table>
+            </div>
+
+            <div class="ff-finance-datatable-footer">
+                <span data-ff-ledger-info>Mostrando registros.</span>
+                <div class="ff-finance-datatable-pagination">
+                    <button class="btn btn-sm" type="button" data-ff-ledger-prev>Anterior</button>
+                    <span data-ff-ledger-page>1</span>
+                    <button class="btn btn-sm" type="button" data-ff-ledger-next>Próximo</button>
+                </div>
             </div>
 
         </section>
@@ -322,6 +350,12 @@
         document.addEventListener('DOMContentLoaded', () => {
             const table = document.querySelector('[data-ff-ledger-table]');
             const tbody = table?.querySelector('tbody');
+            const pageSizeSelect = document.querySelector('[data-ff-ledger-page-size]');
+            const searchInput = document.querySelector('[data-ff-ledger-search]');
+            const info = document.querySelector('[data-ff-ledger-info]');
+            const pageIndicator = document.querySelector('[data-ff-ledger-page]');
+            const previousButton = document.querySelector('[data-ff-ledger-prev]');
+            const nextButton = document.querySelector('[data-ff-ledger-next]');
 
             if (!table || !tbody) {
                 return;
@@ -329,10 +363,13 @@
 
             const triggers = Array.from(table.querySelectorAll('[data-ff-sort-trigger]'));
             const rows = Array.from(table.querySelectorAll('tbody tr')).filter((row) => !row.hasAttribute('data-ff-ledger-empty'));
+            const filterEmptyRow = table.querySelector('[data-ff-ledger-filter-empty]');
+            const dataRows = rows.filter((row) => !row.hasAttribute('data-ff-ledger-filter-empty'));
             let activeSort = {
                 column: null,
                 direction: null,
             };
+            let currentPage = 1;
 
             const normalize = (value) => String(value || '')
                 .normalize('NFD')
@@ -360,6 +397,12 @@
                 return normalize(value);
             };
 
+            const rowMatchesSearch = (row) => {
+                const searchTerm = normalize(searchInput?.value || '');
+
+                return !searchTerm || normalize(row.textContent).includes(searchTerm);
+            };
+
             const compareValues = (first, second, type) => {
                 if (type === 'number') {
                     return first - second;
@@ -375,7 +418,7 @@
                 });
             };
 
-            const updateHeaderState = (trigger, direction) => {
+            const updateHeaderState = (trigger = null, direction = null) => {
                 triggers.forEach((item) => {
                     const icon = item.querySelector('[data-ff-sort-icon]');
                     item.classList.toggle('is-active', item === trigger);
@@ -390,32 +433,92 @@
                 });
             };
 
-            const sortByColumn = (trigger) => {
-                const column = Number(trigger.dataset.column);
-                const type = trigger.dataset.type || 'text';
-                const previousDirection = activeSort.column === column ? activeSort.direction : null;
-                const direction = previousDirection
-                    ? (previousDirection === 'asc' ? 'desc' : 'asc')
-                    : (trigger.dataset.defaultDirection || 'asc');
-                const factor = direction === 'asc' ? 1 : -1;
+            const sortedRows = (filteredRows) => {
+                if (activeSort.column === null) {
+                    return filteredRows.slice();
+                }
 
-                rows
+                const trigger = triggers.find((item) => Number(item.dataset.column) === activeSort.column);
+                const type = trigger?.dataset.type || 'text';
+                const factor = activeSort.direction === 'asc' ? 1 : -1;
+
+                return filteredRows
                     .slice()
                     .sort((firstRow, secondRow) => {
-                        const first = getCellValue(firstRow, column, type);
-                        const second = getCellValue(secondRow, column, type);
+                        const first = getCellValue(firstRow, activeSort.column, type);
+                        const second = getCellValue(secondRow, activeSort.column, type);
                         const result = compareValues(first, second, type);
 
                         if (result !== 0) {
                             return result * factor;
                         }
 
-                        return rows.indexOf(firstRow) - rows.indexOf(secondRow);
-                    })
-                    .forEach((row) => tbody.appendChild(row));
+                        return dataRows.indexOf(firstRow) - dataRows.indexOf(secondRow);
+                    });
+            };
+
+            const selectedPageSize = () => {
+                const selected = pageSizeSelect?.value || '25';
+
+                return selected === 'all' ? Number.MAX_SAFE_INTEGER : Number(selected) || 25;
+            };
+
+            const renderRows = () => {
+                const filteredRows = dataRows.filter(rowMatchesSearch);
+                const orderedRows = sortedRows(filteredRows);
+                const pageSize = selectedPageSize();
+                const totalPages = Math.max(1, Math.ceil(orderedRows.length / pageSize));
+
+                currentPage = Math.min(currentPage, totalPages);
+
+                const start = (currentPage - 1) * pageSize;
+                const end = start + pageSize;
+
+                dataRows.forEach((row) => {
+                    row.hidden = true;
+                    tbody.appendChild(row);
+                });
+
+                orderedRows.forEach((row, index) => {
+                    row.hidden = index < start || index >= end;
+                    tbody.appendChild(row);
+                });
+
+                if (filterEmptyRow) {
+                    filterEmptyRow.hidden = orderedRows.length > 0 || dataRows.length === 0;
+                    tbody.appendChild(filterEmptyRow);
+                }
+
+                if (info) {
+                    const firstVisible = orderedRows.length ? start + 1 : 0;
+                    const lastVisible = Math.min(end, orderedRows.length);
+                    info.textContent = `Mostrando de ${firstVisible} até ${lastVisible} de ${orderedRows.length} registros`;
+                }
+
+                if (pageIndicator) {
+                    pageIndicator.textContent = String(currentPage);
+                }
+
+                if (previousButton) {
+                    previousButton.disabled = currentPage <= 1;
+                }
+
+                if (nextButton) {
+                    nextButton.disabled = currentPage >= totalPages;
+                }
+            };
+
+            const sortByColumn = (trigger) => {
+                const column = Number(trigger.dataset.column);
+                const previousDirection = activeSort.column === column ? activeSort.direction : null;
+                const direction = previousDirection
+                    ? (previousDirection === 'asc' ? 'desc' : 'asc')
+                    : (trigger.dataset.defaultDirection || 'asc');
 
                 activeSort = { column, direction };
                 updateHeaderState(trigger, direction);
+                currentPage = 1;
+                renderRows();
             };
 
             triggers.forEach((trigger) => {
@@ -424,6 +527,29 @@
                     sortByColumn(trigger);
                 });
             });
+
+            pageSizeSelect?.addEventListener('change', () => {
+                currentPage = 1;
+                renderRows();
+            });
+
+            searchInput?.addEventListener('input', () => {
+                currentPage = 1;
+                renderRows();
+            });
+
+            previousButton?.addEventListener('click', () => {
+                currentPage = Math.max(1, currentPage - 1);
+                renderRows();
+            });
+
+            nextButton?.addEventListener('click', () => {
+                currentPage += 1;
+                renderRows();
+            });
+
+            updateHeaderState();
+            renderRows();
         });
     </script>
 @endpush
