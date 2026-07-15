@@ -7801,11 +7801,23 @@ html[data-theme="dark"] .ff-comparison-filter-form {
 }
 
 .ff-finance-ledger-wrap {
-  overflow-x: auto;
+  overflow-x: hidden;
 }
 
 .ff-lancamentos-table {
+  width: 100%;
+  min-width: 0 !important;
+  max-width: 100%;
+  table-layout: fixed;
   font-size: 12px;
+}
+
+.ff-lancamentos-table th,
+.ff-lancamentos-table td {
+  padding: 10px 8px !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .ff-lancamentos-table th {
@@ -7813,10 +7825,68 @@ html[data-theme="dark"] .ff-comparison-filter-form {
   font-size: 11px;
 }
 
+.ff-lancamentos-table th:nth-child(1),
+.ff-lancamentos-table td:nth-child(1) {
+  width: 6%;
+}
+
+.ff-lancamentos-table th:nth-child(2),
+.ff-lancamentos-table td:nth-child(2) {
+  width: 5%;
+}
+
+.ff-lancamentos-table th:nth-child(3),
+.ff-lancamentos-table td:nth-child(3) {
+  width: 22%;
+}
+
+.ff-lancamentos-table th:nth-child(4),
+.ff-lancamentos-table td:nth-child(4) {
+  width: 17%;
+}
+
+.ff-lancamentos-table th:nth-child(5),
+.ff-lancamentos-table td:nth-child(5) {
+  width: 16%;
+}
+
+.ff-lancamentos-table th:nth-child(6),
+.ff-lancamentos-table td:nth-child(6) {
+  width: 12%;
+}
+
+.ff-lancamentos-table th:nth-child(7),
+.ff-lancamentos-table td:nth-child(7) {
+  width: 7%;
+}
+
+.ff-lancamentos-table th:nth-child(8),
+.ff-lancamentos-table td:nth-child(8) {
+  width: 6%;
+}
+
+.ff-lancamentos-table th:nth-child(9),
+.ff-lancamentos-table td:nth-child(9) {
+  width: 6%;
+}
+
+.ff-lancamentos-table th:nth-child(10),
+.ff-lancamentos-table td:nth-child(10) {
+  width: 3%;
+}
+
+.ff-lancamentos-table td:nth-child(1),
+.ff-lancamentos-table td:nth-child(2),
+.ff-lancamentos-table td:nth-child(7),
+.ff-lancamentos-table td:nth-child(8),
+.ff-lancamentos-table td:nth-child(10) {
+  white-space: nowrap !important;
+}
+
 .ff-table-sort-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   max-width: 100%;
   padding: 0;
   border: 0;
@@ -7830,7 +7900,13 @@ html[data-theme="dark"] .ff-comparison-filter-form {
   cursor: pointer;
 }
 
+.ff-table-sort-trigger span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .ff-table-sort-trigger i {
+  flex: 0 0 auto;
   color: color-mix(in srgb, var(--ff-accent) 56%, var(--ff-muted));
   font-size: 13px;
   opacity: 0.62;
@@ -7879,7 +7955,7 @@ html[data-theme="dark"] .ff-comparison-filter-form {
   border-radius: 999px;
   font-size: 10px;
   font-weight: 900;
-  padding: 4px 7px;
+  padding: 3px 6px;
 }
 
 .ff-badge-expense {
@@ -7934,8 +8010,8 @@ html[data-theme="dark"] .ff-comparison-filter-form {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border-radius: 9px;
 }
