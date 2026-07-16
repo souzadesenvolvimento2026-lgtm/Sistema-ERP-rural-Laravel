@@ -90,6 +90,7 @@ class FinanceiroPainelService
             'todos' => $request->boolean('todos') || (! $mes && ! $inicio && ! $fim),
             'data_inicio' => $inicio,
             'data_fim' => $fim,
+            'search' => trim((string) $request->query('search', '')),
             'conta_id' => $contaId > 0 ? $contaId : null,
             'lancamento_id' => $lancamentoId > 0 ? $lancamentoId : null,
         ];

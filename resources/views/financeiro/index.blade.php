@@ -47,38 +47,61 @@
             </div>
         </div>
 
-        <section class="ff-finance-filter-strip">
-            <form method="get" class="ff-finance-filter-form">
-                <input type="hidden" name="conta_id" value="{{ $contaAtual ?: '' }}">
-                <div>
-                    <label for="filtroTipoLancamento">Tipo de lançamento</label>
-                    <select id="filtroTipoLancamento" name="filtro" class="form-select form-select-sm" onchange="this.form.submit()">
-                        <option value="todos" @selected($tipoAtual === 'todos')>Todos</option>
-                        <option value="despesas" @selected($tipoAtual === 'despesas')>Despesas</option>
-                        <option value="receitas" @selected($tipoAtual === 'receitas')>Receitas</option>
-                        <option value="transferencias" @selected($tipoAtual === 'transferencias')>Transferências</option>
-                    </select>
-                </div>
-                <div>
-                    <label for="filtroMesLancamentos">Filtro por mês</label>
-                    <input type="month" id="filtroMesLancamentos" name="mes" class="form-control form-control-sm" value="{{ $filtros['mes'] ?? '' }}">
-                </div>
-                <div>
-                    <label for="filtroDataInicio">Data Inicial</label>
-                    <input type="date" id="filtroDataInicio" name="data_inicio" class="form-control form-control-sm" value="{{ $filtros['data_inicio'] }}">
-                </div>
-                <div>
-                    <label for="filtroDataFim">Data Final</label>
-                    <input type="date" id="filtroDataFim" name="data_fim" class="form-control form-control-sm" value="{{ $filtros['data_fim'] }}">
-                </div>
-                <button type="submit" class="btn btn-sm btn-farmflow">
-                    <i class="bi bi-search"></i> Aplicar período
-                </button>
-                <a class="btn btn-sm btn-outline-secondary" href="{{ $urlFiltro(['todos' => 1, 'mes' => null, 'data_inicio' => null, 'data_fim' => null]) }}">
-                    <i class="bi bi-list-ul"></i> Todos
-                </a>
-            </form>
-        </section>
+        @include('partials.filter-panel', [
+            'action' => route('financeiro.index'),
+            'clearUrl' => route('financeiro.index'),
+            'hidden' => [
+                'conta_id' => $contaAtual ?: null,
+            ],
+            'fields' => [
+                [
+                    'type' => 'select',
+                    'name' => 'filtro',
+                    'label' => 'Tipo de lançamento',
+                    'value' => $tipoAtual,
+                    'options' => [
+                        'todos' => 'Todos',
+                        'despesas' => 'Despesas',
+                        'receitas' => 'Receitas',
+                        'transferencias' => 'Transferências',
+                    ],
+                    'columns' => 3,
+                ],
+                [
+                    'type' => 'month',
+                    'name' => 'mes',
+                    'label' => 'Mês',
+                    'value' => $filtros['mes'] ?? '',
+                    'columns' => 2,
+                ],
+                [
+                    'type' => 'date',
+                    'name' => 'data_inicio',
+                    'label' => 'Data inicial',
+                    'value' => $filtros['data_inicio'] ?? '',
+                    'columns' => 2,
+                ],
+                [
+                    'type' => 'date',
+                    'name' => 'data_fim',
+                    'label' => 'Data final',
+                    'value' => $filtros['data_fim'] ?? '',
+                    'columns' => 2,
+                ],
+                [
+                    'type' => 'search',
+                    'name' => 'search',
+                    'label' => 'Buscar',
+                    'value' => $filtros['search'] ?? '',
+                    'placeholder' => 'Descrição, pessoa, safra, categoria ou conta',
+                    'columns' => 5,
+                    'attributes' => [
+                        'data-ff-ledger-search' => true,
+                    ],
+                ],
+            ],
+            'actionsColumns' => 2,
+        ])
 
         <section class="stats ff-finance-summary-cards">
             @foreach ($cards as $card)
@@ -175,10 +198,6 @@
                     <span>resultados por página</span>
                 </label>
 
-                <label class="ff-finance-datatable-search">
-                    <span>Pesquisar</span>
-                    <input class="form-control form-control-sm" type="search" placeholder="Buscar registros" data-ff-ledger-search>
-                </label>
             </div>
 
             <div class="table-wrap ff-finance-ledger-wrap">

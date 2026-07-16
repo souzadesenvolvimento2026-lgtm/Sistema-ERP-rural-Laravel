@@ -8,40 +8,46 @@
     <div class="ff-purchase-page">
         <span class="visually-hidden">Pedidos de compras</span>
 
-        <section class="ff-purchase-filter-card" aria-label="Filtros dos pedidos fiscais">
-            <form method="get" action="{{ route('compras.pedidos.index') }}" class="ff-purchase-filter-form">
-                <label>
-                    <span>Status</span>
-                    <select name="status" class="form-select">
-                        @foreach ($statusOptions as $value => $label)
-                            <option value="{{ $value }}" @selected($filters['status'] === $value)>{{ $label }}</option>
-                        @endforeach
-                    </select>
-                </label>
-
-                <label>
-                    <span>De</span>
-                    <input type="date" name="date_from" value="{{ $filters['date_from'] }}" class="form-control">
-                </label>
-
-                <label>
-                    <span>Até</span>
-                    <input type="date" name="date_to" value="{{ $filters['date_to'] }}" class="form-control">
-                </label>
-
-                <label class="ff-purchase-filter-supplier">
-                    <span>Fornecedor</span>
-                    <input type="search" name="supplier" value="{{ $filters['supplier'] }}" class="form-control" placeholder="Nome ou CNPJ">
-                </label>
-
-                <div class="ff-purchase-filter-actions">
-                    <button type="submit" class="btn primary">
-                        <i class="bi bi-search"></i> Filtrar
-                    </button>
-                    <a class="btn" href="{{ route('compras.pedidos.index') }}">Limpar</a>
-                </div>
-            </form>
-        </section>
+        @include('partials.filter-panel', [
+            'action' => route('compras.pedidos.index'),
+            'clearUrl' => route('compras.pedidos.index'),
+            'fields' => [
+                [
+                    'type' => 'select',
+                    'name' => 'status',
+                    'label' => 'Status',
+                    'value' => $filters['status'] ?? 'todos',
+                    'options' => $statusOptions,
+                    'columns' => 3,
+                ],
+                [
+                    'type' => 'date',
+                    'name' => 'date_from',
+                    'label' => 'De',
+                    'value' => $filters['date_from'] ?? '',
+                    'columns' => 2,
+                ],
+                [
+                    'type' => 'date',
+                    'name' => 'date_to',
+                    'label' => 'Até',
+                    'value' => $filters['date_to'] ?? '',
+                    'columns' => 2,
+                ],
+                [
+                    'type' => 'search',
+                    'name' => 'supplier',
+                    'label' => 'Buscar',
+                    'value' => $filters['supplier'] ?? '',
+                    'placeholder' => 'Fornecedor, nome ou CNPJ',
+                    'columns' => 6,
+                    'attributes' => [
+                        'data-ff-purchase-search' => true,
+                    ],
+                ],
+            ],
+            'actionsColumns' => 3,
+        ])
 
         <section class="panel ff-purchase-hero">
             <div class="ff-purchase-hero-content">
@@ -106,10 +112,6 @@
                     <span>resultados por página</span>
                 </label>
 
-                <label class="ff-purchase-datatable-search">
-                    <span>Pesquisar</span>
-                    <input class="form-control form-control-sm" type="search" placeholder="Buscar registros" data-ff-purchase-search>
-                </label>
             </div>
 
             <div class="table-wrap ff-purchase-table-wrap">

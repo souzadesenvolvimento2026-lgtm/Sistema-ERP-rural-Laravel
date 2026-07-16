@@ -1,23 +1,23 @@
-<section class="panel">
-    <div class="panel-head"><h2>Filtros</h2></div>
-    <form method="GET" action="{{ route('safras.index') }}" class="form-grid panel-body">
-        <label>
-            Status
-            <select name="status">
-                @foreach ($statusOptions as $value => $label)
-                    <option value="{{ $value }}" @selected($filtros['status'] === $value)>{{ $label }}</option>
-                @endforeach
-            </select>
-        </label>
-
-        <label>
-            Buscar
-            <input name="search" value="{{ $filtros['search'] }}" placeholder="Descrição, cultura ou observação">
-        </label>
-
-        <div class="form-actions">
-            <a class="btn" href="{{ route('safras.index') }}">Limpar</a>
-            <button class="btn primary" type="submit">Filtrar</button>
-        </div>
-    </form>
-</section>
+@include('partials.filter-panel', [
+    'action' => route('safras.index'),
+    'clearUrl' => route('safras.index'),
+    'fields' => [
+        [
+            'type' => 'select',
+            'name' => 'status',
+            'label' => 'Status',
+            'value' => $filtros['status'] ?? 'ativas',
+            'options' => $statusOptions,
+            'columns' => 5,
+        ],
+        [
+            'type' => 'search',
+            'name' => 'search',
+            'label' => 'Buscar',
+            'value' => $filtros['search'] ?? '',
+            'placeholder' => 'Descrição, cultura ou observação',
+            'columns' => 8,
+        ],
+    ],
+    'actionsColumns' => 3,
+])
