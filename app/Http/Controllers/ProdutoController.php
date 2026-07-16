@@ -63,6 +63,31 @@ class ProdutoController extends Controller
             ->with('success', $ativo ? 'Produto ativado.' : 'Produto inativado.');
     }
 
+    public function storeMovement(Request $request, int $produto, ProdutoService $service): RedirectResponse
+    {
+        $dados = $request->validate([
+            'destino_tipo' => ['required', 'string', 'in:safra,patrimonio,ajuste'],
+            'quantidade' => ['required', 'string', 'max:30'],
+            'data_movimento' => ['required', 'date'],
+            'safra_id' => ['nullable', 'integer'],
+            'talhao_id' => ['nullable', 'integer'],
+            'maquina_id' => ['nullable', 'integer'],
+            'motivo' => ['nullable', 'string', 'max:120'],
+            'observacoes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $service->registrarSaida(
+            $produto,
+            app(FarmContext::class)->propertyId(),
+            $dados,
+            session('usuario_id')
+        );
+
+        return redirect()
+            ->route('produtos.index')
+            ->with('success', 'Baixa de estoque registrada.');
+    }
+
     private function validationRules(): array
     {
         return [

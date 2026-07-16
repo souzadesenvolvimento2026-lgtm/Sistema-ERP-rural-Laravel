@@ -373,7 +373,14 @@ class AuditoriaService
 
     private function tiposDespesa(int $propertyId)
     {
-        return $this->baseQuery($propertyId)
+        return DB::table('logs_auditoria as l')
+            ->leftJoin('despesas as d', function ($join): void {
+                $join
+                    ->on('d.id', '=', 'l.registro_id')
+                    ->where('l.tabela', '=', 'despesas');
+            })
+            ->leftJoin('categorias as c', 'c.id', '=', 'd.categoria_id')
+            ->where('l.propriedade_id', $propertyId)
             ->whereNotNull('c.tipo')
             ->where('c.tipo', '<>', '')
             ->distinct()

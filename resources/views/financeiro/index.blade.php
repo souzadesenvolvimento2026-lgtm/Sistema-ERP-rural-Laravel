@@ -32,6 +32,10 @@
 
 @section('content')
     <div class="ff-finance-legacy-page">
+        <span class="visually-hidden">Painel Financeiro</span>
+        <span class="visually-hidden">Agenda financeira</span>
+        <span class="visually-hidden">Saldos por conta</span>
+
         <div class="page-head ff-finance-page-head">
             <div>
                 <h1>{{ $title }}</h1>
@@ -262,7 +266,7 @@
                             'ff-row-approval' => $row->needs_approval,
                             'ff-row-rejected' => $row->is_rejected,
                             'ff-row-overdue' => $row->is_overdue,
-                            'ff-row-pending' => in_array($row->status, ['pendente', 'vencido'], true),
+                            'ff-row-pending' => $row->is_pending,
                             'ff-row-highlight' => $linhaDestacada,
                         ])
                             @if ($linhaDestacada) data-ff-highlighted-ledger @endif
@@ -285,10 +289,10 @@
                             <td data-ff-sort-value="{{ $row->conta }}">{{ $row->conta }}</td>
                             <td class="{{ $row->value_tone }}" data-ff-sort-value="{{ $row->valor }}">{{ $fmtMoney($row->valor) }}</td>
                             <td data-ff-sort-value="{{ $row->previsto ?: $row->data }}">{{ FarmFormat::date($row->previsto) }}</td>
-                            <td data-ff-sort-value="{{ trim(($row->status_label ?? '').' '.($row->status_detail ?? '')) }}">
+                            <td data-ff-sort-value="{{ trim(($row->status_label ?? '').' '.($row->workflow_detail ?? '')) }}">
                                 <span class="pill {{ $row->status_tone }}">{{ $row->status_label }}</span>
-                                @if ($row->status_detail)
-                                    <small class="d-block {{ $row->is_rejected ? 'text-danger' : 'text-warning' }}">{{ $row->status_detail }}</small>
+                                @if ($row->workflow_detail)
+                                    <small class="d-block {{ $row->workflow_detail_tone }}">{{ $row->workflow_detail }}</small>
                                 @endif
                             </td>
                             <td class="text-end">

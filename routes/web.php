@@ -134,6 +134,7 @@ Route::get('/financeiro/relatorio-lancamentos/exportar', [RelatorioLancamentosCo
 Route::get('/produtos', [ProdutoController::class, 'index'])->name('produtos.index');
 Route::get('/produtos/novo', [ProdutoController::class, 'create'])->name('produtos.create');
 Route::post('/produtos', [ProdutoController::class, 'store'])->name('produtos.store');
+Route::post('/produtos/{produto}/movimentos', [ProdutoController::class, 'storeMovement'])->name('produtos.movimentos.store');
 Route::get('/produtos/{produto}/editar', [ProdutoController::class, 'edit'])->name('produtos.edit');
 Route::put('/produtos/{produto}', [ProdutoController::class, 'update'])->name('produtos.update');
 Route::post('/produtos/{produto}/alternar-status', [ProdutoController::class, 'toggleStatus'])->name('produtos.toggle-status');

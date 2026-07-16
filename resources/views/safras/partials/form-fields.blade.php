@@ -120,16 +120,7 @@
                                 @if ($usos->isNotEmpty())
                                     <em>
                                         @foreach ($usos as $uso)
-                                            @php
-                                                $nomeUso = trim(implode(' - ', array_filter([$uso->cultura_nome, $uso->safra_nome])));
-                                            @endphp
-                                            @if ($uso->status === 'em_andamento' && ! $uso->colhido)
-                                                <span>Em campo: {{ $nomeUso }}. Pode planejar; iniciar fica bloqueado até registrar a colheita.</span>
-                                            @elseif ($uso->status === 'planejamento')
-                                                <span>Também planejado em: {{ $nomeUso }}.</span>
-                                            @else
-                                                <span>Colheita registrada em: {{ $nomeUso }}.</span>
-                                            @endif
+                                            <span>{{ $uso->mensagem }}</span>
                                         @endforeach
                                     </em>
                                 @endif

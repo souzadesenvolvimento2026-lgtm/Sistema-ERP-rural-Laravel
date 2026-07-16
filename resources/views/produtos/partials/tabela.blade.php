@@ -8,7 +8,7 @@
             <thead>
                 <tr>
                     <th>Produto</th>
-                    <th>Codigos</th>
+                    <th>Códigos</th>
                     <th>Categoria</th>
                     <th>Unidade</th>
                     <th>Fiscal</th>
@@ -48,6 +48,20 @@
                         <td><span class="pill {{ $row->ativo ? 'success' : '' }}">{{ $row->status }}</span></td>
                         <td>
                             <div class="actions">
+                                @if ($row->ativo && $row->saldo_estoque_raw > 0)
+                                    <button
+                                        class="btn small primary"
+                                        type="button"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#produtoBaixaModal"
+                                        data-produto-action="{{ route('produtos.movimentos.store', $row->id) }}"
+                                        data-produto-nome="{{ $row->descricao }}"
+                                        data-produto-saldo="{{ $row->saldo_estoque }}"
+                                        data-produto-unidade="{{ $row->unidade_codigo }}"
+                                    >
+                                        Dar baixa
+                                    </button>
+                                @endif
                                 <a class="btn small" href="{{ route('produtos.edit', $row->id) }}">Editar</a>
                                 <form method="post" action="{{ route('produtos.toggle-status', $row->id) }}">
                                     @csrf

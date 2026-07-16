@@ -76,6 +76,18 @@ class ExampleTest extends TestCase
         ];
     }
 
+    private function systemUnlockedSession(
+        int $propertyId,
+        ?string $profile = 'administrador_sistema',
+        ?int $userId = null,
+    ): array {
+        return [
+            ...$this->loggedSession(propertyId: $propertyId, profile: $profile, userId: $userId),
+            'system_write_unlocked_until' => time() + 300,
+            'system_write_unlocked_property_id' => $propertyId,
+        ];
+    }
+
     private function activeSessionUser(?int $userId, ?string $profile): object
     {
         $query = DB::table('usuarios')->where('ativo', 1);
@@ -2802,6 +2814,15 @@ XML;
                 $this->markTestSkipped('Sem categoria ativa para criar despesa de teste.');
             }
 
+            DB::table('contas')->insert([
+                'propriedade_id' => $propertyId,
+                'nome' => 'Conta pagamento despesa Laravel',
+                'tipo' => 'conta_corrente',
+                'saldo_inicial' => 1000,
+                'ativo' => 1,
+            ]);
+            $contaId = (int) DB::getPdo()->lastInsertId();
+
             DB::table('despesas')->insert([
                 'propriedade_id' => $propertyId,
                 'categoria_id' => $categoriaId,
@@ -2834,6 +2855,7 @@ XML;
 
             $this->withSession($this->loggedSession(propertyId: $propertyId))
                 ->post('/financeiro/despesas/'.$despesaId.'/pagar', [
+                    'conta_id' => $contaId,
                     'data_pagamento' => '2026-07-12',
                 ])
                 ->assertRedirect('/financeiro/despesas');
@@ -2842,6 +2864,7 @@ XML;
                 'id' => $despesaId,
                 'status_pagamento' => 'pago',
                 'data_pagamento' => '2026-07-12',
+                'conta_id' => $contaId,
             ]);
 
             $this->assertDatabaseHas('logs_auditoria', [
@@ -6645,6 +6668,13 @@ KML;
 
         try {
             $nome = 'Fazenda geo Laravel '.uniqid();
+            $propriedadeLiberadaId = (int) DB::table('propriedades')
+                ->where('ativo', 1)
+                ->orderBy('id')
+                ->value('id');
+
+            $this->assertGreaterThan(0, $propriedadeLiberadaId);
+
             $kml = <<<'KML'
 <?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
@@ -6665,7 +6695,7 @@ KML;
 </kml>
 KML;
 
-            $this->withSession($this->loggedSession())
+            $this->withSession($this->systemUnlockedSession($propriedadeLiberadaId))
                 ->post('/propriedades', [
                     'nome' => $nome,
                     'municipio' => 'Rio Verde',
@@ -6769,13 +6799,13 @@ KML;
             ]);
             $propriedadeId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession($this->loggedSession())
+            $this->withSession($this->loggedSession(propertyId: $propriedadeId, profile: 'administrador_sistema'))
                 ->get('/propriedades/'.$propriedadeId.'/editar')
                 ->assertStatus(200)
                 ->assertSee('Editar propriedade')
                 ->assertSee('Fazenda Laravel Edicao');
 
-            $this->withSession($this->loggedSession())
+            $this->withSession($this->systemUnlockedSession($propriedadeId))
                 ->put('/propriedades/'.$propriedadeId, [
                     'nome' => 'Fazenda Laravel Editada',
                     'municipio' => 'Jatai',
@@ -6800,8 +6830,26 @@ KML;
                 'pecuaria_ativa' => 1,
             ]);
 
-            $this->withSession($this->loggedSession())
-                ->post('/propriedades/'.$propriedadeId.'/alternar-status')
+            $administradorId = (int) DB::table('usuarios')
+                ->where('perfil', 'administrador_sistema')
+                ->where('ativo', 1)
+                ->orderBy('id')
+                ->value('id');
+
+            $this->assertGreaterThan(0, $administradorId);
+
+            DB::table('usuarios')->where('id', $administradorId)->update([
+                'senha' => password_hash('senha-admin-teste', PASSWORD_DEFAULT),
+            ]);
+
+            $this->withSession($this->loggedSession(
+                propertyId: $propriedadeId,
+                profile: 'administrador_sistema',
+                userId: $administradorId,
+            ))
+                ->post('/propriedades/'.$propriedadeId.'/alternar-status', [
+                    'admin_password' => 'senha-admin-teste',
+                ])
                 ->assertRedirect('/propriedades?status=inativas');
 
             $this->assertDatabaseHas('propriedades', [
@@ -6846,7 +6894,7 @@ KML;
                 ]);
             }
 
-            $this->withSession($this->loggedSession())
+            $this->withSession($this->systemUnlockedSession($propriedadeId))
                 ->from('/propriedades/'.$propriedadeId.'/editar')
                 ->put('/propriedades/'.$propriedadeId, [
                     'nome' => 'Fazenda limite plano Laravel',
@@ -6920,7 +6968,7 @@ KML;
                 'propriedade_id' => $propriedadeOrigemId,
             ]);
 
-            $this->withSession($this->loggedSession())
+            $this->withSession($this->systemUnlockedSession($propriedadeDestinoId))
                 ->from('/propriedades/'.$propriedadeDestinoId.'/editar')
                 ->put('/propriedades/'.$propriedadeDestinoId, [
                     'nome' => 'Fazenda destino usuario Laravel',
@@ -6988,7 +7036,7 @@ KML;
                 'propriedade_id' => $propriedadeId,
             ]);
 
-            $this->withSession($this->loggedSession())
+            $this->withSession($this->systemUnlockedSession($propriedadeId))
                 ->put('/propriedades/'.$propriedadeId, [
                     'nome' => 'Fazenda remover usuario Laravel',
                     'municipio' => 'Rio Verde',
@@ -7057,13 +7105,13 @@ KML;
             ]);
             $aprovadorId = (int) DB::getPdo()->lastInsertId();
 
-            $this->withSession($this->loggedSession())
+            $this->withSession($this->loggedSession(propertyId: $propriedadeId, profile: 'administrador_sistema'))
                 ->get('/propriedades/'.$propriedadeId.'/editar')
                 ->assertStatus(200)
                 ->assertSee('Aprovador')
                 ->assertSee('Aprovador propriedade Laravel');
 
-            $this->withSession($this->loggedSession())
+            $this->withSession($this->systemUnlockedSession($propriedadeId))
                 ->put('/propriedades/'.$propriedadeId, [
                     'nome' => 'Fazenda aprovador Laravel',
                     'municipio' => 'Rio Verde',
@@ -8983,7 +9031,7 @@ KML;
                 ->assertStatus(200)
                 ->assertSee('auditoria-propriedade-correta')
                 ->assertSee('auditoria-admin-liberado-na-propriedade')
-                ->assertSee('auditoria-login-global')
+                ->assertDontSee('auditoria-login-global')
                 ->assertDontSee('auditoria-outra-propriedade')
                 ->assertDontSee('auditoria-admin-sem-propriedade');
         } finally {

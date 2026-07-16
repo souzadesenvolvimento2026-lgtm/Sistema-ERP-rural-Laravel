@@ -138,7 +138,7 @@ class DespesaFinanceiraController extends Controller
             $message .= ' '.$result['ignoradas'].' item(ns) ignorado(s).';
         }
 
-        return $this->redirectToFinancialPanel(null, ['filtro' => 'solicitacoes'])
+        return $this->redirectToFinancialPanel(null, ['aprovacao' => 'pendente'])
             ->with('success', $message);
     }
 
@@ -211,16 +211,6 @@ class DespesaFinanceiraController extends Controller
 
     private function redirectToFinancialPanel(?int $expenseId = null, array $params = []): RedirectResponse
     {
-        $query = [
-            'filtro' => 'despesas',
-            'todos' => 1,
-            ...$params,
-        ];
-
-        if ($expenseId) {
-            $query['lancamento_id'] = $expenseId;
-        }
-
-        return redirect()->route('financeiro.index', $query);
+        return redirect()->route('financeiro.despesas.index', $params);
     }
 }

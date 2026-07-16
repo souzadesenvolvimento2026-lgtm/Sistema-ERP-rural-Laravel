@@ -151,7 +151,8 @@ class TalhaoMapUiTest extends TestCase
 
             $this->assertStringContainsString('preferCanvas: false', $javascript);
             $this->assertStringContainsString("fillRule: 'evenodd'", $javascript);
-            $this->assertStringContainsString('layer = L.polygon([outer, ...holes], baseStyle).addTo(map);', $javascript);
+            $this->assertStringContainsString('const polygonPart = L.polygon([outer, ...holes], baseStyle);', $javascript);
+            $this->assertStringContainsString('layer = L.featureGroup(parts).addTo(map);', $javascript);
             $this->assertStringContainsString('color: polygonColor', $javascript);
             $this->assertStringContainsString("fill: false", $javascript);
             $this->assertStringContainsString("className: 'ff-map-exclusion-outline'", $javascript);

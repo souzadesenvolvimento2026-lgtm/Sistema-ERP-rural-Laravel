@@ -45,6 +45,135 @@
   --bs-border-color: var(--ff-border);
 }
 
+.ff-stock-use-modal .modal-content {
+  background: var(--ff-surface);
+  border: 1px solid var(--ff-border);
+  border-radius: 14px;
+  color: var(--ff-text);
+  overflow: hidden;
+}
+
+.ff-stock-use-summary {
+  background: var(--ff-surface-2);
+  border: 1px solid var(--ff-border);
+  border-radius: 12px;
+  display: grid;
+  gap: 4px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+}
+
+.ff-stock-use-summary span,
+.ff-stock-use-summary small,
+.ff-stock-use-note {
+  color: var(--ff-muted);
+}
+
+.ff-stock-use-summary strong {
+  color: var(--ff-text);
+  font-size: 1.05rem;
+}
+
+.ff-stock-use-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ff-stock-use-grid .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ff-stock-use-grid .field span {
+  color: var(--ff-text);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.ff-stock-use-grid .form-control,
+.ff-stock-use-grid .form-select {
+  min-height: 42px;
+}
+
+.ff-stock-use-field-wide {
+  grid-column: span 2;
+}
+
+.ff-stock-use-field-full {
+  grid-column: 1 / -1;
+}
+
+.ff-stock-use-note {
+  align-items: flex-start;
+  background: color-mix(in srgb, var(--ff-accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ff-accent) 30%, var(--ff-border));
+  border-radius: 12px;
+  display: flex;
+  gap: 10px;
+  line-height: 1.45;
+  margin-top: 16px;
+  padding: 12px 14px;
+}
+
+.ff-stock-history-panel {
+  margin-top: 18px;
+}
+
+.ff-stock-history-wrap {
+  overflow-x: auto;
+  width: 100%;
+}
+
+.ff-stock-history-table {
+  border-collapse: collapse;
+  min-width: 860px;
+  width: 100%;
+}
+
+.ff-stock-history-table th,
+.ff-stock-history-table td {
+  border-bottom: 1px solid var(--ff-border);
+  padding: 12px 14px;
+  vertical-align: top;
+}
+
+.ff-stock-history-table th {
+  color: var(--ff-accent);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.ff-stock-destination-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.ff-stock-destination-tags span {
+  align-items: center;
+  background: var(--ff-surface-2);
+  border: 1px solid var(--ff-border);
+  border-radius: 999px;
+  color: var(--ff-muted);
+  display: inline-flex;
+  font-size: 0.75rem;
+  padding: 4px 8px;
+}
+
+@media (max-width: 900px) {
+  .ff-stock-use-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ff-stock-use-field-wide,
+  .ff-stock-use-field-full {
+    grid-column: auto;
+  }
+}
+
 .ff-expense-edit-standalone {
   min-height: calc(100vh - 120px);
   position: relative;

@@ -274,6 +274,7 @@ class FinanceiroPainelService
         $parcela = ((int) ($row->numero_parcelas ?? 1)) > 1
             ? ((int) ($row->parcela_atual ?? 1)).'/'.((int) $row->numero_parcelas)
             : null;
+        $approvalDetail = $this->approvalDetail($approvalStatus, $temExclusao, $row->motivo_reprovacao);
 
         return (object) [
             'id' => (int) $row->id,
@@ -292,7 +293,9 @@ class FinanceiroPainelService
             'status' => $status,
             'status_aprovacao' => $approvalStatus,
             'status_label' => $this->statusDespesaLabel($status, $previsto, $row->data_pagamento),
-            'status_detail' => $this->approvalDetail($approvalStatus, $temExclusao, $row->motivo_reprovacao),
+            'status_detail' => $approvalDetail,
+            'workflow_detail' => $approvalDetail,
+            'workflow_detail_tone' => $approvalStatus === 'reprovada' ? 'text-danger' : 'text-warning',
             'value_tone' => 'ff-value-expense',
             'status_tone' => match ($status) {
                 'pago' => 'success',
@@ -303,6 +306,7 @@ class FinanceiroPainelService
             'has_delete_request' => $temExclusao,
             'is_rejected' => $approvalStatus === 'reprovada',
             'is_overdue' => $status === 'vencido',
+            'is_pending' => in_array($status, ['pendente', 'vencido'], true),
             'data_sort' => $row->data ?: $previsto,
             'action_url' => route('financeiro.despesas.edit', $row->id),
             'duplicate_url' => route('financeiro.despesas.duplicate', $row->id),
@@ -322,6 +326,7 @@ class FinanceiroPainelService
         $previsto = $row->previsto ?: $row->data;
         $categoria = $this->joinParts([$row->safra, $row->categoria, $row->subcategoria]);
         $conta = $this->joinParts([$row->conta, $row->banco], ' - ');
+        $approvalDetail = $this->approvalDetail($approvalStatus, $temExclusao, $row->motivo_reprovacao);
 
         return (object) [
             'id' => (int) $row->id,
@@ -340,13 +345,16 @@ class FinanceiroPainelService
             'status' => $status,
             'status_aprovacao' => $approvalStatus,
             'status_label' => $this->statusReceitaLabel($status, $previsto),
-            'status_detail' => $this->approvalDetail($approvalStatus, $temExclusao, $row->motivo_reprovacao),
+            'status_detail' => $approvalDetail,
+            'workflow_detail' => $approvalDetail,
+            'workflow_detail_tone' => $approvalStatus === 'reprovada' ? 'text-danger' : 'text-warning',
             'value_tone' => 'ff-value-income',
             'status_tone' => $status === 'recebido' ? 'success' : 'warning',
             'needs_approval' => $approvalStatus === 'pendente' || $temExclusao,
             'has_delete_request' => $temExclusao,
             'is_rejected' => $approvalStatus === 'reprovada',
             'is_overdue' => false,
+            'is_pending' => $status === 'pendente',
             'data_sort' => $row->data ?: $previsto,
             'action_url' => route('financeiro.receitas.edit', $row->id),
             'duplicate_url' => route('financeiro.receitas.duplicate', $row->id),
@@ -381,12 +389,15 @@ class FinanceiroPainelService
             'status_aprovacao' => 'aprovada',
             'status_label' => 'Transferida',
             'status_detail' => null,
+            'workflow_detail' => null,
+            'workflow_detail_tone' => 'text-warning',
             'value_tone' => 'ff-value-transfer',
             'status_tone' => 'success',
             'needs_approval' => false,
             'has_delete_request' => false,
             'is_rejected' => false,
             'is_overdue' => false,
+            'is_pending' => false,
             'data_sort' => $row->data,
             'action_url' => route('financeiro.contas.index', [], false),
         ];

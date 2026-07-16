@@ -304,7 +304,7 @@ class SafraService
             'Existe talhão inválido para esta propriedade.'
         );
 
-        if (($dados['status'] ?? 'planejamento') === 'em_andamento') {
+        if ($talhaoIds !== []) {
             $this->garantirTalhoesSemConflitoEmExecucao($safraId ?? 0, $propriedadeId, $talhaoIds);
         }
 
@@ -442,6 +442,12 @@ class SafraService
                 ->get((int) $talhao->id, collect())
                 ->map(function ($uso): object {
                     $status = (string) $uso->status;
+                    $colhido = ! empty($uso->colheita_finalizada_em)
+                        || in_array($status, ['colhida', 'encerrada'], true);
+                    $nomeUso = trim(implode(' - ', array_filter([
+                        (string) ($uso->cultura_nome ?? ''),
+                        (string) ($uso->safra_nome ?? ''),
+                    ])));
 
                     return (object) [
                         'safra_id' => (int) $uso->safra_id,
@@ -449,14 +455,27 @@ class SafraService
                         'cultura_nome' => (string) ($uso->cultura_nome ?? ''),
                         'status' => $status,
                         'status_label' => $this->statusLabel($status),
-                        'colhido' => ! empty($uso->colheita_finalizada_em)
-                            || in_array($status, ['colhida', 'encerrada'], true),
+                        'colhido' => $colhido,
+                        'mensagem' => $this->mensagemUsoTalhaoSafra($status, $colhido, $nomeUso),
                     ];
                 })
                 ->values();
 
             return $talhao;
         });
+    }
+
+    private function mensagemUsoTalhaoSafra(string $status, bool $colhido, string $nomeUso): string
+    {
+        if ($status === 'em_andamento' && ! $colhido) {
+            return 'Em campo: '.$nomeUso.'. Pode planejar; iniciar fica bloqueado até registrar a colheita.';
+        }
+
+        if ($status === 'planejamento') {
+            return 'Também planejado em: '.$nomeUso.'.';
+        }
+
+        return 'Colheita registrada em: '.$nomeUso.'.';
     }
 
     private function talhoesComConflitoEmExecucao(int $safraId, int $propriedadeId, array $talhaoIds): Collection

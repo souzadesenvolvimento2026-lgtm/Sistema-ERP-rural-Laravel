@@ -2,6 +2,8 @@
 
 @section('content')
     <div class="ff-property-page">
+        @include('propriedades.partials.filtros')
+
         <section class="panel ff-property-admin-card">
             <div class="panel-head ff-property-admin-head">
                 <h2><i class="bi bi-houses me-2"></i>Propriedades / Fazendas</h2>

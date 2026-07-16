@@ -1,4 +1,5 @@
 @include('partials.filter-panel', [
+    'title' => 'Filtros',
     'action' => route('safras.index'),
     'clearUrl' => route('safras.index'),
     'fields' => [

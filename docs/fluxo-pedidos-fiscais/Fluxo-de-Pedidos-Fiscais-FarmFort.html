@@ -1,0 +1,376 @@
+﻿<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fluxo de Pedidos Fiscais - FarmFort</title>
+<style>:root {
+  --farm-green: #009563;
+  --farm-green-dark: #06452f;
+  --farm-mint: #34c79a;
+  --ink: #102033;
+  --muted: #5d6d7e;
+  --paper: #f5f8fb;
+  --line: #d8e2eb;
+  --danger: #ef233c;
+  --warning: #f59e0b;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #dce6ee;
+  color: var(--ink);
+  font-family: "Segoe UI", Arial, sans-serif;
+}
+.deck {
+  width: 100%;
+  padding: 22px;
+}
+.slide {
+  width: 1280px;
+  min-height: 720px;
+  margin: 0 auto 28px auto;
+  background: #fff;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 20px 48px rgba(16, 32, 51, .18);
+  position: relative;
+  page-break-after: always;
+}
+.slide.cover {
+  background: linear-gradient(135deg, #00633f 0%, #0a7a62 50%, #2e78a0 100%);
+  color: #fff;
+}
+.cover .brand {
+  position: absolute;
+  top: 38px;
+  left: 48px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-weight: 800;
+  font-size: 28px;
+}
+.logo-mark {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.18);
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.35);
+}
+.cover h1 {
+  position: absolute;
+  left: 64px;
+  top: 165px;
+  width: 760px;
+  font-size: 56px;
+  line-height: 1.05;
+  margin: 0;
+  letter-spacing: -.03em;
+}
+.cover p {
+  position: absolute;
+  left: 68px;
+  top: 322px;
+  width: 730px;
+  margin: 0;
+  font-size: 23px;
+  line-height: 1.45;
+  color: rgba(255,255,255,.92);
+}
+.cover .pill {
+  position: absolute;
+  left: 68px;
+  bottom: 78px;
+  padding: 13px 18px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.14);
+  border: 1px solid rgba(255,255,255,.28);
+  font-weight: 700;
+}
+.cover .flow-card {
+  position: absolute;
+  right: 58px;
+  width: 345px;
+  padding: 18px 20px;
+  border-radius: 18px;
+  background: rgba(10, 24, 38, .25);
+  border: 1px solid rgba(255,255,255,.22);
+}
+.cover .flow-card:nth-of-type(1) { top: 150px; }
+.cover .flow-card:nth-of-type(2) { top: 275px; }
+.cover .flow-card:nth-of-type(3) { top: 400px; }
+.cover .flow-card:nth-of-type(4) { top: 525px; }
+.flow-card strong { display: block; font-size: 18px; margin-bottom: 6px; }
+.flow-card span { color: rgba(255,255,255,.82); }
+.header {
+  height: 82px;
+  padding: 22px 34px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(90deg, #ffffff 0%, #f7fbff 100%);
+}
+.header h2 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: -.02em;
+}
+.step {
+  color: var(--farm-green);
+  font-size: 15px;
+  text-transform: uppercase;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+.content {
+  padding: 26px 34px 30px;
+  display: grid;
+  grid-template-columns: 760px 1fr;
+  gap: 28px;
+}
+.content.wide {
+  grid-template-columns: 1fr;
+}
+.screenshot {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #101923;
+  box-shadow: 0 12px 26px rgba(16, 32, 51, .12);
+}
+.screenshot img { display: block; width: 100%; height: auto; }
+.notes {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.note {
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  padding: 16px 18px;
+  background: #f9fbfd;
+}
+.note h3 {
+  margin: 0 0 8px;
+  color: var(--farm-green-dark);
+  font-size: 18px;
+}
+.note p, .note li { font-size: 16px; line-height: 1.45; color: #223246; }
+.note ul { padding-left: 20px; margin: 8px 0 0; }
+.badge-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 7px 11px;
+  background: #e7f8f2;
+  color: #007a52;
+  font-weight: 800;
+  font-size: 13px;
+}
+.badge.warn { background: #fff4da; color: #a16207; }
+.badge.red { background: #ffe7eb; color: #d3152c; }
+.timeline {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 12px;
+  padding: 34px;
+}
+.timeline .box {
+  min-height: 185px;
+  border-radius: 18px;
+  padding: 18px 15px;
+  background: #fff;
+  border: 1px solid var(--line);
+  box-shadow: 0 10px 22px rgba(16, 32, 51, .08);
+  position: relative;
+}
+.timeline .box::after {
+  content: "→";
+  position: absolute;
+  right: -14px;
+  top: 78px;
+  color: var(--farm-green);
+  font-weight: 900;
+  font-size: 26px;
+}
+.timeline .box:last-child::after { content: ""; }
+.timeline .num {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--farm-green);
+  color: #fff;
+  font-weight: 900;
+  margin-bottom: 12px;
+}
+.timeline strong { display: block; color: var(--ink); font-size: 17px; margin-bottom: 8px; }
+.timeline span { color: var(--muted); font-size: 14px; line-height: 1.35; }
+.audit-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  padding: 28px 34px;
+}
+.audit-card {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 18px 20px;
+  background: #fff;
+}
+.audit-card h3 { margin: 0 0 10px; color: var(--farm-green-dark); }
+.audit-card li { line-height: 1.45; margin-bottom: 8px; }
+.footer-note {
+  position: absolute;
+  bottom: 18px;
+  left: 34px;
+  right: 34px;
+  color: var(--muted);
+  font-size: 13px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+@media print {
+  body { background: #fff; }
+  .deck { padding: 0; }
+  .slide { margin: 0; border-radius: 0; box-shadow: none; width: 100vw; min-height: 100vh; }
+}</style>
+</head>
+<body>
+<div class="deck">
+  <section class="slide cover">
+    <div class="brand"><div class="logo-mark">🌱</div><div>FarmFort<br><small>ERP Rural</small></div></div>
+    <h1>Fluxo de Pedidos Fiscais</h1>
+    <p>Compra, conferência fiscal, aprovação e baixa financeira em um fluxo único, sem misturar pedido, nota fiscal e pagamento.</p>
+    <div class="pill">Material de treinamento e validação operacional</div>
+    <div class="flow-card"><strong>1. Pedido</strong><span>Fornecedor, CNPJ, itens, valores e opção de NF antes da aprovação.</span></div>
+    <div class="flow-card"><strong>2. Aprovação</strong><span>Gestor aprova; perfil operacional fica aguardando conferência.</span></div>
+    <div class="flow-card"><strong>3. Financeiro</strong><span>Pedido aprovado gera despesa para vencimento e baixa.</span></div>
+    <div class="flow-card"><strong>4. Conta real</strong><span>Pagamento exige conta bancária e registra auditoria.</span></div>
+  </section>
+
+  <section class="slide">
+    <div class="header"><div><div class="step">Visão geral</div><h2>O fluxo completo em 7 etapas</h2></div></div>
+    <div class="timeline">
+      <div class="box"><div class="num">1</div><strong>Criar pedido</strong><span>Compras &gt; Pedidos Fiscais &gt; + Novo Pedido.</span></div>
+      <div class="box"><div class="num">2</div><strong>Conferir perfil</strong><span>Gestor aprova direto; operacional aguarda aprovação.</span></div>
+      <div class="box"><div class="num">3</div><strong>Vincular NF</strong><span>NF existente ou XML antes da aprovação quando necessário.</span></div>
+      <div class="box"><div class="num">4</div><strong>Aprovar</strong><span>Gera despesa, estoque/patrimônio quando aplicável e auditoria.</span></div>
+      <div class="box"><div class="num">5</div><strong>Conferir financeiro</strong><span>Ver vencimento, categoria, safra, fornecedor e forma de pagamento.</span></div>
+      <div class="box"><div class="num">6</div><strong>Baixar com conta</strong><span>Conta real obrigatória e saldo visível antes de confirmar.</span></div>
+      <div class="box"><div class="num">7</div><strong>Auditar</strong><span>Rastro de criação, aprovação, despesa e baixa.</span></div>
+    </div>
+    <div class="footer-note">Regra central: pedido, nota fiscal e pagamento são etapas ligadas, mas não são a mesma coisa.</div>
+  </section>
+
+  <section class="slide">
+    <div class="header"><div><div class="step">Etapa 1</div><h2>Criar pedido fiscal</h2></div></div>
+    <div class="content">
+      <div class="screenshot"><img src="annotated/02-novo-pedido-modal-anotado.png" alt="Novo Pedido Fiscal anotado"></div>
+      <div class="notes">
+        <div class="note"><h3>1. Dados principais</h3><p>Informe número, data, tipo, fornecedor, CNPJ e observações do pedido.</p></div>
+        <div class="note"><h3>2. Pedido com NF</h3><p>Se já existir NF, marque a opção para vincular ou importar antes de aprovar.</p></div>
+        <div class="note"><h3>3. Itens</h3><p>Inclua categoria, unidade, quantidade, valor unitário e total de cada item.</p></div>
+        <div class="note"><h3>4. Criar pedido</h3><p>Ao criar, o sistema decide se aprova automaticamente ou fica aguardando gestor.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="header"><div><div class="step">Etapa 2</div><h2>Aprovação por perfil</h2></div></div>
+    <div class="content">
+      <div class="screenshot"><img src="annotated/01-pedidos-fiscais-listagem-anotado.png" alt="Listagem de pedidos fiscais anotada"></div>
+      <div class="notes">
+        <div class="note"><h3>1. Novo pedido</h3><p>O botão inicia a compra sem sair da tela, mantendo o contexto do módulo Compras.</p></div>
+        <div class="note"><h3>2. Pendências</h3><p>Pedidos de usuários operacionais devem aparecer como aguardando aprovação.</p></div>
+        <div class="note"><h3>3. Conferência</h3><p>O gestor abre cada pedido, confere os dados e aprova quando estiver correto.</p></div>
+        <div class="note"><h3>Regra operacional</h3><p>Gestão, financeiro e administração aprovam. Perfis operacionais solicitam e aguardam.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="header"><div><div class="step">Etapa 3</div><h2>Vincular nota fiscal ao pedido</h2></div></div>
+    <div class="content">
+      <div class="screenshot"><img src="annotated/03-pedido-detalhe-nf-anotado.png" alt="Detalhe do pedido e notas fiscais anotado"></div>
+      <div class="notes">
+        <div class="note"><h3>1. Status e total</h3><p>O detalhe do pedido mostra situação, fornecedor e valor total.</p></div>
+        <div class="note"><h3>2. Itens</h3><p>Itens do pedido ficam separados para conferência fiscal e operacional.</p></div>
+        <div class="note"><h3>3. Notas fiscais vinculadas</h3><p>A seção permite associar NF existente ou XML antes da aprovação quando aplicável.</p></div>
+        <div class="note"><h3>Resultado esperado</h3><p>A despesa financeira deve receber a referência da NF vinculada.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="header"><div><div class="step">Etapas 4 e 5</div><h2>Aprovar pedido e conferir no financeiro</h2></div></div>
+    <div class="content">
+      <div class="screenshot"><img src="annotated/04-financeiro-painel-lancamento-anotado.png" alt="Financeiro com lançamento do pedido anotado"></div>
+      <div class="notes">
+        <div class="note"><h3>1. Despesa gerada</h3><p>Após aprovação, o pedido aparece no painel financeiro como despesa.</p></div>
+        <div class="note"><h3>2. Conferência financeira</h3><p>Confira conta, valor, vencimento, status, fornecedor, safra e categoria.</p></div>
+        <div class="note"><h3>Fluxo correto</h3><p>O usuário deve cair no painel financeiro reconhecido, não em uma tela isolada sem contexto.</p></div>
+        <div class="note"><h3>Enquanto não pagou</h3><p>Mantenha o lançamento como pendente ou “vence em” até o dinheiro sair da conta.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="header"><div><div class="step">Etapa 6</div><h2>Baixar pagamento com conta real</h2></div></div>
+    <div class="content">
+      <div class="screenshot"><img src="annotated/05-baixa-pagamento-conta-real-anotado.png" alt="Baixa de pagamento com conta real anotada"></div>
+      <div class="notes">
+        <div class="note"><h3>1. Modal de baixa</h3><p>A baixa deve acontecer em janela flutuante, sem perder a listagem financeira.</p></div>
+        <div class="note"><h3>2. Conta obrigatória</h3><p>Selecionar a conta real é obrigatório. O saldo aparece para reduzir erro operacional.</p></div>
+        <div class="note"><h3>3. Confirmar pagamento</h3><p>Somente confirme depois que a saída do dinheiro aconteceu de fato.</p></div>
+        <div class="note"><h3>Bloqueio necessário</h3><p>Sem conta ativa informada, a baixa deve ser bloqueada.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="header"><div><div class="step">Apoio financeiro</div><h2>Contas bancárias e transferências</h2></div></div>
+    <div class="content">
+      <div class="screenshot"><img src="annotated/06-contas-bancarias-transferencias-anotado.png" alt="Contas bancárias anotadas"></div>
+      <div class="notes">
+        <div class="note"><h3>1. Saldo total</h3><p>Mostra a posição consolidada das contas ativas da propriedade.</p></div>
+        <div class="note"><h3>2. Contas e caixas</h3><p>Cada banco/caixa tem saldo atual recalculado por receitas, despesas e transferências.</p></div>
+        <div class="note"><h3>3. Transferências</h3><p>Movimentações internas não são receita nem despesa, mas afetam o saldo das contas.</p></div>
+        <div class="note"><h3>Melhoria recomendada</h3><p>Exibir um extrato/relatório por conta ligando baixas de despesas, receitas e transferências.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="header"><div><div class="step">Etapa 7</div><h2>Auditoria do fluxo</h2></div></div>
+    <div class="content">
+      <div class="screenshot"><img src="annotated/07-auditoria-fluxo-anotado.png" alt="Auditoria anotada"></div>
+      <div class="notes">
+        <div class="note"><h3>1. Indicadores e filtros</h3><p>A auditoria permite localizar ações por período, usuário, propriedade, tabela e ação.</p></div>
+        <div class="note"><h3>2. Registros</h3><p>O rastro deve mostrar criação do pedido, aprovação, geração da despesa, baixa e conta usada.</p></div>
+        <div class="note"><h3>Segurança</h3><p>Nunca registrar senha ou dado sensível nos detalhes da auditoria.</p></div>
+        <div class="note"><h3>Propriedade</h3><p>Auditoria da propriedade não pode misturar registros de outra fazenda ou painel admin fora do contexto.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="header"><div><div class="step">Relatório técnico</div><h2>Achados da auditoria visual</h2></div></div>
+    <div class="audit-grid">
+      <div class="audit-card"><h3>Funcionando bem</h3><ul><li>Pedido fiscal abre em janela flutuante.</li><li>Existe opção para NF antes da aprovação.</li><li>Pedido aprovado aparece no financeiro.</li><li>Baixa exige conta real e mostra saldo.</li><li>Auditoria registra ações importantes do fluxo.</li></ul></div>
+      <div class="audit-card"><h3>Pontos de atenção</h3><ul><li>Nesta auditoria não havia pedido pendente para validar a tela de aprovação operacional.</li><li>É importante impedir aprovação quando a opção de NF antes de aprovar estiver marcada e nenhuma NF estiver vinculada.</li><li>Evitar redirecionar para telas financeiras isoladas que o usuário não reconhece.</li><li>O extrato por conta precisa ficar fácil de localizar.</li></ul></div>
+      <div class="audit-card"><h3>Regra recomendada</h3><ul><li>Pedido é solicitação de compra.</li><li>Nota fiscal é comprovação fiscal.</li><li>Despesa financeira é obrigação de pagamento.</li><li>Baixa é a confirmação da saída de dinheiro em uma conta real.</li></ul></div>
+      <div class="audit-card"><h3>Teste final sugerido</h3><ul><li>Repetir o fluxo com usuário operacional.</li><li>Criar pedido com e sem NF.</li><li>Aprovar como gestor.</li><li>Baixar com conta real.</li><li>Conferir financeiro, contas e auditoria.</li></ul></div>
+    </div>
+    <div class="footer-note">Relatório completo salvo em arquivo separado na mesma pasta deste material.</div>
+  </section>
+</div>
+</body>
+</html>

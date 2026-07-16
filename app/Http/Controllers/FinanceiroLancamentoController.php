@@ -42,7 +42,7 @@ class FinanceiroLancamentoController extends Controller
             'quantidade' => ['nullable', 'string'],
             'unidade' => ['nullable', 'string', 'max:30'],
             'preco_unitario' => ['nullable', 'string'],
-            'valor_total' => ['required', 'string'],
+            'valor_total' => ['nullable', 'string'],
             'data_lancamento' => ['required', 'date'],
             'data_vencimento' => ['nullable', 'date'],
             'data_recebimento' => ['nullable', 'date'],
@@ -56,6 +56,14 @@ class FinanceiroLancamentoController extends Controller
             'return_route' => ['nullable', 'in:financeiro.index'],
         ]);
 
+        if ($this->valorTotalSemBaseDeCalculo($dados)) {
+            return back()
+                ->withInput()
+                ->withErrors([
+                    'valor_total' => 'Informe o valor total ou a quantidade e o valor unitário.',
+                ]);
+        }
+
         $dados['baixado'] = (bool) ($dados['baixado'] ?? false);
 
         try {
@@ -68,8 +76,30 @@ class FinanceiroLancamentoController extends Controller
                 ->withErrors($exception->getMessage());
         }
 
+        if (! empty($dados['return_route'])) {
+            return redirect()
+                ->route($dados['return_route'])
+                ->with('success', 'Lançamento financeiro criado pelo Laravel.');
+        }
+
         return redirect()
-            ->route($dados['return_route'] ?? 'financeiro.index')
+            ->route('modules.show', ['module' => 'financeiro'])
             ->with('success', 'Lançamento financeiro criado pelo Laravel.');
+    }
+
+    private function valorTotalSemBaseDeCalculo(array $dados): bool
+    {
+        $valorTotal = trim((string) ($dados['valor_total'] ?? ''));
+
+        if ($valorTotal !== '') {
+            return false;
+        }
+
+        if (($dados['tipo_receita'] ?? 'graos') === 'outras') {
+            return true;
+        }
+
+        return trim((string) ($dados['quantidade'] ?? '')) === ''
+            || trim((string) ($dados['preco_unitario'] ?? '')) === '';
     }
 }

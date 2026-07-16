@@ -1,5 +1,5 @@
 @if ($loggedUserId > 0 && $canHandleSupport)
-<div class="ff-support-widget ff-support-admin-widget" data-support-admin data-support-floating data-support-endpoint="{{ $suporteEndpoint }}" data-support-role="{{ $profile }}">
+<div class="ff-support-widget ff-support-admin-widget" data-support-admin data-support-floating data-support-endpoint="{{ $suporteEndpoint }}" data-chat-endpoint="{{ $chatInternoEndpoint }}" data-support-role="{{ $profile }}">
     <button type="button" class="ff-support-launch" data-support-admin-toggle title="Chat/Suporte">
         <i class="bi bi-chat-dots"></i>
         <span>Chat/Suporte</span>

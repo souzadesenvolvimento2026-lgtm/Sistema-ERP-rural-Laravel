@@ -14,4 +14,6 @@
     @include('partials.stats', ['cards' => $cards])
     @include('produtos.partials.filtros')
     @include('produtos.partials.tabela')
+    @include('produtos.partials.saidas-recentes')
+    @include('produtos.partials.baixa-modal')
 @endsection
