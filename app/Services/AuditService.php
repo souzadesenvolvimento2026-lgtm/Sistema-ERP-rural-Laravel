@@ -91,7 +91,7 @@ class AuditService
 
         foreach ($dados as $chave => $valor) {
             $chaveTexto = strtolower((string) $chave);
-            if (str_contains($chaveTexto, 'senha') || str_contains($chaveTexto, 'password')) {
+            if ($this->chaveSensivel($chaveTexto)) {
                 $limpo[$chave] = '[removido]';
                 continue;
             }
@@ -104,8 +104,19 @@ class AuditService
 
     private function sanitizarTexto(string $texto): string
     {
-        $texto = preg_replace('/(senha|password)\s*[:=]\s*[^;\n\r]+/iu', '$1: [removido]', $texto) ?? $texto;
+        $texto = preg_replace('/(senha|password|token|cookie|authorization|secret|api_key|chave|certificado)\s*[:=]\s*[^;\n\r]+/iu', '$1: [removido]', $texto) ?? $texto;
 
         return mb_substr($texto, 0, 5000);
+    }
+
+    private function chaveSensivel(string $chave): bool
+    {
+        foreach (['senha', 'password', 'token', 'cookie', 'authorization', 'secret', 'api_key', 'chave', 'certificado'] as $termo) {
+            if (str_contains($chave, $termo)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

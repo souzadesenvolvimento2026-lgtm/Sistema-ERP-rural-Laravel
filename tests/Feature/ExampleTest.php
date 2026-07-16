@@ -8927,7 +8927,7 @@ KML;
             ->get('/auditoria')
             ->assertStatus(200)
             ->assertSee('Auditoria')
-            ->assertSee('Registros');
+            ->assertSee('Últimas ações auditadas');
     }
 
     public function test_audit_page_requires_authorized_profile(): void
@@ -8983,8 +8983,8 @@ KML;
                 ->assertStatus(200)
                 ->assertSee('auditoria-propriedade-correta')
                 ->assertSee('auditoria-admin-liberado-na-propriedade')
+                ->assertSee('auditoria-login-global')
                 ->assertDontSee('auditoria-outra-propriedade')
-                ->assertDontSee('auditoria-login-global')
                 ->assertDontSee('auditoria-admin-sem-propriedade');
         } finally {
             DB::rollBack();
@@ -9016,7 +9016,71 @@ KML;
                 ->assertDownload();
 
             $this->assertStringContainsString('detalhe-exportacao-laravel', $response->streamedContent());
-            $this->assertStringContainsString('Data;Usuario;Acao;Area;Registro;Detalhes;IP', $response->streamedContent());
+            $this->assertStringContainsString('Data/Hora;Usuário;Propriedade', $response->streamedContent());
+        } finally {
+            DB::rollBack();
+        }
+    }
+
+    public function test_audit_detail_route_rejects_another_property_log(): void
+    {
+        DB::beginTransaction();
+
+        try {
+            DB::table('propriedades')->insert([
+                'nome' => 'Fazenda auditoria detalhe A',
+                'municipio' => 'Rio Verde',
+                'estado' => 'GO',
+                'area_total' => 100,
+                'responsavel' => 'Responsável auditoria',
+                'plano' => 'premium',
+                'ativo' => 1,
+            ]);
+            $propertyId = (int) DB::getPdo()->lastInsertId();
+
+            DB::table('propriedades')->insert([
+                'nome' => 'Fazenda auditoria detalhe B',
+                'municipio' => 'Jataí',
+                'estado' => 'GO',
+                'area_total' => 80,
+                'responsavel' => 'Responsável auditoria',
+                'plano' => 'premium',
+                'ativo' => 1,
+            ]);
+            $otherPropertyId = (int) DB::getPdo()->lastInsertId();
+
+            DB::table('logs_auditoria')->insert([
+                'usuario_id' => $this->userId(),
+                'acao' => 'salvar_usuario',
+                'tabela' => 'usuarios',
+                'registro_id' => 10,
+                'propriedade_id' => $propertyId,
+                'detalhes' => 'detalhe-da-propriedade-atual',
+                'ip' => '127.0.0.1',
+                'criado_em' => now(),
+            ]);
+            $logId = (int) DB::getPdo()->lastInsertId();
+
+            DB::table('logs_auditoria')->insert([
+                'usuario_id' => $this->userId(),
+                'acao' => 'salvar_usuario',
+                'tabela' => 'usuarios',
+                'registro_id' => 11,
+                'propriedade_id' => $otherPropertyId,
+                'detalhes' => 'detalhe-de-outra-propriedade',
+                'ip' => '127.0.0.1',
+                'criado_em' => now(),
+            ]);
+            $otherLogId = (int) DB::getPdo()->lastInsertId();
+
+            $this->withSession($this->loggedSession(propertyId: $propertyId, profile: 'gestor_propriedade'))
+                ->getJson('/auditoria/'.$logId.'/detalhes')
+                ->assertStatus(200)
+                ->assertJsonPath('detalhes', 'detalhe-da-propriedade-atual');
+
+            $this->withSession($this->loggedSession(propertyId: $propertyId, profile: 'gestor_propriedade'))
+                ->getJson('/auditoria/'.$otherLogId.'/detalhes')
+                ->assertStatus(404);
         } finally {
             DB::rollBack();
         }

@@ -247,6 +247,7 @@ Route::get('/relatorios/comparativo-safras', [ComparativoSafrasController::class
 Route::get('/relatorios/comparativo-safras/exportar', [ComparativoSafrasController::class, 'exportar'])->name('relatorios.comparativo-safras.exportar');
 Route::get('/auditoria', [AuditoriaController::class, 'index'])->name('auditoria.index');
 Route::get('/auditoria/exportar', [AuditoriaController::class, 'export'])->name('auditoria.exportar');
+Route::get('/auditoria/{log}/detalhes', [AuditoriaController::class, 'details'])->whereNumber('log')->name('auditoria.detalhes');
 Route::get('/orcamento', [PlanejamentoFinanceiroController::class, 'index'])->name('orcamento.index');
 Route::get('/orcamento/novo', [PlanejamentoFinanceiroController::class, 'create'])->name('orcamento.create');
 Route::post('/orcamento', [PlanejamentoFinanceiroController::class, 'store'])->name('orcamento.store');
