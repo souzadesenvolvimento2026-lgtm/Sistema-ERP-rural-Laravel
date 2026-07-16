@@ -823,12 +823,72 @@ html[data-theme="dark"] .form-check-input:checked {
   padding: 14px;
 }
 
+.ff-safra-modal-dialog {
+  width: min(94vw, 820px);
+  max-width: min(94vw, 820px);
+}
+
+.ff-safra-form-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 14px 16px;
+}
+
+.ff-safra-field {
+  display: grid;
+  grid-column: span 3;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ff-safra-field--wide {
+  grid-column: span 6;
+}
+
+.ff-safra-field--full {
+  grid-column: 1 / -1;
+}
+
+.ff-safra-field > span {
+  color: var(--ff-text);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ff-safra-field input,
+.ff-safra-field select,
+.ff-safra-field textarea {
+  width: 100%;
+}
+
+.ff-safra-help {
+  margin: 0;
+  color: var(--ff-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .ff-safra-talhao-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 12px;
+}
+
+.ff-safra-select-all {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 150px;
+  color: var(--ff-text);
+  font-weight: 800;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.ff-safra-select-all input {
+  margin-top: 2px;
 }
 
 .ff-safra-talhao-list {
@@ -854,6 +914,11 @@ html[data-theme="dark"] .form-check-input:checked {
 
 .ff-safra-talhao-row:hover {
   border-color: var(--ff-accent);
+}
+
+.ff-safra-talhao-row:has(.form-check-input:checked) {
+  border-color: var(--ff-accent);
+  background: color-mix(in srgb, var(--ff-accent) 9%, var(--ff-surface));
 }
 
 .ff-safra-talhao-row.is-blocked {
@@ -902,6 +967,16 @@ html[data-theme="dark"] .form-check-input:checked {
 }
 
 @media (max-width: 768px) {
+  .ff-safra-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ff-safra-field,
+  .ff-safra-field--wide,
+  .ff-safra-field--full {
+    grid-column: 1 / -1;
+  }
+
   .ff-safra-talhao-head {
     display: grid;
   }

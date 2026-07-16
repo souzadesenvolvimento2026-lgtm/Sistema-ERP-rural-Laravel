@@ -9,7 +9,7 @@
         <a class="btn" href="{{ route('safras.index', ['status' => 'todas']) }}">Voltar</a>
     </div>
 
-    <form method="post" action="{{ route('safras.update', $safra->id) }}">
+    <form method="post" action="{{ route('safras.update', $safra->id) }}" data-safra-form>
         @csrf
         @method('PUT')
 

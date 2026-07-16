@@ -30,12 +30,24 @@ class SafraController extends Controller
             ->with('success', 'Safra criada.');
     }
 
-    public function edit(int $safra, SafraService $service): View
+    public function edit(int $safra, Request $request, SafraService $service): View
     {
-        return view('safras.edit', [
+        $dados = [
             ...$service->formData($this->propriedadeId()),
             'safra' => $service->buscar($safra, $this->propriedadeId()),
-        ]);
+        ];
+
+        if ($request->ajax()) {
+            return view('safras.partials.modal-content', [
+                ...$dados,
+                'modalTitle' => 'Editar Safra',
+                'formAction' => route('safras.update', $safra),
+                'formMethod' => 'PUT',
+                'submitLabel' => 'Salvar',
+            ]);
+        }
+
+        return view('safras.edit', $dados);
     }
 
     public function update(int $safra, Request $request, SafraService $service): RedirectResponse
@@ -90,7 +102,7 @@ class SafraController extends Controller
 
         return redirect()
             ->route('safras.index', ['status' => 'todas'])
-            ->with('success', 'Safra excluida definitivamente.');
+            ->with('success', 'Safra excluída definitivamente.');
     }
 
     private function validated(Request $request): array
@@ -100,7 +112,7 @@ class SafraController extends Controller
             'cultura_id' => ['nullable', 'integer'],
             'safra_referencia' => ['required', 'in:primeira,segunda,terceira'],
             'data_inicio' => ['required', 'date'],
-            'data_fim' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date', 'after_or_equal:data_inicio'],
             'area_plantada' => ['nullable', 'string'],
             'producao_estimada' => ['nullable', 'string'],
             'preco_estimado' => ['nullable', 'string'],

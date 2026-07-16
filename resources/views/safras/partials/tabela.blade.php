@@ -40,7 +40,7 @@
                         <td><span class="pill {{ $row->status_tone }}">{{ $row->status }}</span></td>
                         <td>
                             <div class="inline-actions">
-                                <a class="btn small" href="{{ route('safras.edit', $row->id) }}">Editar</a>
+                                <a class="btn small" href="{{ route('safras.edit', $row->id) }}" data-safra-edit>Editar</a>
                                 @foreach ($row->actions as $action)
                                     <form method="POST" action="{{ route('safras.status', $row->id) }}">
                                         @csrf
@@ -49,7 +49,7 @@
                                     </form>
                                 @endforeach
                                 @if ($row->can_delete)
-                                    <form method="POST" action="{{ route('safras.destroy', $row->id) }}" onsubmit="return confirm('Excluir definitivamente esta safra? Esta acao nao pode ser desfeita.');">
+                                    <form method="POST" action="{{ route('safras.destroy', $row->id) }}" onsubmit="return confirm('Excluir definitivamente esta safra? Esta ação não pode ser desfeita.');">
                                         @csrf
                                         @method('DELETE')
                                         <input class="compact-input" type="password" name="senha_exclusao" placeholder="Senha" required>

@@ -9,7 +9,7 @@
         <a class="btn" href="{{ route('safras.index') }}">Voltar</a>
     </div>
 
-    <form method="post" action="{{ route('safras.store') }}">
+    <form method="post" action="{{ route('safras.store') }}" data-safra-form>
         @csrf
 
         @include('safras.partials.dados-safra', ['safra' => null])

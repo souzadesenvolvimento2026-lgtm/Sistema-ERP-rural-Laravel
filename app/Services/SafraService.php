@@ -19,11 +19,7 @@ class SafraService
         return [
             'activeModule' => 'safras',
             'culturas' => DB::table('culturas')->orderBy('nome')->get(['id', 'nome']),
-            'talhoes' => DB::table('talhoes')
-                ->where('propriedade_id', $propertyId)
-                ->where('ativo', 1)
-                ->orderBy('nome')
-                ->get(['id', 'nome', 'area']),
+            'talhoes' => $this->talhoesComUsos($propertyId),
         ];
     }
 
@@ -31,9 +27,10 @@ class SafraService
     {
         $filtros = $this->filtros($request);
         $rows = $this->rows($propriedadeId, $filtros);
+        $formData = $this->formData($propriedadeId);
 
         return [
-            'activeModule' => 'safras',
+            ...$formData,
             'title' => 'Safras',
             'subtitle' => 'Acompanhamento das safras, culturas, talhões, produção, planejamento e status.',
             'filtros' => $filtros,
@@ -58,14 +55,16 @@ class SafraService
     public function criar(array $dados, int $propriedadeId, ?int $usuarioId): int
     {
         return DB::transaction(function () use ($dados, $propriedadeId, $usuarioId): int {
+            $dadosPreparados = $this->prepararDadosParaSalvar($dados, null, $propriedadeId);
+
             DB::table('safras')->insert([
                 'propriedade_id' => $propriedadeId,
-                ...$this->payload($dados),
+                ...$this->payload($dadosPreparados),
             ]);
 
             $safraId = (int) DB::getPdo()->lastInsertId();
-            $this->sincronizarTalhoes($safraId, $propriedadeId, $dados['talhoes'] ?? []);
-            $this->auditar($usuarioId, 'salvar_safra', 'safras', $safraId, $propriedadeId, trim($dados['descricao']));
+            $this->sincronizarTalhoes($safraId, $propriedadeId, $dadosPreparados['talhoes']);
+            $this->auditar($usuarioId, 'salvar_safra', 'safras', $safraId, $propriedadeId, trim($dadosPreparados['descricao']));
 
             return $safraId;
         });
@@ -93,13 +92,15 @@ class SafraService
     public function atualizar(int $safraId, array $dados, int $propriedadeId, ?int $usuarioId): void
     {
         DB::transaction(function () use ($safraId, $dados, $propriedadeId, $usuarioId): void {
+            $dadosPreparados = $this->prepararDadosParaSalvar($dados, $safraId, $propriedadeId);
+
             DB::table('safras')
                 ->where('id', $safraId)
                 ->where('propriedade_id', $propriedadeId)
-                ->update($this->payload($dados));
+                ->update($this->payload($dadosPreparados));
 
-            $this->sincronizarTalhoes($safraId, $propriedadeId, $dados['talhoes'] ?? []);
-            $this->auditar($usuarioId, 'salvar_safra', 'safras', $safraId, $propriedadeId, trim($dados['descricao']));
+            $this->sincronizarTalhoes($safraId, $propriedadeId, $dadosPreparados['talhoes']);
+            $this->auditar($usuarioId, 'salvar_safra', 'safras', $safraId, $propriedadeId, trim($dadosPreparados['descricao']));
         });
     }
 
@@ -113,7 +114,18 @@ class SafraService
         abort_if(! $safra, 404);
 
         if (! $this->capabilities->canTransition((string) $safra->status, $status)) {
-            throw new RuntimeException('A transicao de status solicitada nao e permitida para esta safra.');
+            throw new RuntimeException('A transição de status solicitada não é permitida para esta safra.');
+        }
+
+        if ($status === 'em_andamento') {
+            $talhaoIds = DB::table('safra_talhoes')
+                ->where('safra_id', $safraId)
+                ->where('propriedade_id', $propriedadeId)
+                ->pluck('talhao_id')
+                ->map(fn ($talhaoId) => (int) $talhaoId)
+                ->all();
+
+            $this->garantirTalhoesSemConflitoEmExecucao($safraId, $propriedadeId, $talhaoIds);
         }
 
         DB::table('safras')
@@ -136,17 +148,17 @@ class SafraService
             ->first(['id', 'descricao']);
 
         if (! $safra) {
-            throw new RuntimeException('Safra nao encontrada nesta propriedade.');
+            throw new RuntimeException('Safra não encontrada nesta propriedade.');
         }
 
         $hash = $usuarioId ? DB::table('usuarios')->where('id', $usuarioId)->where('ativo', 1)->value('senha') : null;
         if (! $hash || ! password_verify($senha, (string) $hash)) {
-            throw new RuntimeException('Senha incorreta. A safra nao foi excluida.');
+            throw new RuntimeException('Senha incorreta. A safra não foi excluída.');
         }
 
         $dados = $this->dadosLancados($safraId);
         if ($dados !== []) {
-            throw new RuntimeException('Nao e possivel excluir esta safra porque existem dados lancados: '.$this->resumoDados($dados).'. Encerre a safra para preservar o historico.');
+            throw new RuntimeException('Não é possível excluir esta safra porque existem dados lançados: '.$this->resumoDados($dados).'. Encerre a safra para preservar o histórico.');
         }
 
         DB::transaction(function () use ($safraId, $propriedadeId, $usuarioId, $safra): void {
@@ -232,7 +244,7 @@ class SafraService
                 }
 
                 if (! $normalizado->can_delete) {
-                    $normalizado->delete_block_reason = 'Nao pode excluir: '.$normalizado->dados_lancados_resumo;
+                    $normalizado->delete_block_reason = 'Não pode excluir: '.$normalizado->dados_lancados_resumo;
                 }
 
                 return $normalizado;
@@ -281,44 +293,60 @@ class SafraService
         return FarmFormat::statusLabel($status);
     }
 
-    private function sincronizarTalhoes(int $safraId, int $propriedadeId, array $talhoes): void
+    private function prepararDadosParaSalvar(array $dados, ?int $safraId, int $propriedadeId): array
     {
-        $talhaoIds = array_values(array_unique(array_filter(array_map('intval', $talhoes))));
-        $talhaoIdsVinculados = DB::table('safra_talhoes')
-            ->where('safra_id', $safraId)
-            ->where('propriedade_id', $propriedadeId)
-            ->pluck('talhao_id');
-        $talhaoIdsParaBloquear = collect($talhaoIds)
-            ->merge($talhaoIdsVinculados)
+        $talhaoIds = $this->normalizarTalhaoIds($dados['talhoes'] ?? []);
+        $talhoesSelecionados = $this->talhoesValidosDaPropriedade($propriedadeId, $talhaoIds);
+
+        abort_if(
+            count($talhaoIds) !== $talhoesSelecionados->count(),
+            422,
+            'Existe talhão inválido para esta propriedade.'
+        );
+
+        if (($dados['status'] ?? 'planejamento') === 'em_andamento') {
+            $this->garantirTalhoesSemConflitoEmExecucao($safraId ?? 0, $propriedadeId, $talhaoIds);
+        }
+
+        if ($talhoesSelecionados->isNotEmpty()) {
+            $dados['area_plantada'] = (string) round((float) $talhoesSelecionados->sum('area'), 2);
+        }
+
+        $dados['talhoes'] = $talhaoIds;
+
+        return $dados;
+    }
+
+    private function normalizarTalhaoIds(array $talhoes): array
+    {
+        return collect($talhoes)
             ->map(fn ($talhaoId) => (int) $talhaoId)
             ->filter(fn ($talhaoId) => $talhaoId > 0)
             ->unique()
-            ->sort()
-            ->values();
+            ->values()
+            ->all();
+    }
 
-        if ($talhaoIdsParaBloquear->isNotEmpty()) {
-            $talhaoIdsDaPropriedade = DB::table('talhoes')
-                ->where('propriedade_id', $propriedadeId)
-                ->whereIn('id', $talhaoIdsParaBloquear->all())
-                ->orderBy('id')
-                ->lockForUpdate()
-                ->pluck('id')
-                ->map(fn ($talhaoId) => (int) $talhaoId);
-
-            abort_if(
-                collect($talhaoIds)->diff($talhaoIdsDaPropriedade)->isNotEmpty(),
-                422,
-                'Existe talhao invalido para esta propriedade.'
-            );
+    private function talhoesValidosDaPropriedade(int $propriedadeId, array $talhaoIds): Collection
+    {
+        if ($talhaoIds === []) {
+            return collect();
         }
 
-        $conflitos = $this->talhoesComConflitoEmExecucao($safraId, $propriedadeId, $talhaoIds);
-        abort_if(
-            $conflitos->isNotEmpty(),
-            422,
-            'Talhao ja esta vinculado a safra em andamento: '.$conflitos->map(fn ($conflito) => $conflito->talhao_nome.' ('.$conflito->safra_nome.')')->unique()->implode(', ').'.'
-        );
+        return DB::table('talhoes')
+            ->where('propriedade_id', $propriedadeId)
+            ->where('ativo', 1)
+            ->whereIn('id', $talhaoIds)
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get([
+                'id',
+                DB::raw('COALESCE(area, 0) as area'),
+            ]);
+    }
 
+    private function sincronizarTalhoes(int $safraId, int $propriedadeId, array $talhaoIds): void
+    {
         if ($talhaoIds === []) {
             DB::table('safra_talhoes')
                 ->where('safra_id', $safraId)
@@ -328,22 +356,107 @@ class SafraService
             return;
         }
 
+        $talhaoIdsVinculados = DB::table('safra_talhoes')
+            ->where('safra_id', $safraId)
+            ->where('propriedade_id', $propriedadeId)
+            ->pluck('talhao_id')
+            ->map(fn ($talhaoId) => (int) $talhaoId)
+            ->all();
+
         DB::table('safra_talhoes')
             ->where('safra_id', $safraId)
             ->where('propriedade_id', $propriedadeId)
             ->whereNotIn('talhao_id', $talhaoIds)
             ->delete();
 
-        foreach ($talhaoIds as $talhaoId) {
-            DB::table('safra_talhoes')->updateOrInsert(
-                [
+        $novosTalhaoIds = array_values(array_diff($talhaoIds, $talhaoIdsVinculados));
+        if ($novosTalhaoIds === []) {
+            return;
+        }
+
+        DB::table('safra_talhoes')->insertOrIgnore(
+            array_map(
+                fn (int $talhaoId): array => [
                     'safra_id' => $safraId,
                     'talhao_id' => $talhaoId,
                     'propriedade_id' => $propriedadeId,
+                    'criado_em' => now(),
                 ],
-                ['criado_em' => now()]
-            );
+                $novosTalhaoIds
+            )
+        );
+    }
+
+    private function garantirTalhoesSemConflitoEmExecucao(int $safraId, int $propriedadeId, array $talhaoIds): void
+    {
+        $conflitos = $this->talhoesComConflitoEmExecucao($safraId, $propriedadeId, $talhaoIds);
+        abort_if(
+            $conflitos->isNotEmpty(),
+            422,
+            'Talhão em execução em outra cultura sem colheita registrada: '.
+                $conflitos
+                    ->map(fn ($conflito) => $conflito->talhao_nome.' ('.$conflito->safra_nome.')')
+                    ->unique()
+                    ->implode(', ').
+                '. Salve como Planejamento ou registre a colheita primeiro.'
+        );
+    }
+
+    private function talhoesComUsos(int $propriedadeId): Collection
+    {
+        $talhoes = DB::table('talhoes')
+            ->where('propriedade_id', $propriedadeId)
+            ->where('ativo', 1)
+            ->orderBy('nome')
+            ->get([
+                'id',
+                'nome',
+                DB::raw('COALESCE(area, 0) as area'),
+            ]);
+
+        if ($talhoes->isEmpty()) {
+            return $talhoes;
         }
+
+        $usosPorTalhao = DB::table('safra_talhoes as st')
+            ->join('safras as s', function ($join) {
+                $join->on('s.id', '=', 'st.safra_id')
+                    ->on('s.propriedade_id', '=', 'st.propriedade_id');
+            })
+            ->leftJoin('culturas as c', 'c.id', '=', 's.cultura_id')
+            ->where('st.propriedade_id', $propriedadeId)
+            ->orderByDesc('s.data_inicio')
+            ->orderByDesc('s.id')
+            ->get([
+                'st.talhao_id',
+                'st.safra_id',
+                's.descricao as safra_nome',
+                's.status',
+                'c.nome as cultura_nome',
+                'st.colheita_finalizada_em',
+            ])
+            ->groupBy(fn ($uso) => (int) $uso->talhao_id);
+
+        return $talhoes->map(function ($talhao) use ($usosPorTalhao) {
+            $talhao->usos = $usosPorTalhao
+                ->get((int) $talhao->id, collect())
+                ->map(function ($uso): object {
+                    $status = (string) $uso->status;
+
+                    return (object) [
+                        'safra_id' => (int) $uso->safra_id,
+                        'safra_nome' => (string) $uso->safra_nome,
+                        'cultura_nome' => (string) ($uso->cultura_nome ?? ''),
+                        'status' => $status,
+                        'status_label' => $this->statusLabel($status),
+                        'colhido' => ! empty($uso->colheita_finalizada_em)
+                            || in_array($status, ['colhida', 'encerrada'], true),
+                    ];
+                })
+                ->values();
+
+            return $talhao;
+        });
     }
 
     private function talhoesComConflitoEmExecucao(int $safraId, int $propriedadeId, array $talhaoIds): Collection
@@ -422,7 +535,7 @@ class SafraService
             'documentos' => 'documentos',
             'financeiro_projecoes' => 'planejamento financeiro',
             'mapas_colheita' => 'mapas de colheita',
-            'maquina_lancamentos' => 'patrimonio/maquinas',
+            'maquina_lancamentos' => 'patrimônio/máquinas',
             'nf_entradas' => 'entrada de NF',
             'nf_entrada_itens' => 'itens de NF',
             'notas_fiscais' => 'notas fiscais',

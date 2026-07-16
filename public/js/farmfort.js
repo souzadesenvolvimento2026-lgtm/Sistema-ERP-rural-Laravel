@@ -2030,6 +2030,139 @@ function initPatrimonyForms() {
   });
 }
 
+function initSafraForms(root) {
+  (root || document).querySelectorAll('[data-safra-form]').forEach(form => {
+    if (form.dataset.safraReady === '1') return;
+    form.dataset.safraReady = '1';
+
+    const areaInput = form.querySelector('[data-safra-area]');
+    const statusSelect = form.querySelector('[data-safra-status]');
+    const selectAll = form.querySelector('[data-safra-select-all]');
+
+    const checks = () => Array.from(form.querySelectorAll('[data-safra-talhao-check]'));
+    const availableChecks = () => checks().filter(check => !check.disabled);
+    const checkedChecks = () => checks().filter(check => check.checked);
+
+    form.querySelectorAll('.moeda').forEach(input => {
+      if (input.dataset.moedaReady === '1') return;
+
+      input.dataset.moedaReady = '1';
+      input.addEventListener('input', () => mascaraMoeda(input));
+    });
+
+    const updateSelectAll = () => {
+      if (!selectAll) return;
+
+      const available = availableChecks();
+      const checkedAvailable = available.filter(check => check.checked);
+      selectAll.checked = available.length > 0 && checkedAvailable.length === available.length;
+      selectAll.indeterminate = checkedAvailable.length > 0 && checkedAvailable.length < available.length;
+      selectAll.disabled = available.length === 0;
+    };
+
+    const updateArea = () => {
+      const selected = checkedChecks();
+      if (areaInput && selected.length > 0) {
+        const total = selected.reduce((sum, check) => sum + Number(check.dataset.area || 0), 0);
+        areaInput.value = total.toFixed(2);
+      }
+
+      updateSelectAll();
+    };
+
+    const updateAvailability = () => {
+      const isRunning = statusSelect?.value === 'em_andamento';
+
+      checks().forEach(check => {
+        const row = check.closest('.ff-safra-talhao-row');
+        const shouldBlock = isRunning && check.dataset.blocksExecution === '1';
+        check.disabled = shouldBlock;
+
+        if (shouldBlock) {
+          check.checked = false;
+          row?.classList.add('is-blocked');
+        } else {
+          row?.classList.remove('is-blocked');
+        }
+      });
+
+      updateArea();
+    };
+
+    checks().forEach(check => {
+      check.addEventListener('change', updateArea);
+    });
+
+    selectAll?.addEventListener('change', () => {
+      availableChecks().forEach(check => {
+        check.checked = selectAll.checked;
+      });
+
+      updateArea();
+    });
+
+    statusSelect?.addEventListener('change', updateAvailability);
+    updateAvailability();
+  });
+}
+
+function initSafraModal() {
+  const modalElement = document.getElementById('safraModal');
+  if (!modalElement || !window.bootstrap) {
+    initSafraForms(document);
+    return;
+  }
+
+  const contentHost = modalElement.querySelector('[data-safra-modal-content]');
+  if (!contentHost) return;
+
+  const originalContent = contentHost.innerHTML;
+  const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+
+  const openModal = () => {
+    initSafraForms(modalElement);
+    modal.show();
+    setTimeout(() => {
+      modalElement.querySelector('input[name="descricao"]')?.focus();
+    }, 180);
+  };
+
+  document.querySelectorAll('[data-safra-create]').forEach(button => {
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      contentHost.innerHTML = originalContent;
+      openModal();
+    });
+  });
+
+  document.querySelectorAll('[data-safra-edit]').forEach(button => {
+    button.addEventListener('click', async event => {
+      event.preventDefault();
+
+      try {
+        const response = await fetch(button.href, {
+          headers: {
+            'Accept': 'text/html',
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        });
+
+        if (!response.ok) {
+          window.location.href = button.href;
+          return;
+        }
+
+        contentHost.innerHTML = await response.text();
+        openModal();
+      } catch (error) {
+        window.location.href = button.href;
+      }
+    });
+  });
+
+  initSafraForms(modalElement);
+}
+
 document.addEventListener('DOMContentLoaded', function () {
   initFarmFortTheme();
   initModuleRailScroll();
@@ -2039,8 +2172,12 @@ document.addEventListener('DOMContentLoaded', function () {
   initFarmFortChartMaximizer();
   initSystemWriteUnlockReminder();
   initPatrimonyForms();
+  initSafraModal();
 
   document.querySelectorAll('.moeda').forEach(el => {
+    if (el.dataset.moedaReady === '1') return;
+
+    el.dataset.moedaReady = '1';
     el.addEventListener('input', () => mascaraMoeda(el));
   });
 

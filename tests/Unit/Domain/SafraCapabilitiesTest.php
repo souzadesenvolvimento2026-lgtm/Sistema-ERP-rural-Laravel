@@ -11,8 +11,11 @@ class SafraCapabilitiesTest extends TestCase
     {
         $rules = new SafraCapabilities;
 
+        $this->assertSame('em_andamento', $rules->for('planejamento', [])['actions'][0]['target_status']);
+        $this->assertSame('Iniciar', $rules->for('planejamento', [])['actions'][0]['label']);
         $this->assertSame('encerrada', $rules->for('em_andamento', [])['actions'][0]['target_status']);
         $this->assertSame('planejamento', $rules->for('encerrada', [])['actions'][0]['target_status']);
+        $this->assertTrue($rules->canTransition('planejamento', 'em_andamento'));
         $this->assertTrue($rules->canTransition('em_andamento', 'encerrada'));
         $this->assertFalse($rules->canTransition('encerrada', 'colhida'));
     }
