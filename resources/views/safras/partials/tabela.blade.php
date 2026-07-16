@@ -1,10 +1,10 @@
-<section class="panel">
-    <div class="panel-head">
-        <h2>Safras cadastradas</h2>
+<section class="panel ff-safra-table-panel">
+    <div class="panel-head ff-safra-table-head">
+        <h2><i class="bi bi-calendar3"></i> Safras cadastradas</h2>
         <span class="badge">{{ $rows->count() }} safra(s)</span>
     </div>
-    <div class="table-wrap">
-        <table>
+    <div class="table-wrap ff-safra-table-wrap">
+        <table class="ff-safra-table">
             <thead>
                 <tr>
                     <th>Descrição</th>
@@ -38,8 +38,8 @@
                         <td>{{ $row->preco_estimado }}</td>
                         <td>{{ $row->talhoes_colhidos }}/{{ $row->talhoes_count }} colhidos</td>
                         <td><span class="pill {{ $row->status_tone }}">{{ $row->status }}</span></td>
-                        <td>
-                            <div class="inline-actions">
+                        <td class="ff-safra-actions-cell">
+                            <div class="inline-actions ff-safra-row-actions">
                                 <a class="btn small" href="{{ route('safras.edit', $row->id) }}" data-safra-edit>Editar</a>
                                 @foreach ($row->actions as $action)
                                     <form method="POST" action="{{ route('safras.status', $row->id) }}">
