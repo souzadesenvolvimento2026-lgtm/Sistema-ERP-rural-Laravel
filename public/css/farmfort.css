@@ -816,16 +816,41 @@ html[data-theme="dark"] .form-check-input:checked {
   border-color: var(--ff-accent);
 }
 
-.ff-safra-talhao-panel {
-  border: 1px solid var(--ff-border);
-  border-radius: var(--ff-radius);
-  background: var(--ff-surface-2);
-  padding: 14px;
+.ff-safra-modal-dialog {
+  width: min(94vw, 800px);
+  max-width: min(94vw, 800px);
 }
 
-.ff-safra-modal-dialog {
-  width: min(94vw, 820px);
-  max-width: min(94vw, 820px);
+.ff-safra-modal .ff-safra-modal-content {
+  background: #ffffff;
+  border: 1px solid #d7e0e8;
+  border-radius: 8px;
+  color: #111827;
+  max-height: calc(100vh - 56px);
+  overflow: hidden;
+}
+
+.ff-safra-modal .modal-header-green {
+  background: #006b43 !important;
+  min-height: 62px;
+}
+
+.ff-safra-modal .modal-body,
+.ff-safra-modal .modal-footer {
+  background: #ffffff !important;
+  color: #111827;
+}
+
+.ff-safra-modal .modal-body {
+  max-height: calc(100vh - 178px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 20px 18px 16px;
+}
+
+.ff-safra-modal .modal-footer {
+  border-top: 1px solid #dbe4ec;
+  padding: 16px 18px;
 }
 
 .ff-safra-form-grid {
@@ -850,22 +875,48 @@ html[data-theme="dark"] .form-check-input:checked {
 }
 
 .ff-safra-field > span {
-  color: var(--ff-text);
+  color: #111827;
   font-size: 12px;
   font-weight: 900;
 }
 
-.ff-safra-field input,
-.ff-safra-field select,
-.ff-safra-field textarea {
+.ff-safra-field > input,
+.ff-safra-field > select,
+.ff-safra-field > textarea {
+  background: #ffffff !important;
+  border: 1px solid #d7e0e8;
+  border-radius: 7px;
+  color: #111827 !important;
+  min-height: 38px;
+  padding: 0.5rem 0.65rem;
   width: 100%;
+}
+
+.ff-safra-field > textarea {
+  min-height: 64px;
+}
+
+.ff-safra-field > input:focus,
+.ff-safra-field > select:focus,
+.ff-safra-field > textarea:focus {
+  border-color: #008f63;
+  box-shadow: 0 0 0 0.18rem rgba(0, 143, 99, 0.14);
+  outline: 0;
 }
 
 .ff-safra-help {
   margin: 0;
-  color: var(--ff-muted);
+  color: #64748b;
   font-size: 13px;
   line-height: 1.45;
+}
+
+.ff-safra-talhao-panel {
+  background: #f8fafc;
+  border: 1px solid #dbe4ec;
+  border-radius: 8px;
+  overflow: hidden;
+  padding: 14px;
 }
 
 .ff-safra-talhao-head {
@@ -880,24 +931,30 @@ html[data-theme="dark"] .form-check-input:checked {
   display: inline-flex;
   align-items: flex-start;
   gap: 8px;
-  min-width: 150px;
-  color: var(--ff-text);
+  min-width: 160px;
+  color: #111827;
   font-weight: 800;
   line-height: 1.35;
   cursor: pointer;
 }
 
 .ff-safra-select-all input {
+  flex: 0 0 16px;
+  height: 16px !important;
   margin-top: 2px;
+  min-height: 0 !important;
+  padding: 0 !important;
+  width: 16px !important;
 }
 
 .ff-safra-talhao-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
-  max-height: 260px;
-  overflow: auto;
-  padding-right: 4px;
+  max-height: none;
+  overflow-x: hidden;
+  overflow-y: visible;
+  padding: 0;
 }
 
 .ff-safra-talhao-row {
@@ -905,20 +962,23 @@ html[data-theme="dark"] .form-check-input:checked {
   align-items: flex-start;
   gap: 10px;
   margin: 0;
-  padding: 10px;
-  border: 1px solid var(--ff-border);
-  border-radius: var(--ff-radius-sm);
-  background: var(--ff-surface);
+  min-height: 60px;
+  padding: 10px 12px;
+  border: 1px solid #d7e0e8;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #111827;
   cursor: pointer;
 }
 
 .ff-safra-talhao-row:hover {
-  border-color: var(--ff-accent);
+  border-color: #008f63;
 }
 
 .ff-safra-talhao-row:has(.form-check-input:checked) {
-  border-color: var(--ff-accent);
-  background: color-mix(in srgb, var(--ff-accent) 9%, var(--ff-surface));
+  border-color: #008f63;
+  background: #f2fbf7;
+  box-shadow: inset 3px 0 0 #008f63;
 }
 
 .ff-safra-talhao-row.is-blocked {
@@ -927,8 +987,12 @@ html[data-theme="dark"] .form-check-input:checked {
 }
 
 .ff-safra-talhao-row .form-check-input {
-  margin-top: 2px;
   flex: 0 0 auto;
+  height: 16px !important;
+  margin: 2px 0 0;
+  min-height: 0 !important;
+  padding: 0 !important;
+  width: 16px !important;
 }
 
 .ff-safra-talhao-info {
@@ -938,12 +1002,12 @@ html[data-theme="dark"] .form-check-input:checked {
 }
 
 .ff-safra-talhao-info strong {
-  color: var(--ff-text);
+  color: #111827;
   line-height: 1.2;
 }
 
 .ff-safra-talhao-info small {
-  color: var(--ff-muted);
+  color: #64748b;
 }
 
 .ff-safra-talhao-info em {
@@ -960,10 +1024,16 @@ html[data-theme="dark"] .form-check-input:checked {
 }
 
 .ff-safra-talhao-empty {
-  border: 1px dashed var(--ff-border-strong);
-  border-radius: var(--ff-radius-sm);
-  color: var(--ff-muted);
+  border: 1px dashed #b8c6d6;
+  border-radius: 7px;
+  color: #64748b;
   padding: 14px;
+}
+
+@media (max-width: 900px) {
+  .ff-safra-talhao-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 768px) {
@@ -979,6 +1049,10 @@ html[data-theme="dark"] .form-check-input:checked {
 
   .ff-safra-talhao-head {
     display: grid;
+  }
+
+  .ff-safra-talhao-list {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -10518,6 +10592,106 @@ html[data-theme="dark"] .ff-financial-form-modal textarea {
   border-color: var(--ff-border-strong);
   background: var(--ff-surface-2);
   color: var(--ff-text);
+}
+
+.ff-safra-modal .ff-safra-modal-content,
+html[data-theme="dark"] .ff-safra-modal .ff-safra-modal-content {
+  background: #ffffff !important;
+  border-color: #d7e0e8 !important;
+  color: #111827 !important;
+}
+
+.ff-safra-modal .modal-body,
+.ff-safra-modal .modal-footer,
+html[data-theme="dark"] .ff-safra-modal .modal-body,
+html[data-theme="dark"] .ff-safra-modal .modal-footer {
+  background: #ffffff !important;
+  color: #111827 !important;
+}
+
+.ff-safra-modal label,
+.ff-safra-modal .ff-safra-field > span,
+.ff-safra-modal .ff-safra-select-all,
+html[data-theme="dark"] .ff-safra-modal label,
+html[data-theme="dark"] .ff-safra-modal .ff-safra-field > span,
+html[data-theme="dark"] .ff-safra-modal .ff-safra-select-all {
+  color: #111827 !important;
+}
+
+.ff-safra-modal .ff-safra-field > input,
+.ff-safra-modal .ff-safra-field > select,
+.ff-safra-modal .ff-safra-field > textarea,
+html[data-theme="dark"] .ff-safra-modal .ff-safra-field > input,
+html[data-theme="dark"] .ff-safra-modal .ff-safra-field > select,
+html[data-theme="dark"] .ff-safra-modal .ff-safra-field > textarea {
+  background: #ffffff !important;
+  border-color: #d7e0e8 !important;
+  color: #111827 !important;
+}
+
+.ff-safra-modal .ff-safra-talhao-panel,
+html[data-theme="dark"] .ff-safra-modal .ff-safra-talhao-panel {
+  background: #f8fafc !important;
+  border-color: #dbe4ec !important;
+}
+
+.ff-safra-modal .ff-safra-talhao-row,
+html[data-theme="dark"] .ff-safra-modal .ff-safra-talhao-row {
+  background: #ffffff !important;
+  border-color: #d7e0e8 !important;
+  color: #111827 !important;
+}
+
+.ff-safra-modal .ff-safra-talhao-row:has(.form-check-input:checked),
+html[data-theme="dark"] .ff-safra-modal .ff-safra-talhao-row:has(.form-check-input:checked) {
+  background: #f2fbf7 !important;
+  border-color: #008f63 !important;
+}
+
+.ff-safra-modal .ff-safra-talhao-info strong,
+html[data-theme="dark"] .ff-safra-modal .ff-safra-talhao-info strong {
+  color: #111827 !important;
+}
+
+.ff-safra-modal .ff-safra-talhao-info small,
+.ff-safra-modal .ff-safra-help,
+html[data-theme="dark"] .ff-safra-modal .ff-safra-talhao-info small,
+html[data-theme="dark"] .ff-safra-modal .ff-safra-help {
+  color: #64748b !important;
+}
+
+.ff-safra-modal .form-check-input,
+html[data-theme="dark"] .ff-safra-modal .form-check-input {
+  appearance: auto;
+  background-color: #ffffff !important;
+  border: 1px solid #b8c6d6 !important;
+  flex: 0 0 16px !important;
+  height: 16px !important;
+  margin: 2px 0 0 !important;
+  min-height: 0 !important;
+  min-width: 16px !important;
+  padding: 0 !important;
+  width: 16px !important;
+}
+
+.ff-safra-modal .ff-safra-talhao-row .form-check-input,
+.ff-safra-modal .ff-safra-select-all .form-check-input,
+.ff-safra-modal .ff-safra-select-all input[type="checkbox"],
+html[data-theme="dark"] .ff-safra-modal .ff-safra-talhao-row .form-check-input,
+html[data-theme="dark"] .ff-safra-modal .ff-safra-select-all .form-check-input,
+html[data-theme="dark"] .ff-safra-modal .ff-safra-select-all input[type="checkbox"] {
+  display: inline-block !important;
+  max-height: 16px !important;
+  max-width: 16px !important;
+  min-height: 16px !important;
+  min-width: 16px !important;
+}
+
+.ff-safra-modal .form-check-input:checked,
+html[data-theme="dark"] .ff-safra-modal .form-check-input:checked {
+  accent-color: #008f63;
+  background-color: #008f63 !important;
+  border-color: #008f63 !important;
 }
 
 @media (max-width: 576px) {

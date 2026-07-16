@@ -17,7 +17,7 @@
     @include('safras.partials.filtros')
     @include('safras.partials.tabela')
 
-    <div class="modal fade" id="safraModal" tabindex="-1" aria-hidden="true">
+    <div class="modal fade ff-safra-modal" id="safraModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-centered ff-safra-modal-dialog" data-safra-modal-content>
             @include('safras.partials.modal-content', [
                 'safra' => null,
