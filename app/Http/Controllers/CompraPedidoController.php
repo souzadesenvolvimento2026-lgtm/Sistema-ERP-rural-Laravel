@@ -11,7 +11,9 @@ use RuntimeException;
 
 class CompraPedidoController extends Controller
 {
-    public function __construct(private CompraPedidoService $pedidos) {}
+    public function __construct(private CompraPedidoService $pedidos)
+    {
+    }
 
     public function index(Request $request): View
     {
@@ -42,8 +44,9 @@ class CompraPedidoController extends Controller
     {
         $request->validate([
             'issue_date' => ['required', 'date'],
-            'supplier_name' => ['required', 'string', 'max:160'],
-            'supplier_cnpj' => ['required', 'string', 'max:20'],
+            'supplier_id' => ['nullable', 'integer'],
+            'supplier_name' => ['required_without:supplier_id', 'nullable', 'string', 'max:160'],
+            'supplier_cnpj' => ['required_without:supplier_id', 'nullable', 'string', 'max:20'],
             'notes' => ['nullable', 'string'],
             'item_description' => ['required', 'array'],
             'item_description.*' => ['nullable', 'string', 'max:255'],
@@ -110,8 +113,9 @@ class CompraPedidoController extends Controller
     {
         $request->validate([
             'issue_date' => ['required', 'date'],
-            'supplier_name' => ['required', 'string', 'max:160'],
-            'supplier_cnpj' => ['required', 'string', 'max:20'],
+            'supplier_id' => ['nullable', 'integer'],
+            'supplier_name' => ['required_without:supplier_id', 'nullable', 'string', 'max:160'],
+            'supplier_cnpj' => ['required_without:supplier_id', 'nullable', 'string', 'max:20'],
             'notes' => ['nullable', 'string'],
             'item_description' => ['required', 'array'],
             'item_description.*' => ['nullable', 'string', 'max:255'],

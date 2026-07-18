@@ -8,6 +8,8 @@
     <div class="ff-purchase-page">
         <span class="visually-hidden">Pedidos de compras</span>
 
+        @include('compras.partials.tabs', ['activeCompraTab' => 'pedidos'])
+
         @include('partials.filter-panel', [
             'action' => route('compras.pedidos.index'),
             'clearUrl' => route('compras.pedidos.index'),

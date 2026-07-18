@@ -30,7 +30,9 @@ class CompraPedidoService
 
     public array $units = ['Quilograma', 'Grama', 'Tonelada', 'Litro', 'Mililitro', 'Metros', 'Unidade'];
 
-    public function __construct(private readonly PurchaseOrderCapabilities $capabilities) {}
+    public function __construct(private readonly PurchaseOrderCapabilities $capabilities)
+    {
+    }
 
     public function propertyId(): int
     {
@@ -86,6 +88,7 @@ class CompraPedidoService
     {
         return [
             'categorias' => $this->orderCategories(),
+            'fornecedores' => $this->activeSuppliers($propertyId),
             'patrimonios' => $this->propertyAssets($propertyId),
             'units' => $this->units,
         ];
@@ -103,12 +106,13 @@ class CompraPedidoService
             }
 
             $totalValue = array_sum(array_column($items, 'total_value'));
+            $supplier = $this->supplierPayload($request, $propertyId);
 
             DB::table('fiscal_orders')->insert([
                 'propriedade_id' => $propertyId,
                 'order_number' => $orderNumber,
-                'supplier_name' => trim((string) $request->input('supplier_name')),
-                'supplier_cnpj' => preg_replace('/\D+/', '', (string) $request->input('supplier_cnpj')),
+                'supplier_name' => $supplier['name'],
+                'supplier_cnpj' => $supplier['document'],
                 'order_type' => 'entrada',
                 'issue_date' => $request->input('issue_date'),
                 'total_value' => $totalValue,
@@ -134,7 +138,7 @@ class CompraPedidoService
                 propertyId: $propertyId,
                 details: [
                     'numero' => $orderNumber,
-                    'fornecedor' => trim((string) $request->input('supplier_name')),
+                    'fornecedor' => $supplier['name'],
                     'status' => $requiresApproval ? 'aguardando_aprovacao' : 'em_aberto',
                     'total' => $totalValue,
                 ],
@@ -199,13 +203,15 @@ class CompraPedidoService
                 $orderNumber = (string) $order->order_number;
             }
 
+            $supplier = $this->supplierPayload($request, $propertyId);
+
             DB::table('fiscal_orders')
                 ->where('id', $pedido)
                 ->where('propriedade_id', $propertyId)
                 ->update([
                     'order_number' => $orderNumber,
-                    'supplier_name' => trim((string) $request->input('supplier_name')),
-                    'supplier_cnpj' => preg_replace('/\D+/', '', (string) $request->input('supplier_cnpj')),
+                    'supplier_name' => $supplier['name'],
+                    'supplier_cnpj' => $supplier['document'],
                     'issue_date' => $request->input('issue_date'),
                     'total_value' => array_sum(array_column($items, 'total_value')),
                     'notes' => trim((string) $request->input('notes')),
@@ -747,8 +753,7 @@ class CompraPedidoService
         bool $confirmed,
         bool $confirmWithoutInvoice = false,
         bool $confirmDivergences = false,
-    ): int
-    {
+    ): int {
         if (! $confirmed) {
             throw new RuntimeException('Confirme explicitamente a aprovação do pedido.');
         }
@@ -985,6 +990,80 @@ class CompraPedidoService
             ->whereNotIn('nome', ['Financeiro', 'Financiamento', 'Taxas e juros', 'Pedidos Fiscais'])
             ->orderBy('nome')
             ->get(['id', 'nome', 'tipo']);
+    }
+
+    private function activeSuppliers(int $propertyId)
+    {
+        if (! Schema::hasTable('fornecedores')) {
+            return collect();
+        }
+
+        return DB::table('fornecedores')
+            ->where('propriedade_id', $propertyId)
+            ->where('ativo', true)
+            ->orderBy('nome')
+            ->limit(300)
+            ->get(['id', 'nome', 'documento'])
+            ->map(function (object $supplier): object {
+                $supplier->documento_formatado = $this->formatSupplierDocument($supplier->documento ?? null);
+
+                return $supplier;
+            });
+    }
+
+    private function supplierPayload(Request $request, int $propertyId): array
+    {
+        $supplierId = (int) $request->input('supplier_id', 0);
+        $manualName = trim((string) $request->input('supplier_name'));
+        $manualDocument = preg_replace('/\D+/', '', (string) $request->input('supplier_cnpj'));
+
+        if ($supplierId <= 0) {
+            return [
+                'name' => $manualName,
+                'document' => $manualDocument,
+            ];
+        }
+
+        if (! Schema::hasTable('fornecedores')) {
+            throw new RuntimeException('Cadastro de fornecedores não está disponível. Execute as migrations.');
+        }
+
+        $supplier = DB::table('fornecedores')
+            ->where('id', $supplierId)
+            ->where('propriedade_id', $propertyId)
+            ->where('ativo', true)
+            ->first(['nome', 'documento']);
+
+        if (! $supplier) {
+            throw new RuntimeException('Fornecedor selecionado não foi encontrado nesta propriedade.');
+        }
+
+        $document = preg_replace('/\D+/', '', (string) ($supplier->documento ?? '')) ?: $manualDocument;
+        if ($document === '') {
+            throw new RuntimeException(
+                'Fornecedor selecionado não possui CNPJ/CPF. Cadastre o documento do fornecedor antes de criar o pedido.'
+            );
+        }
+
+        return [
+            'name' => trim((string) $supplier->nome),
+            'document' => $document,
+        ];
+    }
+
+    private function formatSupplierDocument(?string $document): string
+    {
+        $digits = preg_replace('/\D+/', '', (string) $document) ?? '';
+
+        if (strlen($digits) === 14) {
+            return preg_replace('/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/', '$1.$2.$3/$4-$5', $digits) ?? $digits;
+        }
+
+        if (strlen($digits) === 11) {
+            return preg_replace('/(\d{3})(\d{3})(\d{3})(\d{2})/', '$1.$2.$3-$4', $digits) ?? $digits;
+        }
+
+        return $digits;
     }
 
     private function createFinancialExpense(object $order, ?int $userId): int

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\CompraFornecedorController;
 use App\Http\Controllers\CompraPedidoController;
 use App\Http\Controllers\AdminPainelController;
 use App\Http\Controllers\AuthSessionController;
@@ -270,6 +271,8 @@ Route::delete('/orcamento/{projecao}', [PlanejamentoFinanceiroController::class,
 
 Route::prefix('compras')->name('compras.')->group(function () {
     Route::get('/', [CompraPedidoController::class, 'index'])->name('index');
+    Route::get('/fornecedores', [CompraFornecedorController::class, 'index'])->name('fornecedores.index');
+    Route::post('/fornecedores', [CompraFornecedorController::class, 'store'])->name('fornecedores.store');
     Route::get('/pedidos', [CompraPedidoController::class, 'index'])->name('pedidos.index');
     Route::get('/pedidos/novo', [CompraPedidoController::class, 'create'])->name('pedidos.create');
     Route::post('/pedidos', [CompraPedidoController::class, 'store'])->name('pedidos.store');

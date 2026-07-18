@@ -1,4 +1,40 @@
 (() => {
+    const supplierSelects = document.querySelectorAll('[data-purchase-supplier-select]');
+
+    if (!supplierSelects.length) {
+        return;
+    }
+
+    supplierSelects.forEach((supplierSelect) => {
+        const form = supplierSelect.closest('form') || document;
+        const supplierName = form.querySelector('[data-purchase-supplier-name]');
+        const supplierDocument = form.querySelector('[data-purchase-supplier-document]');
+
+        if (!supplierName || !supplierDocument) {
+            return;
+        }
+
+        function refreshSupplierFields() {
+            const selected = supplierSelect.selectedOptions[0];
+            const hasSupplier = Boolean(supplierSelect.value);
+
+            if (hasSupplier && selected) {
+                supplierName.value = selected.dataset.name || '';
+                supplierDocument.value = selected.dataset.document || '';
+            }
+
+            supplierName.readOnly = hasSupplier;
+            supplierDocument.readOnly = hasSupplier;
+            supplierName.required = !hasSupplier;
+            supplierDocument.required = !hasSupplier;
+        }
+
+        supplierSelect.addEventListener('change', refreshSupplierFields);
+        refreshSupplierFields();
+    });
+})();
+
+(() => {
     const items = document.querySelector('#items');
     const template = document.querySelector('#itemTemplate');
     const orderTotal = document.querySelector('#orderTotal');

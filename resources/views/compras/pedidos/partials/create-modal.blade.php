@@ -1,5 +1,6 @@
 @php
     $formItems = [];
+    $selectedFornecedorId = (string) old('supplier_id', '');
 
     if (old('_pedido_modal') === 'create') {
         $descriptions = old('item_description', []);
@@ -58,14 +59,32 @@
                         <input value="Entrada / Compra" readonly>
                     </label>
 
+                    <label class="ff-purchase-order-field ff-purchase-order-field-supplier-select">
+                        <span>Fornecedor cadastrado</span>
+                        <select name="supplier_id" data-purchase-supplier-select>
+                            <option value="">Informar manualmente</option>
+                            @foreach (($fornecedores ?? collect()) as $fornecedor)
+                                <option
+                                    value="{{ $fornecedor->id }}"
+                                    data-name="{{ $fornecedor->nome }}"
+                                    data-document="{{ $fornecedor->documento }}"
+                                    @selected($selectedFornecedorId === (string) $fornecedor->id)
+                                >
+                                    {{ $fornecedor->nome }}@if (! empty($fornecedor->documento_formatado)) — {{ $fornecedor->documento_formatado }}@endif
+                                </option>
+                            @endforeach
+                        </select>
+                        <small>Escolha um fornecedor salvo ou informe os dados manualmente.</small>
+                    </label>
+
                     <label class="ff-purchase-order-field">
                         <span>CNPJ do fornecedor *</span>
-                        <input name="supplier_cnpj" value="{{ old('supplier_cnpj') }}" inputmode="numeric" required>
+                        <input name="supplier_cnpj" value="{{ old('supplier_cnpj') }}" inputmode="numeric" data-purchase-supplier-document>
                     </label>
 
                     <label class="ff-purchase-order-field ff-purchase-order-field-supplier">
                         <span>Fornecedor *</span>
-                        <input name="supplier_name" value="{{ old('supplier_name') }}" required>
+                        <input name="supplier_name" value="{{ old('supplier_name') }}" data-purchase-supplier-name>
                     </label>
 
                     <label class="ff-purchase-order-field ff-purchase-order-field-notes">
@@ -73,19 +92,17 @@
                         <input name="notes" value="{{ old('notes') }}">
                     </label>
 
-                    <div class="ff-purchase-order-field ff-purchase-order-field-notes">
+                    <div class="ff-purchase-order-field ff-purchase-order-field-invoice">
                         <span>Nota fiscal</span>
-                        <label class="form-check d-flex align-items-start gap-2 m-0">
+                        <label class="ff-purchase-nf-check">
                             <input
-                                class="form-check-input mt-1"
+                                class="form-check-input ff-purchase-nf-checkbox"
                                 type="checkbox"
                                 name="vincular_nota_antes_aprovar"
                                 value="1"
                                 @checked(old('vincular_nota_antes_aprovar'))
                             >
-                            <span class="form-check-label">
-                                Vou vincular ou importar a NF antes de aprovar este pedido.
-                            </span>
+                            <span>Vou vincular ou importar a NF antes de aprovar este pedido.</span>
                         </label>
                     </div>
                 </div>

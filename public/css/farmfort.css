@@ -8626,6 +8626,38 @@ html[data-theme="dark"] .ff-comparison-filter-form {
   color: var(--ff-text);
 }
 
+.ff-purchase-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--ff-border);
+}
+
+.ff-purchase-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 10px 16px;
+  color: var(--ff-muted);
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.ff-purchase-tab:hover {
+  color: var(--ff-accent);
+}
+
+.ff-purchase-tab.active {
+  color: var(--ff-accent);
+  background: var(--ff-surface);
+  border-color: var(--ff-border);
+}
+
 .ff-purchase-hero {
   display: flex;
   align-items: center;
@@ -8887,6 +8919,12 @@ html[data-theme="dark"] .ff-comparison-filter-form {
   grid-column: span 7 !important;
 }
 
+.ff-purchase-order-field-supplier-select,
+.ff-purchase-order-field-invoice {
+  grid-column: span 6 !important;
+  align-content: start;
+}
+
 .ff-purchase-order-field-notes {
   grid-column: span 5 !important;
 }
@@ -8902,6 +8940,43 @@ html[data-theme="dark"] .ff-comparison-filter-form {
   color: var(--ff-text);
   font-size: 12px;
   font-weight: 900;
+}
+
+.ff-purchase-order-field small {
+  color: var(--ff-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ff-purchase-nf-check {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: max-content;
+  max-width: 100%;
+  margin: 0;
+  color: var(--ff-text);
+  cursor: pointer;
+  line-height: 1.3;
+}
+
+.ff-purchase-nf-checkbox {
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px;
+  flex: 0 0 16px;
+  margin: 2px 0 0 !important;
+  padding: 0 !important;
+  border-radius: 3px !important;
+  appearance: auto;
+}
+
+.ff-purchase-nf-check span {
+  color: var(--ff-text);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .ff-purchase-order-modal input[readonly] {
@@ -9025,7 +9100,105 @@ html[data-theme="dark"] .ff-comparison-filter-form {
   line-height: 1;
 }
 
+.ff-supplier-form-panel {
+  margin-bottom: 18px;
+}
+
+.ff-supplier-form-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 14px;
+  padding: 16px;
+}
+
+.ff-supplier-field {
+  display: grid;
+  grid-column: span 3;
+  gap: 7px;
+  margin: 0;
+}
+
+.ff-supplier-field-wide {
+  grid-column: span 6;
+}
+
+.ff-supplier-field-full {
+  grid-column: span 12;
+}
+
+.ff-supplier-field span {
+  color: var(--ff-text);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ff-supplier-field input,
+.ff-supplier-field textarea {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  color: var(--ff-text);
+  background: var(--ff-surface-2);
+  border: 1px solid var(--ff-border);
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+.ff-supplier-field textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.ff-supplier-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 16px 16px;
+}
+
+.ff-suppliers-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.ff-suppliers-table th,
+.ff-suppliers-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ff-border);
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+
+.ff-suppliers-table th {
+  color: var(--ff-accent);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.ff-suppliers-table td strong {
+  color: var(--ff-text);
+  font-weight: 900;
+}
+
+.ff-suppliers-table small {
+  display: block;
+  margin-top: 3px;
+  color: var(--ff-muted);
+  font-size: 11px;
+}
+
 @media (max-width: 760px) {
+  .ff-purchase-tabs {
+    flex-wrap: wrap;
+  }
+
+  .ff-purchase-tab {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+
   .ff-purchase-hero,
   .ff-purchase-hero-content,
   .ff-purchase-datatable-toolbar,
@@ -9053,6 +9226,8 @@ html[data-theme="dark"] .ff-comparison-filter-form {
 
   .ff-purchase-order-grid .ff-purchase-order-field,
   .ff-purchase-order-field-supplier,
+  .ff-purchase-order-field-supplier-select,
+  .ff-purchase-order-field-invoice,
   .ff-purchase-order-field-notes {
     grid-column: auto !important;
   }
@@ -9070,6 +9245,16 @@ html[data-theme="dark"] .ff-comparison-filter-form {
 
   .ff-purchase-order-total {
     gap: 6px;
+  }
+
+  .ff-supplier-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ff-supplier-field,
+  .ff-supplier-field-wide,
+  .ff-supplier-field-full {
+    grid-column: auto;
   }
 }
 
