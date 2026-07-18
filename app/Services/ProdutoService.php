@@ -120,12 +120,20 @@ class ProdutoService
         }
 
         $destinoTipo = (string) $dados['destino_tipo'];
+        $safraInformada = (int) ($dados['safra_id'] ?? 0) > 0;
         $safraId = $this->idDaPropriedade('safras', $dados['safra_id'] ?? null, $propriedadeId);
         $talhaoId = $this->idDaPropriedade('talhoes', $dados['talhao_id'] ?? null, $propriedadeId);
         $maquinaId = $this->idDaPropriedade('maquinas', $dados['maquina_id'] ?? null, $propriedadeId);
         $motivo = trim((string) ($dados['motivo'] ?? ''));
+        $justificativaSemSafra = trim((string) ($dados['justificativa_sem_safra'] ?? ''));
 
-        if (in_array($destinoTipo, ['safra', 'patrimonio'], true) && $safraId === null) {
+        if ($safraInformada && $safraId === null) {
+            throw ValidationException::withMessages([
+                'safra_id' => 'Selecione uma safra válida desta propriedade.',
+            ]);
+        }
+
+        if ($destinoTipo === 'safra' && $safraId === null) {
             throw ValidationException::withMessages([
                 'safra_id' => 'Selecione a safra que receberá essa baixa de estoque.',
             ]);
@@ -134,6 +142,12 @@ class ProdutoService
         if ($destinoTipo === 'patrimonio' && $maquinaId === null) {
             throw ValidationException::withMessages([
                 'maquina_id' => 'Selecione o patrimônio que utilizou esse produto.',
+            ]);
+        }
+
+        if ($destinoTipo === 'patrimonio' && $safraId === null && $justificativaSemSafra === '') {
+            throw ValidationException::withMessages([
+                'justificativa_sem_safra' => 'Informe a justificativa para baixar o estoque em patrimônio sem vincular uma safra.',
             ]);
         }
 
@@ -147,7 +161,12 @@ class ProdutoService
         $valorUnitario = $saldo->quantidade > 0 ? round($saldo->valor / $saldo->quantidade, 6) : 0.0;
         $valorTotal = round($quantidade * $valorUnitario, 2);
         $dataMovimento = (string) $dados['data_movimento'];
-        $observacoes = $this->observacoesDaSaida($destinoTipo, $motivo, $dados['observacoes'] ?? null);
+        $observacoes = $this->observacoesDaSaida(
+            $destinoTipo,
+            $motivo,
+            $dados['observacoes'] ?? null,
+            $justificativaSemSafra ?: null
+        );
 
         return (int) DB::transaction(function () use (
             $produto,
@@ -220,6 +239,10 @@ class ProdutoService
                 $produto->descricao_generica,
                 $this->destinoLabel($destinoTipo)
             );
+
+            if ($destinoTipo === 'patrimonio' && $safraId === null) {
+                $detalhes .= ' Sem safra vinculada, com justificativa registrada.';
+            }
 
             $this->auditar($usuarioId, 'baixar_produto_estoque', 'produto_estoque_movimentos', $movimentoId, $propriedadeId, $detalhes);
 
@@ -592,12 +615,20 @@ class ProdutoService
         return (float) $valor;
     }
 
-    private function observacoesDaSaida(string $destinoTipo, string $motivo, mixed $observacoes): string
+    private function observacoesDaSaida(
+        string $destinoTipo,
+        string $motivo,
+        mixed $observacoes,
+        ?string $justificativaSemSafra = null
+    ): string
     {
         $partes = [
             'Baixa de estoque registrada pelo FarmFort.',
             'Destino: '.$this->destinoLabel($destinoTipo).'.',
             $motivo !== '' ? 'Motivo: '.$motivo.'.' : null,
+            $justificativaSemSafra !== null && $justificativaSemSafra !== ''
+                ? 'Justificativa sem safra: '.$justificativaSemSafra.'.'
+                : null,
             trim((string) $observacoes) ?: null,
         ];
 

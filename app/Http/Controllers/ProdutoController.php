@@ -74,6 +74,7 @@ class ProdutoController extends Controller
             'maquina_id' => ['nullable', 'integer'],
             'motivo' => ['nullable', 'string', 'max:120'],
             'observacoes' => ['nullable', 'string', 'max:500'],
+            'justificativa_sem_safra' => ['nullable', 'string', 'max:500'],
         ]);
 
         $service->registrarSaida(

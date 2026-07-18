@@ -38,9 +38,9 @@
                     </label>
 
                     <label class="field" data-produto-baixa-safra>
-                        <span>Safra *</span>
+                        <span data-produto-baixa-safra-label>Safra *</span>
                         <select name="safra_id" class="form-select">
-                            <option value="">Selecione a safra</option>
+                            <option value="">Sem safra / uso geral da fazenda</option>
                             @foreach ($safras as $safra)
                                 <option value="{{ $safra->id }}">{{ $safra->descricao }}</option>
                             @endforeach
@@ -72,6 +72,17 @@
                         <input class="form-control" name="motivo" maxlength="120" placeholder="Ex: perda, devolução ao fornecedor, ajuste de inventário">
                     </label>
 
+                    <label class="field ff-stock-use-field-full" data-produto-baixa-justificativa-sem-safra hidden>
+                        <span>Justificativa sem safra *</span>
+                        <textarea
+                            class="form-control"
+                            name="justificativa_sem_safra"
+                            rows="2"
+                            maxlength="500"
+                            placeholder="Explique por que esta baixa é um uso geral da fazenda e não está vinculada a uma safra."
+                        ></textarea>
+                    </label>
+
                     <label class="field ff-stock-use-field-full">
                         <span>Observações</span>
                         <textarea class="form-control" name="observacoes" rows="3" placeholder="Informações para rastreabilidade da safra, manutenção ou ajuste."></textarea>
@@ -81,8 +92,8 @@
                 <div class="ff-stock-use-note">
                     <i class="bi bi-info-circle"></i>
                     <span>
-                        Se o destino for patrimônio, o FarmFort também registra um lançamento operacional no patrimônio,
-                        mantendo o vínculo com safra e talhão quando informados.
+                        Se o destino for patrimônio, o FarmFort também registra um lançamento operacional no patrimônio.
+                        A safra pode ficar em branco quando for uso geral da fazenda, desde que a justificativa seja registrada.
                     </span>
                 </div>
             </div>
@@ -111,24 +122,36 @@
             const patrimonioGroup = modal.querySelector('[data-produto-baixa-patrimonio]');
             const talhaoGroup = modal.querySelector('[data-produto-baixa-talhao]');
             const motivoGroup = modal.querySelector('[data-produto-baixa-motivo]');
+            const justificativaSemSafraGroup = modal.querySelector('[data-produto-baixa-justificativa-sem-safra]');
+            const safraLabel = modal.querySelector('[data-produto-baixa-safra-label]');
             const safraSelect = safraGroup?.querySelector('select');
             const patrimonioSelect = patrimonioGroup?.querySelector('select');
             const motivoInput = motivoGroup?.querySelector('input');
+            const justificativaSemSafraInput = justificativaSemSafraGroup?.querySelector('textarea');
 
             function toggleDestino() {
                 const value = destino.value;
                 const usaSafra = value === 'safra' || value === 'patrimonio';
                 const usaPatrimonio = value === 'patrimonio';
                 const usaMotivo = value === 'ajuste';
+                const patrimonioSemSafra = usaPatrimonio && !safraSelect?.value;
 
                 safraGroup.hidden = !usaSafra;
                 talhaoGroup.hidden = !usaSafra;
                 patrimonioGroup.hidden = !usaPatrimonio;
                 motivoGroup.hidden = !usaMotivo;
+                justificativaSemSafraGroup.hidden = !patrimonioSemSafra;
 
-                if (safraSelect) safraSelect.required = usaSafra;
+                if (safraLabel) safraLabel.textContent = usaPatrimonio ? 'Safra (opcional)' : 'Safra *';
+                if (safraSelect) safraSelect.required = value === 'safra';
                 if (patrimonioSelect) patrimonioSelect.required = usaPatrimonio;
                 if (motivoInput) motivoInput.required = usaMotivo;
+                if (justificativaSemSafraInput) {
+                    justificativaSemSafraInput.required = patrimonioSemSafra;
+                    if (!patrimonioSemSafra) {
+                        justificativaSemSafraInput.value = '';
+                    }
+                }
             }
 
             modal.addEventListener('show.bs.modal', (event) => {
@@ -147,6 +170,7 @@
             });
 
             destino?.addEventListener('change', toggleDestino);
+            safraSelect?.addEventListener('change', toggleDestino);
             toggleDestino();
         });
     </script>
