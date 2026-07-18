@@ -66,6 +66,15 @@ class SecurityHardeningTest extends TestCase
         $this->assertStringContainsString('str_starts_with($path, $base)', $docs);
     }
 
+    public function test_chat_presence_uses_atomic_upsert(): void
+    {
+        $chat = $this->contents('app/Services/ChatInternoService.php');
+
+        $this->assertStringContainsString("DB::table('chat_usuarios_online')->upsert", $chat);
+        $this->assertStringContainsString("['usuario_id']", $chat);
+        $this->assertStringNotContainsString("DB::table('chat_usuarios_online')->updateOrInsert", $chat);
+    }
+
     public function test_cloudflare_audit_context_is_not_trusted_without_proxy(): void
     {
         $bootstrap = $this->contents('bootstrap/app.php');

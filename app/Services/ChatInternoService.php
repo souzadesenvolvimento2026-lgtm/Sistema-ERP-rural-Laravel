@@ -14,13 +14,15 @@ class ChatInternoService
 
     public function online(int $usuarioId, ?string $sessionId = null, ?string $sessionToken = null): void
     {
-        DB::table('chat_usuarios_online')->updateOrInsert(
-            ['usuario_id' => $usuarioId],
-            [
+        DB::table('chat_usuarios_online')->upsert(
+            [[
+                'usuario_id' => $usuarioId,
                 'sessao_id' => $sessionId,
                 'sessao_token' => $sessionToken ?: null,
                 'atualizado_em' => now(),
-            ]
+            ]],
+            ['usuario_id'],
+            ['sessao_id', 'sessao_token', 'atualizado_em']
         );
     }
 
