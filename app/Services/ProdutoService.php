@@ -191,7 +191,7 @@ class ProdutoService
                     'propriedade_id' => $propriedadeId,
                     'produto_id' => $produtoId,
                     'origem_tipo' => 'baixa_estoque',
-                    'origem_id' => null,
+                    'origem_id' => $produtoId,
                     'tipo' => 'saida',
                     'destino_tipo' => $destinoTipo,
                     'safra_id' => $safraId,

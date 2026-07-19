@@ -16,6 +16,7 @@ class ProdutoStockUseRulesTest extends TestCase
             $service
         );
         $this->assertStringContainsString('justificativa_sem_safra', $service);
+        $this->assertStringContainsString("'origem_id' => \$produtoId", $service);
         $this->assertStringNotContainsString(
             'in_array($destinoTipo, [\'safra\', \'patrimonio\'], true) && $safraId === null',
             $service
