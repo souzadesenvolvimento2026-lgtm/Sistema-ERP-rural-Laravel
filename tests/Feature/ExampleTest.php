@@ -1867,8 +1867,9 @@ XML;
             ->get('/financeiro')
             ->assertStatus(200)
             ->assertSee('Painel Financeiro')
-            ->assertSee('Agenda financeira')
-            ->assertSee('Saldos por conta');
+            ->assertSee('Lançamentos')
+            ->assertDontSee('Agenda financeira')
+            ->assertDontSee('Saldos por conta');
     }
 
     public function test_finance_create_page_returns_a_successful_response(): void

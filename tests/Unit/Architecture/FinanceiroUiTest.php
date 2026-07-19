@@ -46,6 +46,26 @@ class FinanceiroUiTest extends TestCase
         $this->assertStringNotContainsString('html[data-theme="dark"] .ff-bi-hero', $css);
     }
 
+    public function test_financeiro_index_prioritizes_ledger_and_removes_secondary_blocks(): void
+    {
+        $view = $this->contents('resources/views/financeiro/index.blade.php');
+        $css = $this->contents('public/css/farmfort.css');
+
+        $this->assertStringContainsString('ff-finance-ledger-priority', $view);
+        $this->assertStringContainsString('data-ff-finance-priority="lancamentos"', $view);
+        $this->assertStringContainsString('ff-row-action-toggle', $view);
+        $this->assertStringContainsString('ff-row-action-primary ff-row-action-approve', $view);
+        $this->assertStringContainsString('ff-row-action-primary ff-row-action-pay', $view);
+        $this->assertStringContainsString('ff-row-action-primary ff-row-action-receive', $view);
+        $this->assertStringNotContainsString("include('financeiro.partials.agenda')", $view);
+        $this->assertStringNotContainsString("include('financeiro.partials.contas')", $view);
+        $this->assertStringNotContainsString('Agenda financeira', $view);
+        $this->assertStringNotContainsString('Saldos por conta', $view);
+
+        $this->assertStringContainsString('.ff-finance-ledger-priority', $css);
+        $this->assertStringContainsString('.ff-row-actions .ff-row-action-primary', $css);
+    }
+
     private function contents(string $path): string
     {
         $contents = file_get_contents($path);

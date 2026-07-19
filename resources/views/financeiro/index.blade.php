@@ -33,8 +33,6 @@
 @section('content')
     <div class="ff-finance-legacy-page">
         <span class="visually-hidden">Painel Financeiro</span>
-        <span class="visually-hidden">Agenda financeira</span>
-        <span class="visually-hidden">Saldos por conta</span>
 
         <div class="page-head ff-finance-page-head">
             <div>
@@ -171,7 +169,7 @@
             </a>
         </div>
 
-        <section class="panel ff-finance-ledger-panel">
+        <section class="panel ff-finance-ledger-panel ff-finance-ledger-priority" data-ff-finance-priority="lancamentos">
             <div class="panel-head">
                 <div class="d-flex flex-wrap align-items-center gap-2">
                     <h2 class="mb-0">
@@ -297,7 +295,7 @@
                             </td>
                             <td class="text-end">
                                 <div class="dropdown ff-row-actions">
-                                    <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="dropdown" aria-label="Ações">
+                                    <button class="btn btn-sm btn-outline-secondary ff-row-action-toggle" type="button" data-bs-toggle="dropdown" aria-label="Ações">
                                         <i class="bi bi-three-dots-vertical"></i>
                                     </button>
                                     <ul class="dropdown-menu dropdown-menu-end">
@@ -329,7 +327,7 @@
                                                 <li>
                                                     <form method="post" action="{{ $row->approve_url }}">
                                                         @csrf
-                                                        <button class="dropdown-item" type="submit"><i class="bi bi-check2-circle me-2"></i>Aprovar</button>
+                                                        <button class="dropdown-item ff-row-action-primary ff-row-action-approve" type="submit"><i class="bi bi-check2-circle me-2"></i>Aprovar</button>
                                                     </form>
                                                 </li>
                                             @endif
@@ -337,7 +335,7 @@
                                             @if ($podeAprovarFinanceiro && $row->tipo === 'despesa' && $row->can_pay)
                                                 <li>
                                                     <button
-                                                        class="dropdown-item"
+                                                        class="dropdown-item ff-row-action-primary ff-row-action-pay"
                                                         type="button"
                                                         data-bs-toggle="modal"
                                                         data-bs-target="#financeiroPagamentoModal"
@@ -356,7 +354,7 @@
                                                     <form method="post" action="{{ $row->receive_url }}">
                                                         @csrf
                                                         <input type="hidden" name="data_recebimento" value="{{ date('Y-m-d') }}">
-                                                        <button class="dropdown-item" type="submit"><i class="bi bi-cash-coin me-2"></i>Confirmar recebimento</button>
+                                                        <button class="dropdown-item ff-row-action-primary ff-row-action-receive" type="submit"><i class="bi bi-cash-coin me-2"></i>Confirmar recebimento</button>
                                                     </form>
                                                 </li>
                                             @endif
@@ -392,10 +390,6 @@
 
         </section>
 
-        <div class="grid two mt-4">
-            @include('financeiro.partials.agenda')
-            @include('financeiro.partials.contas')
-        </div>
     </div>
 
     @include('financeiro.partials.novo-lancamento-modal')

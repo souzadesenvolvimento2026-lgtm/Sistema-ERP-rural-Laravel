@@ -8321,6 +8321,19 @@ html[data-theme="dark"] .ff-comparison-filter-form {
   background: var(--ff-surface-2);
 }
 
+.ff-finance-ledger-priority {
+  margin-bottom: 0;
+}
+
+.ff-finance-ledger-priority .panel-head {
+  align-items: center;
+  min-height: 64px;
+}
+
+.ff-finance-ledger-priority .panel-head h2 {
+  font-size: 18px;
+}
+
 .ff-finance-datatable-toolbar,
 .ff-finance-datatable-footer {
   display: flex;
@@ -8389,6 +8402,11 @@ html[data-theme="dark"] .ff-comparison-filter-form {
 
 .ff-finance-ledger-wrap {
   overflow-x: hidden;
+}
+
+.ff-finance-ledger-priority .ff-finance-ledger-wrap {
+  min-height: clamp(360px, calc(100vh - 500px), 620px);
+  overflow-y: auto;
 }
 
 .ff-lancamentos-table {
@@ -8609,8 +8627,15 @@ html[data-theme="dark"] .ff-comparison-filter-form {
   border-radius: 9px;
 }
 
+.ff-row-actions .ff-row-action-toggle {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  font-size: 16px;
+}
+
 .ff-row-actions .dropdown-menu {
-  min-width: 220px;
+  min-width: 250px;
 }
 
 .ff-row-actions form {
@@ -8620,6 +8645,21 @@ html[data-theme="dark"] .ff-comparison-filter-form {
 .ff-row-actions .dropdown-item {
   font-size: 12px;
   font-weight: 800;
+}
+
+.ff-row-actions .ff-row-action-primary {
+  min-height: 42px;
+  padding: 10px 14px;
+  border-left: 4px solid var(--ff-accent);
+  color: var(--ff-accent-strong);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.ff-row-actions .ff-row-action-primary:hover,
+.ff-row-actions .ff-row-action-primary:focus {
+  background: var(--ff-accent-soft);
+  color: var(--ff-accent-strong);
 }
 
 .ff-purchase-page {
