@@ -32,4 +32,21 @@ class ProdutoStockUseRulesTest extends TestCase
         $this->assertStringContainsString('patrimonioSemSafra', $view);
         $this->assertStringContainsString('safraSelect.required = value === \'safra\'', $view);
     }
+
+    public function test_stock_index_exposes_safe_indicators_and_visual_situation(): void
+    {
+        $service = file_get_contents(base_path('app/Services/ProdutoService.php'));
+        $view = file_get_contents(base_path('resources/views/produtos/partials/tabela.blade.php'));
+
+        $this->assertStringContainsString('cardsEstoque', $service);
+        $this->assertStringContainsString('Produtos cadastrados', $service);
+        $this->assertStringContainsString('Valor total estimado', $service);
+        $this->assertStringContainsString('situacaoEstoque', $service);
+        $this->assertStringContainsString('custo_medio', $service);
+        $this->assertStringContainsString('Produtos armazenados', $view);
+        $this->assertStringContainsString('Custo médio', $view);
+        $this->assertStringContainsString('Valor total', $view);
+        $this->assertStringContainsString('Situação', $view);
+        $this->assertStringContainsString('produtos.movimentos.store', $view);
+    }
 }

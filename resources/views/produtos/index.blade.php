@@ -7,7 +7,7 @@
             <p class="subtitle">{{ $subtitle }}</p>
         </div>
         <div class="actions">
-            <a class="btn primary" href="{{ route('produtos.create') }}"><i class="bi bi-plus-lg"></i> Novo Produto</a>
+            <a class="btn primary" href="{{ route('produtos.create') }}"><i class="bi bi-plus-lg"></i> Cadastrar produto</a>
         </div>
     </div>
 

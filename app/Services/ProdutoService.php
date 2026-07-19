@@ -28,8 +28,8 @@ class ProdutoService
 
         return [
             'activeModule' => 'estoque-produtos',
-            'title' => 'Estoque de Produtos',
-            'subtitle' => 'Cadastro de produtos, insumos e dados fiscais usados nas entradas de nota fiscal.',
+            'title' => 'Estoque',
+            'subtitle' => 'Visão geral dos produtos armazenados e das movimentações.',
             'filtros' => $filtros,
             'rows' => $rows,
             ...$this->movimentacaoOptions($propriedadeId),
@@ -40,12 +40,18 @@ class ProdutoService
                 'inativos' => 'Inativos',
                 'fiscal_pendente' => 'Fiscal pendente',
             ],
-            'cards' => [
-                ['label' => 'Produtos', 'value' => (string) $rows->count(), 'tone' => 'success'],
-                ['label' => 'Ativos', 'value' => (string) $rows->where('ativo', true)->count(), 'tone' => 'success'],
-                ['label' => 'Fiscal pendente', 'value' => (string) $rows->where('fiscal_completo', false)->count(), 'tone' => 'warning'],
-                ['label' => 'Valor em estoque', 'value' => FarmFormat::money($rows->sum('valor_estoque_raw')), 'tone' => 'success'],
-            ],
+            'cards' => $this->cardsEstoque($rows),
+        ];
+    }
+
+    private function cardsEstoque(Collection $rows): array
+    {
+        return [
+            ['label' => 'Produtos cadastrados', 'value' => (string) $rows->count(), 'tone' => 'success'],
+            ['label' => 'Estoque normal', 'value' => (string) $rows->where('situacao_codigo', 'normal')->count(), 'tone' => 'success'],
+            ['label' => 'Estoque baixo', 'value' => (string) $rows->where('situacao_codigo', 'baixo')->count(), 'tone' => 'warning'],
+            ['label' => 'Produtos zerados', 'value' => (string) $rows->where('situacao_codigo', 'zerado')->count(), 'tone' => 'danger'],
+            ['label' => 'Valor total estimado', 'value' => FarmFormat::money($rows->sum('valor_estoque_raw')), 'tone' => 'success'],
         ];
     }
 
@@ -388,6 +394,11 @@ class ProdutoService
     {
         $unidade = $this->unidadeLabel((string) ($row->unidade_medida ?: 'un'));
         $fiscalCompleto = $this->fiscalCompleto($row);
+        $produtoAtivo = (int) $row->ativo === 1;
+        $saldoEstoque = (float) $row->saldo_estoque;
+        $valorEstoque = (float) $row->valor_estoque;
+        $custoMedio = $saldoEstoque > 0.0 ? $valorEstoque / $saldoEstoque : 0.0;
+        $situacaoEstoque = $this->situacaoEstoque($saldoEstoque, $produtoAtivo);
 
         return (object) [
             'id' => (int) $row->id,
@@ -397,21 +408,39 @@ class ProdutoService
             'categoria' => FarmFormat::value($row->categoria_nome),
             'unidade' => $unidade,
             'marca' => FarmFormat::value($row->marca),
-            'ativo' => (int) $row->ativo === 1,
-            'status' => (int) $row->ativo === 1 ? 'Ativo' : 'Inativo',
+            'ativo' => $produtoAtivo,
+            'status' => $produtoAtivo ? 'Ativo' : 'Inativo',
             'fiscal_completo' => $fiscalCompleto,
             'fiscal_status' => $fiscalCompleto ? 'Completo' : 'Pendente',
             'ncm' => FarmFormat::value($row->ncm),
-            'saldo_estoque' => FarmFormat::decimal($row->saldo_estoque, 2).' '.$unidade,
-            'saldo_estoque_raw' => (float) $row->saldo_estoque,
+            'saldo_estoque' => FarmFormat::decimal($saldoEstoque, 2).' '.$unidade,
+            'saldo_estoque_raw' => $saldoEstoque,
             'unidade_codigo' => (string) ($row->unidade_medida ?: 'un'),
-            'valor_estoque' => FarmFormat::money($row->valor_estoque),
-            'valor_estoque_raw' => (float) $row->valor_estoque,
+            'valor_estoque' => FarmFormat::money($valorEstoque),
+            'valor_estoque_raw' => $valorEstoque,
+            'custo_medio' => FarmFormat::money($custoMedio),
+            'custo_medio_raw' => $custoMedio,
             'movimentos_estoque' => (int) $row->movimentos_estoque,
             'quantidade_nf' => FarmFormat::decimal($row->quantidade_nf, 2).' '.$unidade,
             'valor_nf' => FarmFormat::money($row->valor_nf),
             'itens_nf' => (int) $row->itens_nf,
+            'situacao' => $situacaoEstoque['label'],
+            'situacao_codigo' => $situacaoEstoque['codigo'],
+            'situacao_tone' => $situacaoEstoque['tone'],
         ];
+    }
+
+    private function situacaoEstoque(float $saldoEstoque, bool $produtoAtivo): array
+    {
+        if (! $produtoAtivo) {
+            return ['codigo' => 'inativo', 'label' => 'Inativo', 'tone' => ''];
+        }
+
+        if ($saldoEstoque <= 0.0) {
+            return ['codigo' => 'zerado', 'label' => 'Zerado', 'tone' => 'danger'];
+        }
+
+        return ['codigo' => 'normal', 'label' => 'Normal', 'tone' => 'success'];
     }
 
     private function fiscalCompleto($row): bool

@@ -4301,8 +4301,9 @@ XML;
         $this->withSession($this->loggedSession())
             ->get('/produtos')
             ->assertStatus(200)
-            ->assertSee('Estoque de Produtos')
-            ->assertSee('Produtos');
+            ->assertSee('Estoque')
+            ->assertSee('Produtos armazenados')
+            ->assertSee('Valor total estimado');
     }
 
     public function test_product_can_be_edited_and_toggled(): void

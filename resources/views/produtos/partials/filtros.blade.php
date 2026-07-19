@@ -12,7 +12,7 @@
 
         <label>
             Buscar
-            <input name="search" value="{{ $filtros['search'] }}" placeholder="Produto, codigo, marca ou categoria">
+            <input name="search" value="{{ $filtros['search'] }}" placeholder="Produto, código, marca ou categoria" autocomplete="off">
         </label>
 
         <div class="form-actions">
