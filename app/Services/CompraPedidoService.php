@@ -2,10 +2,12 @@
 
 namespace App\Services;
 
+use App\Domain\Inventory\ProductIdentity;
 use App\Domain\Purchasing\PurchaseOrderCapabilities;
 use App\Support\FarmContext;
 use App\Support\FarmFormat;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
@@ -30,8 +32,10 @@ class CompraPedidoService
 
     public array $units = ['Quilograma', 'Grama', 'Tonelada', 'Litro', 'Mililitro', 'Metros', 'Unidade'];
 
-    public function __construct(private readonly PurchaseOrderCapabilities $capabilities)
-    {
+    public function __construct(
+        private readonly PurchaseOrderCapabilities $capabilities,
+        private readonly ProductIdentity $productIdentity,
+    ) {
     }
 
     public function propertyId(): int
@@ -1255,20 +1259,16 @@ class CompraPedidoService
         $unit = trim((string) ($item->unit ?? 'un')) ?: 'un';
         $categoryId = ! empty($item->categoria_id) ? (int) $item->categoria_id : null;
 
-        $query = DB::table('produtos')
-            ->where('propriedade_id', $propertyId)
-            ->when($code !== '', fn ($q) => $q->where(function ($inner) use ($code) {
-                $inner->where('codigo_interno', $code)->orWhere('codigo_fornecedor', $code);
-            }), fn ($q) => $q->where('descricao_generica', $description))
-            ->orderByDesc('ativo')
-            ->orderBy('id');
-
-        $products = $query->get(['id', 'categoria_id', 'unidade_medida']);
-        $found = $products->first(fn ($product) => strcasecmp(trim((string) $product->unidade_medida), $unit) === 0)
-            ?: $products->first();
+        $found = $this->findMatchingStockProduct($propertyId, $code, $description, $unit);
 
         if ($found) {
             $updates = [];
+            if (empty($found->codigo_interno)) {
+                $updates['codigo_interno'] = $this->productIdentity->internalCodeForId((int) $found->id);
+            }
+            if ($code !== '' && empty($found->codigo_fornecedor)) {
+                $updates['codigo_fornecedor'] = $code;
+            }
             if ($categoryId && empty($found->categoria_id)) {
                 $updates['categoria_id'] = $categoryId;
             }
@@ -1284,7 +1284,7 @@ class CompraPedidoService
 
         DB::table('produtos')->insert([
             'propriedade_id' => $propertyId,
-            'codigo_interno' => $code ?: null,
+            'codigo_interno' => null,
             'codigo_fornecedor' => $code ?: null,
             'descricao_original_nf' => $description,
             'descricao_generica' => $description,
@@ -1294,7 +1294,73 @@ class CompraPedidoService
             'informacoes_fiscais' => 'Criado automaticamente pela aprovação do pedido fiscal '.(string) ($order->order_number ?? ''),
         ]);
 
-        return (int) DB::getPdo()->lastInsertId();
+        $productId = (int) DB::getPdo()->lastInsertId();
+        DB::table('produtos')
+            ->where('id', $productId)
+            ->update(['codigo_interno' => $this->productIdentity->internalCodeForId($productId)]);
+
+        return $productId;
+    }
+
+    private function findMatchingStockProduct(
+        int $propertyId,
+        string $code,
+        string $description,
+        string $unit
+    ): ?object {
+        $products = DB::table('produtos')
+            ->where('propriedade_id', $propertyId)
+            ->when($code !== '', fn ($query) => $query->where(function ($innerQuery) use ($code) {
+                $innerQuery->where('codigo_interno', $code)
+                    ->orWhere('codigo_fornecedor', $code);
+            }), fn ($query) => $query->where(function ($innerQuery) use ($description) {
+                $innerQuery->where('descricao_generica', $description)
+                    ->orWhere('descricao_original_nf', $description);
+            }))
+            ->orderByDesc('ativo')
+            ->orderBy('id')
+            ->get([
+                'id',
+                'codigo_interno',
+                'codigo_fornecedor',
+                'descricao_generica',
+                'descricao_original_nf',
+                'categoria_id',
+                'unidade_medida',
+            ]);
+
+        $found = $this->selectProductByUnit($products, $unit);
+        if ($found) {
+            return $found;
+        }
+
+        $normalizedProducts = DB::table('produtos')
+            ->where('propriedade_id', $propertyId)
+            ->orderByDesc('ativo')
+            ->orderBy('id')
+            ->get([
+                'id',
+                'codigo_interno',
+                'codigo_fornecedor',
+                'descricao_generica',
+                'descricao_original_nf',
+                'categoria_id',
+                'unidade_medida',
+            ])
+            ->filter(fn (object $product): bool => $this->productIdentity->descriptionsMatch(
+                $description,
+                (string) ($product->descricao_generica ?: $product->descricao_original_nf)
+            ));
+
+        return $this->selectProductByUnit($normalizedProducts, $unit);
+    }
+
+    private function selectProductByUnit(Collection $products, string $unit): ?object
+    {
+        return $products->first(fn (object $product): bool => strcasecmp(
+            trim((string) $product->unidade_medida),
+            $unit
+        ) === 0) ?: $products->first();
     }
 
     private function patrimonioUsedQuantity(object $item): float

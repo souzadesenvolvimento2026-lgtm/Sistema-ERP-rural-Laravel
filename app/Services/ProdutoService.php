@@ -25,13 +25,14 @@ class ProdutoService
     {
         $filtros = $this->filtros($request);
         $rows = $this->rows($propriedadeId, $filtros);
+        $produtosArmazenados = $this->produtosArmazenados($rows);
 
         return [
             'activeModule' => 'estoque-produtos',
             'title' => 'Estoque',
             'subtitle' => 'Visão geral dos produtos armazenados e das movimentações.',
             'filtros' => $filtros,
-            'rows' => $rows,
+            'rows' => $produtosArmazenados,
             ...$this->movimentacaoOptions($propriedadeId),
             'saidasRecentes' => $this->saidasRecentes($propriedadeId),
             'statusOptions' => [
@@ -42,6 +43,13 @@ class ProdutoService
             ],
             'cards' => $this->cardsEstoque($rows),
         ];
+    }
+
+    private function produtosArmazenados(Collection $rows): Collection
+    {
+        return $rows
+            ->filter(fn (object $row): bool => (float) $row->saldo_estoque_raw > 0.0)
+            ->values();
     }
 
     private function cardsEstoque(Collection $rows): array

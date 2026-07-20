@@ -41,6 +41,10 @@ class ProdutoStockUseRulesTest extends TestCase
         $this->assertStringContainsString('cardsEstoque', $service);
         $this->assertStringContainsString('Produtos cadastrados', $service);
         $this->assertStringContainsString('Valor total estimado', $service);
+        $this->assertStringContainsString('produtosArmazenados', $service);
+        $this->assertStringContainsString('saldo_estoque_raw > 0.0', $service);
+        $this->assertStringContainsString("'rows' => \$produtosArmazenados", $service);
+        $this->assertStringContainsString("'cards' => \$this->cardsEstoque(\$rows)", $service);
         $this->assertStringContainsString('situacaoEstoque', $service);
         $this->assertStringContainsString('custo_medio', $service);
         $this->assertStringContainsString('Produtos armazenados', $view);
@@ -48,5 +52,16 @@ class ProdutoStockUseRulesTest extends TestCase
         $this->assertStringContainsString('Valor total', $view);
         $this->assertStringContainsString('Situação', $view);
         $this->assertStringContainsString('produtos.movimentos.store', $view);
+    }
+
+    public function test_purchase_order_reuses_existing_product_before_generating_internal_code(): void
+    {
+        $service = file_get_contents(base_path('app/Services/CompraPedidoService.php'));
+
+        $this->assertStringContainsString('findMatchingStockProduct', $service);
+        $this->assertStringContainsString('descriptionsMatch', $service);
+        $this->assertStringContainsString('codigo_fornecedor', $service);
+        $this->assertStringContainsString('internalCodeForId', $service);
+        $this->assertStringContainsString("'codigo_interno' => null", $service);
     }
 }
