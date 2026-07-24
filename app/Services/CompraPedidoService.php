@@ -757,7 +757,7 @@ class CompraPedidoService
         bool $confirmed,
         bool $confirmWithoutInvoice = false,
         bool $confirmDivergences = false,
-    ): int {
+    ): void {
         if (! $confirmed) {
             throw new RuntimeException('Confirme explicitamente a aprovação do pedido.');
         }
@@ -766,13 +766,13 @@ class CompraPedidoService
             throw new RuntimeException('Seu usuário não tem permissão para aprovar pedidos fiscais desta propriedade.');
         }
 
-        return DB::transaction(function () use (
+        DB::transaction(function () use (
             $propertyId,
             $pedido,
             $userId,
             $confirmWithoutInvoice,
             $confirmDivergences,
-        ): int {
+        ): void {
             $order = DB::table('fiscal_orders')
                 ->where('id', $pedido)
                 ->where('propriedade_id', $propertyId)
@@ -812,6 +812,9 @@ class CompraPedidoService
                 'had_invoice_divergences' => $hasInvoiceDivergences,
                 'confirmed_without_invoice' => ! $hasLinkedInvoices && $confirmWithoutInvoice,
                 'confirmed_with_divergences' => $hasLinkedInvoices && $hasInvoiceDivergences && $confirmDivergences,
+                'financial_generation_step' => 'conclusao_nf',
+                'stock_generation_step' => 'conclusao_nf',
+                'patrimony_generation_step' => 'conclusao_nf',
             ];
 
             DB::table('fiscal_orders')
@@ -826,44 +829,21 @@ class CompraPedidoService
                     'updated_at' => now(),
                 ]);
 
-            $approvedOrder = DB::table('fiscal_orders')
-                ->where('id', $pedido)
-                ->where('propriedade_id', $propertyId)
-                ->first();
-
-            $expenseId = $this->createFinancialExpense($approvedOrder, $userId);
-            $stockItems = $this->syncStock($approvedOrder, $items, $userId);
-            $patrimonioItems = $this->syncPatrimonio($approvedOrder, $items, $userId);
-
-            $metadata['financial_expense_id'] = $expenseId;
-            $metadata['stock_items'] = $stockItems;
-            $metadata['patrimonio_items'] = $patrimonioItems;
-
-            DB::table('fiscal_orders')
-                ->where('id', $pedido)
-                ->where('propriedade_id', $propertyId)
-                ->update([
-                    'financial_expense_id' => $expenseId,
-                    'approval_metadata' => json_encode($metadata, JSON_UNESCAPED_UNICODE),
-                ]);
-
             AuditService::log(
                 action: 'aprovar_pedido_fiscal',
                 table: 'fiscal_orders',
                 recordId: $pedido,
                 propertyId: $propertyId,
                 details: [
-                    'numero' => (string) $approvedOrder->order_number,
-                    'despesa_financeira_id' => $expenseId,
+                    'numero' => (string) $order->order_number,
                     'nota_fiscal_vinculada' => (bool) $metadata['had_linked_invoices'],
                     'aprovado_sem_nota_confirmado' => (bool) $metadata['confirmed_without_invoice'],
                     'aprovado_com_divergencias_confirmado' => (bool) $metadata['confirmed_with_divergences'],
-                    'itens_estoque' => $stockItems,
-                    'itens_patrimonio' => $patrimonioItems,
+                    'financeiro' => 'gerado_na_conclusao_da_nf',
+                    'estoque' => 'gerado_na_conclusao_da_nf',
+                    'patrimonio' => 'gerado_na_conclusao_da_nf',
                 ],
             );
-
-            return $expenseId;
         });
     }
 

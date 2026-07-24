@@ -61,16 +61,17 @@ class CompraPedidoController extends Controller
             $orderId = $this->pedidos->createOrder($request, $propertyId, ! $canApproveOrders || $linkInvoiceBeforeApproval);
 
             if ($canApproveOrders && ! $linkInvoiceBeforeApproval) {
-                $expenseId = $this->pedidos->approveOrder($propertyId, $orderId, $userId, true, true);
+                $this->pedidos->approveOrder($propertyId, $orderId, $userId, true, true);
 
-                return $this->redirectToFinancialPanel($expenseId)
-                    ->with('success', 'Pedido fiscal criado, aprovado e lançado no financeiro. Confira o lançamento no painel e informe a conta real na baixa do pagamento.');
+                return redirect()
+                    ->route('compras.pedidos.show', $orderId)
+                    ->with('success', 'Pedido fiscal criado e aprovado como compromisso de compra. O estoque e o financeiro serão gerados na conclusão da nota fiscal.');
             }
 
             if ($linkInvoiceBeforeApproval) {
                 return redirect()
                     ->route('compras.pedidos.show', $orderId)
-                    ->with('success', 'Pedido fiscal criado. Vincule ou importe a nota fiscal antes de aprovar e lançar no financeiro.');
+                    ->with('success', 'Pedido fiscal criado. Vincule ou importe a nota fiscal antes de aprovar. O estoque e o financeiro serão gerados na conclusão da nota fiscal.');
             }
         } catch (RuntimeException $exception) {
             report($exception);
@@ -137,7 +138,7 @@ class CompraPedidoController extends Controller
     public function approve(Request $request, int $pedido): RedirectResponse
     {
         try {
-            $expenseId = $this->pedidos->approveOrder(
+            $this->pedidos->approveOrder(
                 $this->pedidos->propertyId(),
                 $pedido,
                 session('usuario_id'),
@@ -151,8 +152,9 @@ class CompraPedidoController extends Controller
             return back()->withErrors($exception->getMessage());
         }
 
-        return $this->redirectToFinancialPanel($expenseId)
-            ->with('success', 'Pedido aprovado, lançado no financeiro e incorporado ao estoque. Confira o lançamento no painel e informe a conta real na baixa do pagamento.');
+        return redirect()
+            ->route('compras.pedidos.show', $pedido)
+            ->with('success', 'Pedido aprovado como compromisso de compra. O estoque e o financeiro serão gerados quando a nota fiscal for concluída.');
     }
 
     public function reject(Request $request, int $pedido): RedirectResponse
@@ -278,12 +280,4 @@ class CompraPedidoController extends Controller
             ->with('success', 'Vínculo com nota fiscal removido.');
     }
 
-    private function redirectToFinancialPanel(int $expenseId): RedirectResponse
-    {
-        return redirect()->route('financeiro.index', [
-            'filtro' => 'despesas',
-            'todos' => 1,
-            'lancamento_id' => $expenseId,
-        ]);
-    }
 }

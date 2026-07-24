@@ -387,6 +387,12 @@ class EntradaNfService
                 ->leftJoin('produtos as p', 'p.id', '=', 'i.produto_id')
                 ->where('i.nf_entrada_id', $entradaId)
                 ->get([
+                    'i.id',
+                    'i.produto_id',
+                    'i.quantidade',
+                    'i.unidade',
+                    'i.valor_unitario',
+                    'i.valor_total',
                     'i.descricao_nf',
                     'i.descricao_generica',
                     'i.total_liquido',
@@ -455,7 +461,17 @@ class EntradaNfService
                     ]);
             }
 
-            $this->auditar($usuarioId, 'concluir_entrada_nf', 'nf_entradas', $entradaId, $propriedadeId, 'Entrada de NF concluida e financeiro confirmado');
+            $entradasEstoque = $this->registrarEntradasEstoque($entrada, $itens, $propriedadeId, $usuarioId);
+
+            $this->auditar(
+                $usuarioId,
+                'concluir_entrada_nf',
+                'nf_entradas',
+                $entradaId,
+                $propriedadeId,
+                'Entrada de NF concluida, '.$totalParcelas.' titulo(s) financeiro(s) confirmado(s) e '
+                    .$entradasEstoque.' entrada(s) de estoque registrada(s)'
+            );
         });
     }
 
@@ -743,6 +759,84 @@ class EntradaNfService
             && trim((string) ($item->cst_icms ?? '')) !== ''
             && trim((string) ($item->cst_pis ?? '')) !== ''
             && trim((string) ($item->cst_cofins ?? '')) !== '';
+    }
+
+    private function registrarEntradasEstoque(
+        object $entrada,
+        Collection $itens,
+        int $propriedadeId,
+        ?int $usuarioId
+    ): int {
+        if (! Schema::hasTable('produto_estoque_movimentos')) {
+            return 0;
+        }
+
+        $dataMovimento = $entrada->data_entrada ?: ($entrada->data_emissao ?: now()->toDateString());
+        $numeroDocumento = $this->numeroDocumento($entrada->numero ?? null, $entrada->serie ?? null);
+        $entradasRegistradas = 0;
+
+        foreach ($itens as $item) {
+            $produtoId = (int) ($item->produto_id ?? 0);
+            $quantidade = (float) ($item->quantidade ?? 0);
+
+            if ($produtoId <= 0 || $quantidade <= 0) {
+                continue;
+            }
+
+            if ($this->estoqueJaRegistradoParaNfItem((int) ($item->id ?? 0), $produtoId)) {
+                continue;
+            }
+
+            $valorUnitario = (float) ($item->valor_unitario ?? 0);
+            $valorTotal = (float) ($item->valor_total ?? $item->total_liquido ?? 0);
+
+            if ($valorTotal <= 0 && $valorUnitario > 0) {
+                $valorTotal = round($valorUnitario * $quantidade, 2);
+            }
+
+            DB::table('produto_estoque_movimentos')->insert($this->filtrarColunas('produto_estoque_movimentos', [
+                'propriedade_id' => $propriedadeId,
+                'produto_id' => $produtoId,
+                'origem_tipo' => 'entrada_nf',
+                'origem_id' => (int) $entrada->id,
+                'nf_entrada_id' => (int) $entrada->id,
+                'nf_entrada_item_id' => (int) ($item->id ?? 0),
+                'tipo' => 'entrada',
+                'quantidade' => $quantidade,
+                'unidade' => trim((string) ($item->unidade ?? '')) ?: 'un',
+                'valor_unitario' => $valorUnitario,
+                'valor_total' => $valorTotal,
+                'custo_unitario' => $valorUnitario,
+                'custo_total' => $valorTotal,
+                'data_movimento' => $dataMovimento,
+                'observacoes' => 'Entrada automatica pela conclusao da NF '.$numeroDocumento.'.',
+                'usuario_id' => $usuarioId,
+                'criado_em' => now(),
+                'atualizado_em' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]));
+
+            $entradasRegistradas++;
+        }
+
+        return $entradasRegistradas;
+    }
+
+    private function estoqueJaRegistradoParaNfItem(int $itemId, int $produtoId): bool
+    {
+        if (
+            $itemId <= 0
+            || ! Schema::hasTable('produto_estoque_movimentos')
+            || ! Schema::hasColumn('produto_estoque_movimentos', 'nf_entrada_item_id')
+        ) {
+            return false;
+        }
+
+        return DB::table('produto_estoque_movimentos')
+            ->where('produto_id', $produtoId)
+            ->where('nf_entrada_item_id', $itemId)
+            ->exists();
     }
 
     private function statusParcelaLabel(string $status): string
